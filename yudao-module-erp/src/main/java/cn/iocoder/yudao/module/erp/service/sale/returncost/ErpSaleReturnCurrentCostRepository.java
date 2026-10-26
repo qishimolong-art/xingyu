@@ -18,7 +18,7 @@ public class ErpSaleReturnCurrentCostRepository {
 
     public void checkSchema() {
         jdbcTemplate.queryForList("SELECT tenant_id,return_id,latest_confirmation_id,posted FROM erp_sale_return_current_cost_state WHERE 1=0");
-        jdbcTemplate.queryForList("SELECT id,tenant_id,return_id,revision,request_key,request_hash,source_signature,stock_signature,evidence,confirmed_by,confirmed_at,consumed_at FROM erp_sale_return_current_cost_confirmation WHERE 1=0");
+        jdbcTemplate.queryForList("SELECT id,tenant_id,return_id,revision,request_key,request_hash,source_signature,stock_signature,stock_basis,evidence,confirmed_by,confirmed_at,consumed_at FROM erp_sale_return_current_cost_confirmation WHERE 1=0");
         jdbcTemplate.queryForList("SELECT id,tenant_id,confirmation_id,return_item_id,financial_amount,settlement_amount,evidence FROM erp_sale_return_current_cost_line WHERE 1=0");
         jdbcTemplate.queryForList("SELECT id,tenant_id,return_id,return_item_id,posting_id,confirmation_id,confirmation_revision,basis_signature,source_signature,stock_signature,cost_source,quantity,financial_amount,settlement_amount,stock_basis,posted_at,approved_by FROM erp_sale_return_current_cost_posting_link WHERE 1=0");
     }

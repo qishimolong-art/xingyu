@@ -12,6 +12,9 @@ import lombok.ToString;
 @ToString(callSuper = true)
 public class ErpProductUnitPageReqVO extends PageParam {
 
+    @Schema(description = "指定单位编号")
+    private java.util.Set<Long> ids;
+
     @Schema(description = "单位名字", example = "芋艿")
     private String name;
 

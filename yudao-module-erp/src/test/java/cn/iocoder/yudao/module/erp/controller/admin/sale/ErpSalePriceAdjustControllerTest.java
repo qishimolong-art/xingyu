@@ -28,6 +28,9 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.lang.reflect.Method;
@@ -400,6 +403,22 @@ public class ErpSalePriceAdjustControllerTest extends BaseMockitoUnitTest {
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-price-adjust:query"));
+    }
+
+    @Test
+    public void testWholeOrderImportEndpoints_areSeparatedFromDetailImport() throws NoSuchMethodException {
+        Method orderImport = ErpSalePriceAdjustController.class
+                .getMethod("importSalePriceAdjustOrder", MultipartFile.class);
+        Method orderTemplate = ErpSalePriceAdjustController.class
+                .getMethod("getOrderImportTemplate", javax.servlet.http.HttpServletResponse.class);
+        Method detailImport = ErpSalePriceAdjustController.class
+                .getMethod("importSalePriceAdjust", MultipartFile.class);
+
+        assertEquals("/import-order", orderImport.getAnnotation(PostMapping.class).value()[0]);
+        assertEquals("/get-order-import-template", orderTemplate.getAnnotation(GetMapping.class).value()[0]);
+        assertEquals("/import", detailImport.getAnnotation(PostMapping.class).value()[0]);
+        assertTrue(orderImport.getAnnotation(PreAuthorize.class).value().contains("erp:sale-price-adjust:create"));
+        assertTrue(orderTemplate.getAnnotation(PreAuthorize.class).value().contains("erp:sale-price-adjust:create"));
     }
 
 }

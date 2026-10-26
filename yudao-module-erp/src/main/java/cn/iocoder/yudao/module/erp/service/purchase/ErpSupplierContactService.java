@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.suppliercontact.ErpSupplierContactSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierContactDO;
 
@@ -12,5 +14,7 @@ public interface ErpSupplierContactService {
     void deleteSupplierContact(Long id);
     ErpSupplierContactDO getSupplierContact(Long id);
     List<ErpSupplierContactDO> getSupplierContactList(Long supplierId);
+
+    PageResult<ErpSupplierContactDO> getSupplierContactPage(ErpSupplierItemPageReqVO reqVO);
 
 }

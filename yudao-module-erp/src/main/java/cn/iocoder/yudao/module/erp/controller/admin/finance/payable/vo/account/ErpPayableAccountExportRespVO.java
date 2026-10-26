@@ -26,28 +26,34 @@ public class ErpPayableAccountExportRespVO {
     @ExcelProperty("经办人")
     private String handlerName;
 
-    @ExcelProperty("采购入库金额")
+    @ExcelProperty(value = "采购入库金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal purchaseInAmount;
 
-    @ExcelProperty("采购退货金额")
+    @ExcelProperty(value = "采购退货金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal purchaseReturnAmount;
 
-    @ExcelProperty("调价金额")
+    @ExcelProperty(value = "调价金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal priceAdjustAmount;
 
-    @ExcelProperty("其他应付")
+    @ExcelProperty(value = "应付调账", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
+    private BigDecimal otherPayableAmount;
+
+    @ExcelProperty(value = "其他应付", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal miscPayableAmount;
 
-    @ExcelProperty("已付款")
+    @ExcelProperty(value = "此前应付", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
+    private BigDecimal openingPayableBalance;
+
+    @ExcelProperty(value = "已付款", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal paymentAmount;
 
-    @ExcelProperty("已核销")
+    @ExcelProperty(value = "已核销", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal writeOffAmount;
 
-    @ExcelProperty("应付余额")
+    @ExcelProperty(value = "应付余额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal balance;
 
-    @ExcelProperty("未核销预付款")
+    @ExcelProperty(value = "未核销预付款", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal unclearedPrepayment;
 
     @ExcelProperty("最近业务时间")

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.product;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryBatchUpdateReqVO;
@@ -11,8 +12,15 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProdu
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryListReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategorySaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.archive.ErpArchiveExportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.archive.ErpArchiveExportTaskStartRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.archive.ErpArchiveImportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.archive.ErpArchiveImportTaskStartRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductCategoryService;
+import cn.iocoder.yudao.module.erp.service.product.ErpSimpleArchiveExportTaskService;
+import cn.iocoder.yudao.module.erp.service.product.ErpSimpleArchiveImportTaskService;
+import cn.iocoder.yudao.module.erp.service.product.ErpSimpleArchiveModule;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -46,6 +54,10 @@ public class ErpProductCategoryController {
 
     @Resource
     private ErpProductCategoryService productCategoryService;
+    @Resource
+    private ErpSimpleArchiveImportTaskService archiveImportTaskService;
+    @Resource
+    private ErpSimpleArchiveExportTaskService archiveExportTaskService;
 
     @PostMapping("/create")
     @Operation(summary = "创建商品分类")
@@ -150,6 +162,67 @@ public class ErpProductCategoryController {
             throws Exception {
         List<ErpProductCategoryImportExcelVO> list = ExcelUtils.read(file, ErpProductCategoryImportExcelVO.class);
         return success(productCategoryService.importProductCategoryList(list));
+    }
+
+    @PostMapping("/import-task/start")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:import')")
+    public CommonResult<ErpArchiveImportTaskStartRespVO> startImportTask(@RequestParam("file") MultipartFile file)
+            throws IOException {
+        return success(archiveImportTaskService.startTask(ErpSimpleArchiveModule.PRODUCT_CATEGORY, file));
+    }
+
+    @GetMapping("/import-task/active")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:import')")
+    public CommonResult<ErpArchiveImportTaskRespVO> getActiveImportTask() {
+        return success(archiveImportTaskService.getActiveTask(ErpSimpleArchiveModule.PRODUCT_CATEGORY));
+    }
+
+    @GetMapping("/import-task/get")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:import')")
+    public CommonResult<ErpArchiveImportTaskRespVO> getImportTask(@RequestParam("id") Long id) {
+        return success(archiveImportTaskService.getTask(ErpSimpleArchiveModule.PRODUCT_CATEGORY, id));
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        archiveImportTaskService.downloadFailureDetails(ErpSimpleArchiveModule.PRODUCT_CATEGORY, recordId, response);
+    }
+
+    @PostMapping("/export-task/start")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:export')")
+    public CommonResult<ErpArchiveExportTaskStartRespVO> startExportTask(
+            @Valid @RequestBody ErpProductCategoryListReqVO reqVO) {
+        return success(archiveExportTaskService.startCategoryTask(reqVO));
+    }
+
+    @GetMapping("/export-task/active")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:export')")
+    public CommonResult<ErpArchiveExportTaskRespVO> getActiveExportTask() {
+        return success(archiveExportTaskService.getActiveTask(ErpSimpleArchiveModule.PRODUCT_CATEGORY));
+    }
+
+    @GetMapping("/export-task/get")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:export')")
+    public CommonResult<ErpArchiveExportTaskRespVO> getExportTask(@RequestParam("id") Long id) {
+        return success(archiveExportTaskService.getTask(ErpSimpleArchiveModule.PRODUCT_CATEGORY, id));
+    }
+
+    @GetMapping("/export-task/history")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:export')")
+    public CommonResult<PageResult<ErpArchiveExportTaskRespVO>> getExportHistory(
+            @RequestParam(defaultValue = "1") Integer pageNo,
+            @RequestParam(defaultValue = "10") Integer pageSize) {
+        return success(archiveExportTaskService.getHistory(
+                ErpSimpleArchiveModule.PRODUCT_CATEGORY, pageNo, pageSize));
+    }
+
+    @GetMapping("/export-task/download")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:export')")
+    public void downloadExportTask(@RequestParam("id") Long id,
+                                   HttpServletResponse response) throws IOException {
+        archiveExportTaskService.downloadTask(ErpSimpleArchiveModule.PRODUCT_CATEGORY, id, response);
     }
 
 }

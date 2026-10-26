@@ -125,5 +125,9 @@ public class ErpPurchasePriceAdjustItemDO extends BaseDO {
      * 货架位（仓库内货架位，如 A-01-02）
      */
     private String warehousePosition;
+    /**
+     * 明细备注
+     */
+    private String remark;
 
 }

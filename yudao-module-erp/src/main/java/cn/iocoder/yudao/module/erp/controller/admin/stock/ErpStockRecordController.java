@@ -10,6 +10,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.record.ErpStockRecordApprovalTimeReportExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.record.ErpStockRecordPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.record.ErpStockRecordReportExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.record.ErpStockRecordReportRespVO;
@@ -62,6 +63,7 @@ public class ErpStockRecordController {
 
     private static final String PRODUCT_PRICE_PERMISSION_MODULE = "erp_product";
     private static final String MASK_TEXT = "****";
+    private static final String DATE_BASIS_APPROVE_TIME = "approveTime";
 
     @Resource
     private ErpStockRecordService stockRecordService;
@@ -157,14 +159,21 @@ public class ErpStockRecordController {
               HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         Set<String> hiddenFields = getHiddenProductPriceFieldSet();
-        List<ErpStockRecordReportExportRespVO> list = buildReportExportList(
-                stockRecordService.getStockRecordPage(pageReqVO), hiddenFields);
+        PageResult<ErpStockRecordDO> pageResult = stockRecordService.getStockRecordPage(pageReqVO);
         try {
-            ExcelUtils.write(response, "库存进出流水明细账.xlsx", "数据",
-                    ErpStockRecordReportExportRespVO.class, list);
+            if (DATE_BASIS_APPROVE_TIME.equals(pageReqVO.getDateBasis())) {
+                List<ErpStockRecordApprovalTimeReportExportRespVO> list =
+                        buildApprovalTimeReportExportList(pageResult, hiddenFields);
+                ExcelUtils.write(response, "库存进出流水明细账.xlsx", "数据",
+                        ErpStockRecordApprovalTimeReportExportRespVO.class, list);
+            } else {
+                List<ErpStockRecordReportExportRespVO> list = buildReportExportList(pageResult, hiddenFields);
+                ExcelUtils.write(response, "库存进出流水明细账.xlsx", "数据",
+                        ErpStockRecordReportExportRespVO.class, list);
+            }
         } catch (IOException | RuntimeException ex) {
             log.error("[exportStockRecordReportExcel][库存流水导出失败，count={}, reqVO={}]",
-                    list.size(), pageReqVO, ex);
+                    pageResult.getList().size(), pageReqVO, ex);
             throw ex;
         }
     }
@@ -184,6 +193,7 @@ public class ErpStockRecordController {
 
         List<ErpStockRecordReportRespVO> list = pageResult.getList().stream().map(r -> {
             ErpStockRecordReportRespVO vo = BeanUtils.toBean(r, ErpStockRecordReportRespVO.class);
+            vo.setApproveTime(r.getCreateTime());
             ErpProductRespVO product = productMap.get(r.getProductId());
             if (product != null) {
                 vo.setProductCode(product.getCode())
@@ -226,6 +236,36 @@ public class ErpStockRecordController {
                         .setProductCode(vo.getProductCode())
                         .setProductName(vo.getProductName())
                         .setBatchNo(vo.getBatchNo())
+                        .setWarehouseName(vo.getWarehouseName())
+                        .setInCount(vo.getInCount())
+                        .setInUnitPrice(formatExportPrice(vo.getInUnitPrice(),
+                                isStockRecordTradePriceHidden(hiddenFields, vo.getBizType())))
+                        .setInAmount(formatExportPrice(vo.getInAmount(),
+                                isStockRecordTradePriceHidden(hiddenFields, vo.getBizType())))
+                        .setOutCount(vo.getOutCount())
+                        .setOutUnitPrice(formatExportPrice(vo.getOutUnitPrice(),
+                                isStockRecordTradePriceHidden(hiddenFields, vo.getBizType())))
+                        .setOutAmount(formatExportPrice(vo.getOutAmount(),
+                                isStockRecordTradePriceHidden(hiddenFields, vo.getBizType())))
+                        .setTotalCount(vo.getTotalCount())
+                        .setCostPrice(formatExportPrice(vo.getCostPrice(), isStockRecordCostHidden(hiddenFields)))
+                        .setCostAmount(formatExportPrice(vo.getCostAmount(), isStockRecordCostHidden(hiddenFields))))
+                .collect(Collectors.toList());
+    }
+
+    private List<ErpStockRecordApprovalTimeReportExportRespVO> buildApprovalTimeReportExportList(
+            PageResult<ErpStockRecordDO> pageResult, Set<String> hiddenFields) {
+        return buildReportPageResult(pageResult).getList().stream()
+                .map(vo -> new ErpStockRecordApprovalTimeReportExportRespVO()
+                        .setApproveTime(vo.getApproveTime())
+                        .setBizType(vo.getBizType())
+                        .setBizNo(vo.getBizNo())
+                        .setProductCode(vo.getProductCode())
+                        .setProductName(vo.getProductName())
+                        .setBatchNo(vo.getBatchNo())
+                        .setPackageQty(vo.getPackageQty())
+                        .setWeight(vo.getWeight())
+                        .setTotalWeight(vo.getTotalWeight())
                         .setWarehouseName(vo.getWarehouseName())
                         .setInCount(vo.getInCount())
                         .setInUnitPrice(formatExportPrice(vo.getInUnitPrice(),

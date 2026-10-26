@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import javax.validation.Valid;
+import javax.validation.constraints.Digits;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,12 +33,15 @@ public class ErpPurchaseReturnSaveReqVO {
     private Integer returnMode;
 
     @Schema(description = "优惠率，百分比", requiredMode = Schema.RequiredMode.REQUIRED, example = "99.88")
+    @Digits(integer = 18, fraction = 6, message = "优惠率最多支持 6 位小数")
     private BigDecimal discountPercent;
 
     @Schema(description = "费用金额，单位：元", example = "7127")
+    @Digits(integer = 18, fraction = 6, message = "费用金额最多支持 6 位小数")
     private BigDecimal feeAmount;
 
     @Schema(description = "其它金额，单位：元", example = "7127")
+    @Digits(integer = 18, fraction = 6, message = "其它金额最多支持 6 位小数")
     private BigDecimal otherPrice;
 
     @Schema(description = "附件地址", example = "https://www.iocoder.cn")
@@ -46,11 +51,13 @@ public class ErpPurchaseReturnSaveReqVO {
     private String remark;
 
     @Schema(description = "退货清单列表")
+    @Valid
     private List<Item> items;
 
     // ========== 八期：扩展字段 ==========
 
     @Schema(description = "税率", example = "13.00")
+    @Digits(integer = 18, fraction = 6, message = "税率最多支持 6 位小数")
     private BigDecimal taxRate;
 
     @Schema(description = "部门ID", example = "100")
@@ -108,16 +115,20 @@ public class ErpPurchaseReturnSaveReqVO {
         private String productUnitName;
 
         @Schema(description = "产品重量", example = "1.00")
+        @Digits(integer = 18, fraction = 6, message = "产品重量最多支持 6 位小数")
         private BigDecimal weight;
 
         @Schema(description = "产品单价", example = "100.00")
+        @Digits(integer = 18, fraction = 6, message = "产品单价最多支持 6 位小数")
         private BigDecimal productPrice;
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @javax.validation.constraints.NotNull(message = "产品数量不能为空")
+        @Digits(integer = 18, fraction = 6, message = "产品数量最多支持 6 位小数")
         private BigDecimal count;
 
         @Schema(description = "税率，百分比", example = "99.88")
+        @Digits(integer = 18, fraction = 6, message = "明细税率最多支持 6 位小数")
         private BigDecimal taxPercent;
 
         @Schema(description = "备注", example = "随便")

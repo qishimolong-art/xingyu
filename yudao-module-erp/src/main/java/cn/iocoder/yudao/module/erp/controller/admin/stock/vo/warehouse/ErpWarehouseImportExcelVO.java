@@ -28,10 +28,10 @@ public class ErpWarehouseImportExcelVO {
     @ExcelProperty("地图名称")
     private String mapName;
 
-    @ExcelProperty("经度")
+    @ExcelProperty(value = "经度")
     private BigDecimal longitude;
 
-    @ExcelProperty("纬度")
+    @ExcelProperty(value = "纬度")
     private BigDecimal latitude;
 
     @ExcelProperty("仓库类型")

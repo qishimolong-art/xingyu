@@ -732,19 +732,40 @@ public class ErpPurchaseInController {
                 convertSet(pageResult.getList(), ErpPurchaseInDO::getSupplierId));
         Map<Long, ErpAccountDO> accountMap = accountService.getAccountMap(
                 convertSet(pageResult.getList(), ErpPurchaseInDO::getAccountId));
-        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(
-                convertSet(pageResult.getList(), ErpPurchaseInDO::getDeptId));
+        Set<Long> deptIds = new HashSet<>(convertSet(pageResult.getList(), ErpPurchaseInDO::getDeptId));
+        deptIds.addAll(convertSet(purchaseInItemList, ErpPurchaseInItemDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> deptApi.getDeptMap(deptIds));
         Set<Long> userIds = new HashSet<>();
         pageResult.getList().forEach(purchaseIn -> collectUserIds(userIds, purchaseIn));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
-        Map<Long, ErpWarehouseDO> warehouseMap = cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap(
-                warehouseService.getWarehouseListByStatus(0), ErpWarehouseDO::getId);
+        Set<Long> warehouseIds = convertSet(purchaseInItemList, ErpPurchaseInItemDO::getWarehouseId);
+        warehouseIds.remove(null);
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(warehouseIds));
+        Set<Long> productIds = convertSet(purchaseInItemList, ErpPurchaseInItemDO::getProductId);
+        productIds.remove(null);
+        Map<String, ErpStockDO> stockMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(productIds, warehouseIds));
+        Map<Long, BigDecimal> returnCountMap = getApprovedReturnCountMap(purchaseInItemList);
+        Map<Long, BigDecimal> transferOutCountMap = getTransferOutCountMap(purchaseInItemList);
+        Set<Long> purchaseInIds = convertSet(pageResult.getList(), ErpPurchaseInDO::getId);
+        purchaseInIds.remove(null);
+        Map<Long, BigDecimal> paymentPriceMap = CollUtil.isEmpty(purchaseInIds)
+                ? Collections.emptyMap()
+                : financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
+                        purchaseInIds, ErpBizTypeEnum.PURCHASE_IN.getType());
         Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpPurchaseInExportRespVO.class,
                 ErpExportFieldUtils.parseFieldParam(fields),
                 fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
         ExcelUtils.write(response, "采购入库.xls", "数据", ErpPurchaseInExportRespVO.class,
                 buildPurchaseInExportList(pageResult.getList(), purchaseInItemMap, productMap, supplierMap,
-                        accountMap, deptMap, userMap, warehouseMap), includeFields);
+                        accountMap, deptMap, userMap, warehouseMap, stockMap, returnCountMap,
+                        transferOutCountMap, paymentPriceMap), includeFields);
     }
 
     @GetMapping("/export-fields")
@@ -919,7 +940,7 @@ public class ErpPurchaseInController {
             if (i == positiveCountItems.size() - 1) {
                 freightShare = freight.subtract(allocated);
             } else {
-                freightShare = freight.multiply(item.getCount()).divide(totalCount, 2, RoundingMode.HALF_UP);
+                freightShare = freight.multiply(item.getCount()).divide(totalCount, 6, RoundingMode.HALF_UP);
                 allocated = allocated.add(freightShare);
             }
             BigDecimal costAmount = lineAmount.add(freightShare);
@@ -1264,7 +1285,11 @@ public class ErpPurchaseInController {
                                                                       Map<Long, ErpAccountDO> accountMap,
                                                                       Map<Long, DeptRespDTO> deptMap,
                                                                       Map<Long, AdminUserRespDTO> userMap,
-                                                                      Map<Long, ErpWarehouseDO> warehouseMap) {
+                                                                       Map<Long, ErpWarehouseDO> warehouseMap,
+                                                                       Map<String, ErpStockDO> stockMap,
+                                                                       Map<Long, BigDecimal> returnCountMap,
+                                                                       Map<Long, BigDecimal> transferOutCountMap,
+                                                                       Map<Long, BigDecimal> paymentPriceMap) {
         List<ErpPurchaseInExportRespVO> rows = new ArrayList<>();
         for (ErpPurchaseInDO purchaseIn : list) {
             List<ErpPurchaseInItemDO> items = purchaseInItemMap.getOrDefault(purchaseIn.getId(), Collections.emptyList());
@@ -1275,7 +1300,9 @@ public class ErpPurchaseInController {
                         accountMap.get(purchaseIn.getAccountId()),
                         deptMap.get(purchaseIn.getDeptId()),
                         creatorId == null ? null : userMap.get(creatorId),
-                        userMap, null, null, true, warehouseMap));
+                        userMap, null, null, true, warehouseMap, deptMap, stockMap));
+                fillPurchaseInExportStatuses(rows.get(rows.size() - 1), purchaseIn, items,
+                        returnCountMap, transferOutCountMap, paymentPriceMap);
                 continue;
             }
             for (int i = 0; i < items.size(); i++) {
@@ -1285,7 +1312,12 @@ public class ErpPurchaseInController {
                         accountMap.get(purchaseIn.getAccountId()),
                         deptMap.get(purchaseIn.getDeptId()),
                         creatorId == null ? null : userMap.get(creatorId),
-                        userMap, item, productMap.get(item.getProductId()), i == 0, warehouseMap));
+                        userMap, item, productMap.get(item.getProductId()), i == 0,
+                        warehouseMap, deptMap, stockMap));
+                if (i == 0) {
+                    fillPurchaseInExportStatuses(rows.get(rows.size() - 1), purchaseIn, items,
+                            returnCountMap, transferOutCountMap, paymentPriceMap);
+                }
             }
         }
         return rows;
@@ -1300,7 +1332,9 @@ public class ErpPurchaseInController {
                                                                ErpPurchaseInItemDO item,
                                                                ErpProductRespVO product,
                                                                boolean fillMainFields,
-                                                               Map<Long, ErpWarehouseDO> warehouseMap) {
+                                                                Map<Long, ErpWarehouseDO> warehouseMap,
+                                                                Map<Long, DeptRespDTO> deptMap,
+                                                                Map<String, ErpStockDO> stockMap) {
         ErpPurchaseInExportRespVO row = fillMainFields
                 ? BeanUtils.toBean(purchaseIn, ErpPurchaseInExportRespVO.class)
                 : new ErpPurchaseInExportRespVO();
@@ -1331,20 +1365,61 @@ public class ErpPurchaseInController {
         row.setProductCode(product != null ? product.getCode() : null);
         row.setProductName(product != null ? product.getName() : null);
         row.setProductUnitName(product != null ? product.getUnitName() : null);
+        MapUtils.findAndThen(deptMap, item.getDeptId(), itemDept -> row.setItemDeptName(itemDept.getName()));
+        ErpStockDO stock = stockMap.get(item.getProductId() + "_" + item.getWarehouseId());
+        row.setStockCount(stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO);
+        row.setWeight(product != null ? product.getWeight() : null);
         row.setPackageQty(item.getPackageQty());
         row.setWholeQty(item.getWholeQty());
         row.setItemCount(item.getCount());
         row.setProductPrice(item.getProductPrice());
+        row.setLastPurchasePrice(product != null ? product.getLastPurchasePrice() : null);
+        row.setGift(Boolean.TRUE.equals(item.getGift()) ? "是" : "否");
         row.setItemTotalPrice(item.getProductPrice() == null || item.getCount() == null
                 ? null : item.getProductPrice().multiply(item.getCount()));
+        row.setItemTaxPercent(item.getTaxPercent());
+        row.setItemTaxPrice(item.getTaxPrice());
+        row.setOriginalProductPrice(item.getOriginalProductPrice());
+        row.setItemAdjusted(Boolean.TRUE.equals(item.getAdjusted()) ? "是" : "否");
         row.setWarehousePosition(item.getWarehousePosition());
         row.setBatchNo(item.getBatchNo());
-        row.setDrawingNo(item.getDrawingNo());
-        row.setBrand(item.getBrand());
+        row.setBarCode(item.getBarCode());
+        row.setProductBarCode(product != null ? product.getBarCode() : null);
+        row.setDrawingNo(item.getDrawingNo() != null ? item.getDrawingNo()
+                : product != null ? product.getDrawingNo() : null);
+        row.setBrand(item.getBrand() != null ? item.getBrand() : product != null ? product.getBrand() : null);
+        row.setStandard(product != null ? product.getStandard() : null);
+        row.setVehicleModel(item.getVehicleModel() != null ? item.getVehicleModel()
+                : product != null ? product.getVehicleModel() : null);
+        row.setFeatureCode(product != null ? product.getFeatureCode() : null);
+        row.setFactoryCode(product != null ? product.getFactoryCode() : null);
+        row.setOriginPlace(item.getOriginPlace() != null ? item.getOriginPlace()
+                : product != null ? product.getOriginPlace() : null);
+        row.setItemBusinessEntity(item.getBusinessEntity());
         row.setItemRemark(item.getRemark());
         MapUtils.findAndThen(warehouseMap, item.getWarehouseId(),
                 warehouse -> row.setWarehouseName(warehouse.getName()));
         return row;
+    }
+
+    private void fillPurchaseInExportStatuses(ErpPurchaseInExportRespVO row,
+                                              ErpPurchaseInDO purchaseIn,
+                                              List<ErpPurchaseInItemDO> items,
+                                              Map<Long, BigDecimal> returnCountMap,
+                                              Map<Long, BigDecimal> transferOutCountMap,
+                                              Map<Long, BigDecimal> paymentPriceMap) {
+        row.setInvoiceStatus(Boolean.TRUE.equals(purchaseIn.getHasInvoice()) ? "已开票" : "未开票");
+        long adjustedCount = items.stream().filter(item -> Boolean.TRUE.equals(item.getAdjusted())).count();
+        row.setAdjustStatus(adjustedCount <= 0 ? ADJUST_STATUS_NONE
+                : adjustedCount >= items.size() ? ADJUST_STATUS_ALL : ADJUST_STATUS_PART);
+        BigDecimal returnCount = sumMappedItemCount(items, returnCountMap);
+        BigDecimal transferOutCount = sumMappedItemCount(items, transferOutCountMap);
+        row.setReturnStatus(calculateReturnStatus(purchaseIn.getTotalCount(), returnCount));
+        row.setTransferOutStatus(calculateReturnStatus(purchaseIn.getTotalCount(), transferOutCount));
+        BigDecimal paidAmount = paymentPriceMap.getOrDefault(purchaseIn.getId(), BigDecimal.ZERO);
+        row.setPaymentPrice(paidAmount);
+        row.setPaymentStatus(calculatePurchaseInPaymentStatus(
+                ErpOriginalSettlementAmountUtils.calculatePurchaseIn(purchaseIn, items), paidAmount));
     }
 
     private static Map<String, String> buildExportFieldGroupMap() {
@@ -1356,6 +1431,11 @@ public class ErpPurchaseInController {
         map.put("accountName", "main");
         map.put("factoryOrderNo", "main");
         map.put("status", "main");
+        map.put("invoiceStatus", "main");
+        map.put("adjustStatus", "main");
+        map.put("returnStatus", "main");
+        map.put("transferOutStatus", "main");
+        map.put("paymentStatus", "main");
         map.put("creatorName", "system");
         map.put("purchaserName", "main");
         map.put("accountantName", "main");
@@ -1363,21 +1443,67 @@ public class ErpPurchaseInController {
         map.put("deptName", "main");
         map.put("totalCount", "main");
         map.put("totalPrice", "main");
+        map.put("totalProductPrice", "main");
+        map.put("totalTaxPrice", "main");
+        map.put("discountPercent", "main");
+        map.put("discountPrice", "main");
         map.put("feeAmount", "main");
+        map.put("otherPrice", "main");
+        map.put("paymentPrice", "main");
+        map.put("invoiceType", "main");
+        map.put("transportMethod", "main");
+        map.put("settleMethod", "main");
+        map.put("purchaseArea", "main");
+        map.put("floatRate", "main");
+        map.put("packageCount", "main");
+        map.put("orderMethod", "main");
+        map.put("freightType1", "main");
+        map.put("freightType2", "main");
+        map.put("freightObject1", "main");
+        map.put("freightObject2", "main");
+        map.put("logisticsCompany", "main");
+        map.put("taxRate", "main");
+        map.put("purchaseDiscount", "main");
+        map.put("priority", "main");
+        map.put("unloader", "main");
+        map.put("floatRecord", "main");
+        map.put("receiveUnit", "main");
+        map.put("totalFreight1", "main");
+        map.put("totalFreight2", "main");
+        map.put("paymentDate", "main");
+        map.put("hasInvoice", "main");
+        map.put("businessEntity", "main");
         map.put("remark", "main");
         map.put("productCode", "detail");
         map.put("productName", "detail");
         map.put("productUnitName", "detail");
+        map.put("itemDeptName", "detail");
+        map.put("stockCount", "detail");
+        map.put("weight", "detail");
         map.put("packageQty", "detail");
         map.put("wholeQty", "detail");
         map.put("itemCount", "detail");
         map.put("productPrice", "detail");
+        map.put("lastPurchasePrice", "detail");
+        map.put("gift", "detail");
         map.put("itemTotalPrice", "detail");
+        map.put("itemTaxPercent", "detail");
+        map.put("itemTaxPrice", "detail");
+        map.put("originalProductPrice", "detail");
+        map.put("itemAdjusted", "detail");
         map.put("warehouseName", "detail");
         map.put("warehousePosition", "detail");
         map.put("batchNo", "detail");
+        map.put("barCode", "detail");
+        map.put("productBarCode", "detail");
         map.put("drawingNo", "detail");
         map.put("brand", "detail");
+        map.put("standard", "detail");
+        map.put("vehicleModel", "detail");
+        map.put("featureCode", "detail");
+        map.put("factoryCode", "detail");
+        map.put("originPlace", "detail");
+        map.put("itemBusinessEntity", "detail");
         map.put("itemRemark", "detail");
         return map;
     }
@@ -1390,14 +1516,48 @@ public class ErpPurchaseInController {
         map.put("purchaserName", "purchaser");
         map.put("accountantName", "accountant");
         map.put("handlerName", "handler");
+        map.put("invoiceStatus", "hasInvoice");
+        map.put("adjustStatus", "adjustStatus");
+        map.put("returnStatus", "returnStatus");
+        map.put("transferOutStatus", "transferOutStatus");
+        map.put("paymentStatus", "paymentStatus");
+        map.put("totalProductPrice", "totalProductPrice");
+        map.put("totalTaxPrice", "totalTaxPrice");
+        map.put("discountPercent", "discountPercent");
+        map.put("discountPrice", "discountPrice");
+        map.put("otherPrice", "otherPrice");
+        map.put("paymentPrice", "paymentPrice");
+        map.put("hasInvoice", "hasInvoice");
         map.put("productCode", "item_productId");
         map.put("productName", "item_productId");
         map.put("productUnitName", "item_productUnitId");
+        map.put("itemDeptName", "item_deptId");
+        map.put("stockCount", "item_stockCount");
+        map.put("weight", "item_weight");
+        map.put("packageQty", "item_packageQty");
+        map.put("wholeQty", "item_wholeQty");
+        map.put("itemCount", "item_count");
+        map.put("productPrice", "item_productPrice");
+        map.put("lastPurchasePrice", "item_lastPurchasePrice");
+        map.put("gift", "item_gift");
+        map.put("itemTotalPrice", "item_totalProductPrice");
+        map.put("itemTaxPercent", "item_taxPercent");
+        map.put("itemTaxPrice", "item_taxPrice");
+        map.put("originalProductPrice", "item_originalProductPrice");
+        map.put("itemAdjusted", "item_adjustStatus");
         map.put("warehouseName", "item_warehouseId");
         map.put("warehousePosition", "item_warehousePosition");
         map.put("batchNo", "item_batchNo");
+        map.put("barCode", "item_barCode");
+        map.put("productBarCode", "item_productBarCode");
         map.put("drawingNo", "item_drawingNo");
         map.put("brand", "item_brand");
+        map.put("standard", "item_standard");
+        map.put("vehicleModel", "item_vehicleModel");
+        map.put("featureCode", "item_featureCode");
+        map.put("factoryCode", "item_factoryCode");
+        map.put("originPlace", "item_originPlace");
+        map.put("itemBusinessEntity", "item_businessEntity");
         map.put("itemRemark", "item_remark");
         return map;
     }

@@ -22,6 +22,9 @@ public class UserRolePermissionRespVO {
     public static class RoleInfo {
         private Long id;
         private String name;
+        private String code;
+        @Schema(description = "是否由租户访问范围自动维护")
+        private Boolean managed;
     }
 
     @Data

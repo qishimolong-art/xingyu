@@ -25,17 +25,28 @@ public class ErpPayableDrilldownReqVO extends PageParam {
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] bizTime;
 
+    @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
+    private LocalDateTime[] approveTime;
+
+    private String dateBasis;
+
     @NotBlank
     private String detailType;
     private String orderField;
     private String orderDirection;
 
     public LocalDateTime getStartTime() {
-        return bizTime == null || bizTime.length == 0 ? null : bizTime[0];
+        LocalDateTime[] timeRange = isApproveTimeBasis() ? approveTime : bizTime;
+        return timeRange == null || timeRange.length == 0 ? null : timeRange[0];
     }
 
     public LocalDateTime getEndTime() {
-        return bizTime == null || bizTime.length < 2 ? null : bizTime[1];
+        LocalDateTime[] timeRange = isApproveTimeBasis() ? approveTime : bizTime;
+        return timeRange == null || timeRange.length < 2 ? null : timeRange[1];
+    }
+
+    public boolean isApproveTimeBasis() {
+        return "approveTime".equals(dateBasis);
     }
 
     public boolean isMiscDetail() {

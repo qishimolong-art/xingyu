@@ -208,6 +208,9 @@ public interface ErpPurchaseOrderService {
      */
     ErpPurchaseOrderImportRespVO parseImportData(List<ErpPurchaseOrderDetailImportExcelVO> list);
 
+    ErpPurchaseOrderImportRespVO parseImportData(List<ErpPurchaseOrderDetailImportExcelVO> list,
+                                                 ErpPurchaseOrderDetailImportProgressListener listener);
+
     /**
      * 导入采购订单整单
      *
@@ -215,6 +218,9 @@ public interface ErpPurchaseOrderService {
      * @return 导入结果
      */
     ErpPurchaseOrderImportResultRespVO importPurchaseOrderList(List<ErpPurchaseOrderImportExcelVO> list);
+
+    ErpPurchaseOrderImportResultRespVO importPurchaseOrderList(List<ErpPurchaseOrderImportExcelVO> list,
+                                                               ErpPurchaseOrderImportProgressListener listener);
 
     /**
      * 获取采购订单的可入库明细

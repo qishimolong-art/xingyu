@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill;
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.idev.excel.annotation.format.NumberFormat;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -36,6 +37,7 @@ public class ErpStockInBillExportRespVO {
     private String sourceNo;
 
     @ExcelProperty("状态")
+    @NumberFormat("0.######")
     private Integer status;
 
     @ExcelProperty("创建人")
@@ -60,9 +62,11 @@ public class ErpStockInBillExportRespVO {
     private LocalDateTime printTime;
 
     @ExcelProperty("打印次数")
+    @NumberFormat("0.######")
     private Integer printCount;
 
-    @ExcelProperty("总重")
+    @ExcelProperty(value = "总重", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
     private BigDecimal totalWeight;
 
     @ExcelProperty("备注")
@@ -71,16 +75,20 @@ public class ErpStockInBillExportRespVO {
     @ExcelProperty("超时")
     private Boolean timeoutFlag;
 
-    @ExcelProperty("整件数")
+    @ExcelProperty(value = "整件数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
     private BigDecimal wholeQty;
 
-    @ExcelProperty("散件数")
+    @ExcelProperty(value = "散件数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
     private BigDecimal looseQty;
 
-    @ExcelProperty("应提数量")
+    @ExcelProperty(value = "应提数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
     private BigDecimal totalCount;
 
-    @ExcelProperty("已提数量")
+    @ExcelProperty(value = "已提数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
     private BigDecimal pickedCount;
 
     @ExcelProperty("明细来源单号")
@@ -96,30 +104,37 @@ public class ErpStockInBillExportRespVO {
     private String productUnitName;
 
     @ExcelProperty("包装数")
+    @NumberFormat("0.######")
     private Integer packageQty;
 
-    @ExcelProperty("单重")
+    @ExcelProperty(value = "单重", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
     private BigDecimal weight;
 
-    @ExcelProperty("明细总重")
+    @ExcelProperty(value = "明细总重", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
     private BigDecimal itemTotalWeight;
 
     @ExcelProperty("明细整件数")
+    @NumberFormat("0.######")
     private Integer itemWholeQty;
 
-    @ExcelProperty("应提明细数量")
+    @ExcelProperty(value = "应提明细数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
     private BigDecimal itemCount;
 
-    @ExcelProperty("已提明细数量")
+    @ExcelProperty(value = "已提明细数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
     private BigDecimal itemPickedCount;
 
-    @ExcelProperty("剩余待提数量")
+    @ExcelProperty(value = "剩余待提数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
     private BigDecimal itemRemainCount;
 
-    @ExcelProperty("单价")
+    @ExcelProperty(value = "单价", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal productPrice;
 
-    @ExcelProperty("金额")
+    @ExcelProperty(value = "金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal itemTotalPrice;
 
     @ExcelProperty("明细仓库")
@@ -148,5 +163,13 @@ public class ErpStockInBillExportRespVO {
 
     @ExcelProperty("明细备注")
     private String itemRemark;
+
+    @ExcelProperty("仓库所属部门")
+    private String warehouseDeptName;
+    @ExcelProperty(value = "历史待处理数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
+    private BigDecimal remainingCount;
+    @ExcelProperty("明细仓库所属部门")
+    private String itemWarehouseDeptName;
 
 }

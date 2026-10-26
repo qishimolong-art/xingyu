@@ -44,7 +44,7 @@ public class CustomerAssistantStore {
         owner(conversationId,p);validatePage(page,20);
         List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,question,status,plan_json AS response,create_time FROM erp_assistant_message WHERE conversation_id=? AND tenant_id=? AND owner_type=? AND user_id=? AND customer_id=? AND deleted=0 ORDER BY create_time DESC,id DESC LIMIT 20 OFFSET ?",
                 conversationId,p.getTenantId(),OWNER,p.getMemberUserId(),p.getCustomerId(),(page-1)*20);
-        for(Map<String,Object> row:rows){Object raw=row.get("response");try{row.put("response",raw==null?null:json.readValue(String.valueOf(raw),Map.class));}catch(Exception e){row.put("response",null);}}
+        for(Map<String,Object> row:rows){Object raw=row.get("response");try{Map<String,Object> response=raw==null?null:json.readValue(String.valueOf(raw),Map.class);if(response!=null)response.remove("_execution");row.put("response",response);}catch(Exception e){row.put("response",null);}}
         return rows;
     }
     public String begin(String conversationId,String question,CustomerAssistantPrincipal p) {
@@ -54,6 +54,19 @@ public class CustomerAssistantStore {
         String title=question.substring(0,question.offsetByCodePoints(0,Math.min(60,question.codePointCount(0,question.length()))));
         jdbc.update("UPDATE erp_assistant_conversation SET title=CASE WHEN title='新会话' THEN ? ELSE title END,update_time=NOW(6) WHERE id=? AND tenant_id=? AND owner_type=? AND user_id=? AND customer_id=? AND deleted=0",
                 title,conversationId,p.getTenantId(),OWNER,p.getMemberUserId(),p.getCustomerId());return id;
+    }
+
+    /** 仅读取同一所有者紧邻终态；失败终态构成上下文屏障，不越过它回找旧对象。 */
+    public Map<String,Object> previousExecution(String conversationId, CustomerAssistantPrincipal p) {
+        owner(conversationId, p);
+        List<Map<String,Object>> rows = jdbc.queryForList("SELECT plan_json,status FROM erp_assistant_message WHERE conversation_id=? AND tenant_id=? AND owner_type=? AND user_id=? AND customer_id=? AND deleted=0 AND status<>'PROCESSING' ORDER BY create_time DESC,id DESC LIMIT 1",
+                conversationId,p.getTenantId(),OWNER,p.getMemberUserId(),p.getCustomerId());
+        if (rows.isEmpty() || !Arrays.asList("SUCCESS","EMPTY","PARTIAL_SUCCESS","CLARIFY","TASKS_INCOMPLETE").contains(String.valueOf(rows.get(0).get("status")))) return Collections.emptyMap();
+        try {
+            Map<?,?> response = json.readValue(String.valueOf(rows.get(0).get("plan_json")), Map.class);
+            Object execution = response.get("_execution");
+            return execution instanceof Map ? (Map<String,Object>)execution : Collections.emptyMap();
+        } catch (Exception ignored) { return Collections.emptyMap(); }
     }
     @Transactional
     public void finish(String messageId,CustomerAssistantPrincipal p,String status,Object safeResponse,long elapsed,int tokens,String capability) {

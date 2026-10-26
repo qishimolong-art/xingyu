@@ -63,6 +63,17 @@ class ErpPayableAccountMapperSqlTest {
     }
 
     @Test
+    void selectList_usesApprovalTimeForPeriodOpeningAndCutoffWhenRequested() throws Exception {
+        String sql = renderWithApproveRange();
+
+        assertTrue(sql.contains("t.approve_time >= ? AND t.approve_time < ?"));
+        assertTrue(sql.contains("t.approve_time < ?"));
+        assertTrue(sql.contains("fpay.approve_time >= ? AND fpay.approve_time < ?"));
+        assertTrue(sql.contains("approve_time >= ? AND approve_time < ?"));
+        assertFalse(sql.contains("${"));
+    }
+
+    @Test
     void selectList_shouldUseOriginalPurchaseInSettlementAmount() throws Exception {
         String sql = render(true, Collections.emptyList(), null);
 
@@ -139,6 +150,13 @@ class ErpPayableAccountMapperSqlTest {
                         LocalDateTime.of(2026, 9, 30, 23, 59, 59)});
     }
 
+    private String renderWithApproveRange() throws Exception {
+        LocalDateTime[] approveTime = new LocalDateTime[]{LocalDateTime.of(2026, 10, 1, 0, 0),
+                LocalDateTime.of(2026, 11, 1, 0, 0)};
+        return render(true, Collections.emptyList(), null, null, null, null,
+                approveTime, "approveTime");
+    }
+
     private String render(boolean all, java.util.Collection<Long> deptIds, Long selfUserId,
                           String orderField, String orderDirection) throws Exception {
         return render(all, deptIds, selfUserId, orderField, orderDirection, null);
@@ -146,6 +164,12 @@ class ErpPayableAccountMapperSqlTest {
 
     private String render(boolean all, java.util.Collection<Long> deptIds, Long selfUserId,
                           String orderField, String orderDirection, LocalDateTime[] bizTime) throws Exception {
+        return render(all, deptIds, selfUserId, orderField, orderDirection, bizTime, null, null);
+    }
+
+    private String render(boolean all, java.util.Collection<Long> deptIds, Long selfUserId,
+                          String orderField, String orderDirection, LocalDateTime[] bizTime,
+                          LocalDateTime[] approveTime, String dateBasis) throws Exception {
         Method method = ErpPayableAccountMapper.class.getMethod("selectList", ErpPayableAccountPageReqVO.class,
                 java.util.Collection.class, String.class, boolean.class, java.util.Collection.class,
                 Long.class, boolean.class);
@@ -157,6 +181,8 @@ class ErpPayableAccountMapperSqlTest {
         reqVO.setOrderField(orderField);
         reqVO.setOrderDirection(orderDirection);
         reqVO.setBizTime(bizTime);
+        reqVO.setApproveTime(approveTime);
+        reqVO.setDateBasis(dateBasis);
         params.put("reqVO", reqVO);
         params.put("deptIds", Collections.emptyList());
         params.put("selfUserId", null);

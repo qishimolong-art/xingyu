@@ -110,7 +110,7 @@ public final class ErpSaleQuoteDetailReportModels {
         private BigDecimal count;
         @ExcelProperty(value = "单价", index = 26)
         private BigDecimal productPrice;
-        @ExcelProperty(value = "金额", index = 27)
+        @ExcelProperty(value = "金额", index = 27, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal totalPrice;
         @ExcelProperty(value = "下订时库存数", index = 28)
         private BigDecimal stockCountAtOrder;

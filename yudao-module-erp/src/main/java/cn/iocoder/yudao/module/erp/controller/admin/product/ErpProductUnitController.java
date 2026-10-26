@@ -13,8 +13,15 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUn
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUnitPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUnitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUnitSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.archive.ErpArchiveExportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.archive.ErpArchiveExportTaskStartRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.archive.ErpArchiveImportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.archive.ErpArchiveImportTaskStartRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductUnitService;
+import cn.iocoder.yudao.module.erp.service.product.ErpSimpleArchiveExportTaskService;
+import cn.iocoder.yudao.module.erp.service.product.ErpSimpleArchiveImportTaskService;
+import cn.iocoder.yudao.module.erp.service.product.ErpSimpleArchiveModule;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -49,6 +56,10 @@ public class ErpProductUnitController {
 
     @Resource
     private ErpProductUnitService productUnitService;
+    @Resource
+    private ErpSimpleArchiveImportTaskService archiveImportTaskService;
+    @Resource
+    private ErpSimpleArchiveExportTaskService archiveExportTaskService;
 
     @PostMapping("/create")
     @Operation(summary = "创建产品单位")
@@ -149,6 +160,66 @@ public class ErpProductUnitController {
                 ? productUnitService.parseCsvImport(new java.io.InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))
                 : ExcelUtils.read(file, ErpProductUnitImportExcelVO.class);
         return success(productUnitService.importProductUnitList(list));
+    }
+
+    @PostMapping("/import-task/start")
+    @PreAuthorize("@ss.hasPermission('erp:product-unit:import')")
+    public CommonResult<ErpArchiveImportTaskStartRespVO> startImportTask(@RequestParam("file") MultipartFile file)
+            throws IOException {
+        return success(archiveImportTaskService.startTask(ErpSimpleArchiveModule.PRODUCT_UNIT, file));
+    }
+
+    @GetMapping("/import-task/active")
+    @PreAuthorize("@ss.hasPermission('erp:product-unit:import')")
+    public CommonResult<ErpArchiveImportTaskRespVO> getActiveImportTask() {
+        return success(archiveImportTaskService.getActiveTask(ErpSimpleArchiveModule.PRODUCT_UNIT));
+    }
+
+    @GetMapping("/import-task/get")
+    @PreAuthorize("@ss.hasPermission('erp:product-unit:import')")
+    public CommonResult<ErpArchiveImportTaskRespVO> getImportTask(@RequestParam("id") Long id) {
+        return success(archiveImportTaskService.getTask(ErpSimpleArchiveModule.PRODUCT_UNIT, id));
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @PreAuthorize("@ss.hasPermission('erp:product-unit:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        archiveImportTaskService.downloadFailureDetails(ErpSimpleArchiveModule.PRODUCT_UNIT, recordId, response);
+    }
+
+    @PostMapping("/export-task/start")
+    @PreAuthorize("@ss.hasPermission('erp:product-unit:export')")
+    public CommonResult<ErpArchiveExportTaskStartRespVO> startExportTask(
+            @Valid @RequestBody ErpProductUnitPageReqVO reqVO) {
+        return success(archiveExportTaskService.startUnitTask(reqVO));
+    }
+
+    @GetMapping("/export-task/active")
+    @PreAuthorize("@ss.hasPermission('erp:product-unit:export')")
+    public CommonResult<ErpArchiveExportTaskRespVO> getActiveExportTask() {
+        return success(archiveExportTaskService.getActiveTask(ErpSimpleArchiveModule.PRODUCT_UNIT));
+    }
+
+    @GetMapping("/export-task/get")
+    @PreAuthorize("@ss.hasPermission('erp:product-unit:export')")
+    public CommonResult<ErpArchiveExportTaskRespVO> getExportTask(@RequestParam("id") Long id) {
+        return success(archiveExportTaskService.getTask(ErpSimpleArchiveModule.PRODUCT_UNIT, id));
+    }
+
+    @GetMapping("/export-task/history")
+    @PreAuthorize("@ss.hasPermission('erp:product-unit:export')")
+    public CommonResult<PageResult<ErpArchiveExportTaskRespVO>> getExportHistory(
+            @RequestParam(defaultValue = "1") Integer pageNo,
+            @RequestParam(defaultValue = "10") Integer pageSize) {
+        return success(archiveExportTaskService.getHistory(ErpSimpleArchiveModule.PRODUCT_UNIT, pageNo, pageSize));
+    }
+
+    @GetMapping("/export-task/download")
+    @PreAuthorize("@ss.hasPermission('erp:product-unit:export')")
+    public void downloadExportTask(@RequestParam("id") Long id,
+                                   HttpServletResponse response) throws IOException {
+        archiveExportTaskService.downloadTask(ErpSimpleArchiveModule.PRODUCT_UNIT, id, response);
     }
 
 }

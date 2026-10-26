@@ -3,7 +3,6 @@ package cn.iocoder.yudao.module.erp.service.stock;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
@@ -11,6 +10,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItem
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
@@ -20,15 +20,17 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
-import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockOutStatusEnum;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.springframework.stereotype.Service;
@@ -50,6 +52,7 @@ import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_STOCK_OUT_TYPE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 
@@ -96,17 +99,41 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
     private ErpVoucherService voucherService;
     @Resource
     private ErpBookOpenService bookOpenService;
+    @Resource
+    private ErpSalePickDeliveryService salePickDeliveryService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createStockOut(ErpStockOutSaveReqVO createReqVO) {
+        return createStockOut(createReqVO, false);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createStockOutDraft(ErpStockOutSaveReqVO createReqVO) {
+        return createStockOut(createReqVO, true);
+    }
+
+    private Long createStockOut(ErpStockOutSaveReqVO createReqVO, boolean draft) {
+        if (draft && CollUtil.isNotEmpty(createReqVO.getItems())) {
+            createReqVO.getItems().forEach(item -> {
+                if (item == null || item.getCount() == null || item.getCount().signum() <= 0) {
+                    throw exception(STOCK_OUT_ITEM_EMPTY);
+                }
+                if (item.getProductPrice() == null) item.setProductPrice(BigDecimal.ZERO);
+                item.setId(null);
+                item.setOperation(null);
+            });
+        }
         // 1.1 校验出库项的有效性
         if (CollUtil.isEmpty(createReqVO.getItems())) {
             throw exception(STOCK_OUT_ITEM_EMPTY);
         }
         List<ErpStockOutItemDO> stockOutItems = validateStockOutItems(createReqVO.getItems());
         // 1.2 校验客户
-        customerService.validateCustomer(createReqVO.getCustomerId());
+        if (!draft || createReqVO.getCustomerId() != null) {
+            customerService.validateCustomer(createReqVO.getCustomerId());
+        }
         // 1.3 生成出库单号，并校验唯一性
         String no = noRedisDAO.generate(ErpNoRedisDAO.STOCK_OUT_NO_PREFIX);
         if (stockOutMapper.selectByNo(no) != null) {
@@ -115,9 +142,10 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
 
         // 2.1 插入出库单
         ErpStockOutDO stockOut = BeanUtils.toBean(createReqVO, ErpStockOutDO.class, in -> in
-                .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setNo(no).setStatus(draft ? ErpStockOutStatusEnum.DRAFT.getStatus() : ErpStockOutStatusEnum.PROCESS.getStatus())
                 .setTotalCount(getSumValue(stockOutItems, ErpStockOutItemDO::getCount, BigDecimal::add))
                 .setTotalPrice(getSumValue(stockOutItems, ErpStockOutItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO)));
+        if (draft) stockOut.setId(null);
         stockOutMapper.insert(stockOut);
         // 2.2 插入出库单项
         stockOutItems.forEach(o -> o.setOutId(stockOut.getId()));
@@ -131,9 +159,7 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
     public void updateStockOut(ErpStockOutSaveReqVO updateReqVO) {
         // 1.1 校验存在
         ErpStockOutDO stockOut = validateStockOutExists(updateReqVO.getId());
-        if (ErpAuditStatus.APPROVE.getStatus().equals(stockOut.getStatus())) {
-            throw exception(STOCK_OUT_UPDATE_FAIL_APPROVE, stockOut.getNo());
-        }
+        validateStockOutEditable(stockOut);
         List<ErpStockOutItemDO> oldItems = stockOutItemMapper.selectListByOutIdForUpdate(updateReqVO.getId());
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, stockOut);
         fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
@@ -158,6 +184,10 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         ErpStockOutDO updateObj = BeanUtils.toBean(updateReqVO, ErpStockOutDO.class, in -> in
                 .setTotalCount(getSumValue(stockOutItems, ErpStockOutItemDO::getCount, BigDecimal::add))
                 .setTotalPrice(getSumValue(stockOutItems, ErpStockOutItemDO::getTotalPrice, BigDecimal::add)));
+        // 正常保存草稿才进入待下单确认；草稿保存本身不生成拣货或库存流水。
+        if (ErpStockOutStatusEnum.DRAFT.getStatus().equals(stockOut.getStatus())) {
+            updateObj.setStatus(ErpStockOutStatusEnum.PROCESS.getStatus());
+        }
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(stockOut.getDeptId());
         }
@@ -176,9 +206,7 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
     public void batchUpdateStockOutItems(ErpStockOutItemBatchUpdateReqVO updateReqVO) {
         batchUpdateSupport.validateFieldPermission(FIELD_PERMISSION_MODULE, STOCK_OUT_ITEM_BATCH_UPDATE_FIELD_REQUIRED);
         ErpStockOutDO stockOut = validateStockOutExists(updateReqVO.getOutId());
-        if (ErpAuditStatus.APPROVE.getStatus().equals(stockOut.getStatus())) {
-            throw exception(STOCK_OUT_UPDATE_FAIL_APPROVE, stockOut.getNo());
-        }
+        validateStockOutEditable(stockOut);
         ErpWarehouseDO targetWarehouse = batchUpdateSupport.validateTargetWarehouse(updateReqVO.getWarehouseId());
         batchUpdateSupport.validateDocumentDeptAllowed(stockOut.getDeptId(), targetWarehouse, FIELD_PERMISSION_MODULE,
                 STOCK_OUT_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
@@ -214,43 +242,84 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateStockOutStatus(Long id, Integer status) {
-        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
-            throw exception(STOCK_OUT_PROCESS_FAIL);
-        }
-        // 1.1 校验存在
-        ErpStockOutDO stockOut = validateStockOutExists(id);
-        // 1.2 校验状态
-        if (stockOut.getStatus().equals(status)) {
-            throw exception(STOCK_OUT_APPROVE_FAIL);
-        }
+        throw exception(STOCK_OUT_MANUAL_APPROVE_FORBIDDEN);
+    }
 
-        // 2. 更新状态
-        int updateCount = stockOutMapper.updateByIdAndStatus(id, stockOut.getStatus(),
-                new ErpStockOutDO().setStatus(status).setApproveTime(LocalDateTime.now()));
-        if (updateCount == 0) {
-            throw exception(STOCK_OUT_APPROVE_FAIL);
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void confirmStockOut(Long id) {
+        ErpStockOutDO stockOut = lockStockOut(id);
+        if (!ErpStockOutStatusEnum.PROCESS.getStatus().equals(stockOut.getStatus())) {
+            throw exception(STOCK_OUT_CONFIRM_FAIL);
+        }
+        List<ErpStockOutItemDO> items = stockOutItemMapper.selectListByOutIdForUpdate(id);
+        if (CollUtil.isEmpty(items)) {
+            throw exception(STOCK_OUT_ITEM_EMPTY);
+        }
+        customerService.validateCustomer(stockOut.getCustomerId());
+        ErpStockOutSaveReqVO reqVO = BeanUtils.toBean(stockOut, ErpStockOutSaveReqVO.class);
+        reqVO.setItems(BeanUtils.toBean(items, ErpStockOutSaveReqVO.Item.class));
+        validateStockOutItems(reqVO.getItems());
+        int changed = stockOutMapper.updateByIdAndStatus(id, ErpStockOutStatusEnum.PROCESS.getStatus(),
+                new ErpStockOutDO().setStatus(ErpStockOutStatusEnum.PICKING.getStatus())
+                        .setConfirmUserId(getLoginUserId()).setConfirmTime(LocalDateTime.now()));
+        if (changed != 1) {
+            throw exception(STOCK_OUT_CONFIRM_FAIL);
+        }
+        salePickDeliveryService.generateForStockOut(id);
+        operateLogService.recordUpdate(ERP_STOCK_OUT_TYPE, id, stockOut.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelConfirmStockOut(Long id) {
+        ErpStockOutDO observed = validateStockOutExists(id);
+        if (!ErpStockOutStatusEnum.PICKING.getStatus().equals(observed.getStatus())) {
+            throw exception(STOCK_OUT_CANCEL_CONFIRM_FAIL);
+        }
+        salePickDeliveryService.rollbackUnstartedStockOutFulfillment(id);
+        ErpStockOutDO stockOut = lockStockOut(id);
+        int changed = stockOutMapper.cancelConfirmByIdAndStatus(id,
+                ErpStockOutStatusEnum.PICKING.getStatus(), ErpStockOutStatusEnum.PROCESS.getStatus());
+        if (changed != 1) {
+            throw exception(STOCK_OUT_CANCEL_CONFIRM_FAIL);
+        }
+        operateLogService.recordUpdate(ERP_STOCK_OUT_TYPE, id, stockOut.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void autoApproveAfterPick(Long id, Long pickUserId) {
+        ErpStockOutDO stockOut = lockStockOut(id);
+        if (ErpStockOutStatusEnum.APPROVE.getStatus().equals(stockOut.getStatus())) {
+            return;
+        }
+        if (!ErpStockOutStatusEnum.PICKING.getStatus().equals(stockOut.getStatus())) {
+            throw exception(STOCK_OUT_AUTO_APPROVE_FAIL);
+        }
+        ErpSalePickDeliverySummaryRespVO summary = salePickDeliveryService
+                .getSummaryMapByStockOutIds(Collections.singleton(id)).get(id);
+        if (summary == null || !ErpSalePickStatusEnum.DONE.getStatus().equals(summary.getPickStatus())) {
+            throw exception(STOCK_OUT_AUTO_APPROVE_FAIL);
+        }
+        List<ErpStockOutItemDO> items = stockOutItemMapper.selectListByOutIdForUpdate(id);
+        approveStockOut(stockOut, items, pickUserId != null ? pickUserId : getLoginUserId());
+    }
+
+    private void approveStockOut(ErpStockOutDO stockOut, List<ErpStockOutItemDO> items, Long approveUserId) {
+        warehouseService.validateCurrentUserWarehousePermission(convertSet(items, ErpStockOutItemDO::getWarehouseId));
+        int updateCount = stockOutMapper.updateByIdAndStatus(stockOut.getId(), ErpStockOutStatusEnum.PICKING.getStatus(),
+                new ErpStockOutDO().setStatus(ErpStockOutStatusEnum.APPROVE.getStatus())
+                        .setApproveUserId(approveUserId).setApproveTime(LocalDateTime.now()));
+        if (updateCount != 1) {
+            throw exception(STOCK_OUT_AUTO_APPROVE_FAIL);
         }
         operateLogService.recordStatus(ERP_STOCK_OUT_TYPE, stockOut.getId(), stockOut.getNo(), true);
-
-        // 3. 取出库项
-        List<ErpStockOutItemDO> stockOutItems = stockOutItemMapper.selectListByOutId(id);
-        warehouseService.validateCurrentUserWarehousePermission(convertSet(stockOutItems, ErpStockOutItemDO::getWarehouseId));
-
-        // 凭证成本在生成页读取已完成业务的库存流水。
-        // 5. 变更库存
         Integer bizType = ErpStockRecordBizTypeEnum.OTHER_OUT.getType();
-        stockOutItems.forEach(stockOutItem -> {
-            stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    stockOutItem.getProductId(), stockOutItem.getWarehouseId(), stockOutItem.getBatchNo(),
-                    stockOutItem.getProductUnitId(), stockOutItem.getPackageQty(), stockOutItem.getWeight(),
-                    stockOutItem.getTotalWeight(), stockOutItem.getCount().negate(),
-                    bizType, stockOutItem.getOutId(), stockOutItem.getId(), stockOut.getNo(),
-                    null, stockOut.getOutTime()));
-        });
-
-        // 6. 审批通过：自动生成其他出库凭证
-        // 业务审核仅更新业务状态；凭证由财务统一预览生成。
-
+        items.forEach(item -> stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
+                item.getProductId(), item.getWarehouseId(), item.getBatchNo(), item.getProductUnitId(),
+                item.getPackageQty(), item.getWeight(), item.getTotalWeight(), item.getCount().negate(), bizType,
+                item.getOutId(), item.getId(), stockOut.getNo(), null, stockOut.getOutTime())));
     }
 
     private List<ErpStockOutItemDO> validateStockOutItems(List<ErpStockOutSaveReqVO.Item> list) {
@@ -269,6 +338,8 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         warehouseService.validateCurrentUserWarehousePermission(warehouseIds);
         // 2. 转化为 ErpStockOutItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpStockOutItemDO.class, item -> {
+            StockDecimalMath.require(item.getCount(), "数量", 18, 6);
+            StockDecimalMath.require(item.getProductPrice(), "单价", 18, 6);
             ErpProductDO product = productMap.get(item.getProductId());
             BigDecimal weight = snapshotSupport.resolveWeight(o.getWeight(), product);
             item.setBatchNo(normalizeBatchNo(item.getBatchNo()))
@@ -276,7 +347,7 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
                     .setPackageQty(snapshotSupport.resolvePackageQty(o.getPackageQty(), product))
                     .setWeight(weight)
                     .setTotalWeight(snapshotSupport.calculateTotalWeight(weight, item.getCount()))
-                    .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+                    .setTotalPrice(StockDecimalMath.multiply(item.getProductPrice(), item.getCount()));
         }));
     }
 
@@ -359,15 +430,20 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteStockOut(List<Long> ids) {
-        // 1. 校验不处于已审批
+        // 1. 校验仅待下单确认状态可删除
         List<ErpStockOutDO> stockOuts = stockOutMapper.selectByIds(ids);
         if (CollUtil.isEmpty(stockOuts)) {
             return;
         }
         stockOuts.forEach(stockOut -> {
-            if (ErpAuditStatus.APPROVE.getStatus().equals(stockOut.getStatus())) {
+            if (ErpStockOutStatusEnum.PROCESS.getStatus().equals(stockOut.getStatus())
+                || ErpStockOutStatusEnum.DRAFT.getStatus().equals(stockOut.getStatus())) {
+                return;
+            }
+            if (ErpStockOutStatusEnum.APPROVE.getStatus().equals(stockOut.getStatus())) {
                 throw exception(STOCK_OUT_DELETE_FAIL_APPROVE, stockOut.getNo());
             }
+            throw exception(STOCK_OUT_DELETE_FAIL_CONFIRMED, stockOut.getNo());
         });
 
         // 2. 遍历删除，并记录操作日志
@@ -382,6 +458,25 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
 
     private ErpStockOutDO validateStockOutExists(Long id) {
         ErpStockOutDO stockOut = stockOutMapper.selectById(id);
+        if (stockOut == null) {
+            throw exception(STOCK_OUT_NOT_EXISTS);
+        }
+        return stockOut;
+    }
+
+    private void validateStockOutEditable(ErpStockOutDO stockOut) {
+        if (ErpStockOutStatusEnum.PROCESS.getStatus().equals(stockOut.getStatus())
+                || ErpStockOutStatusEnum.DRAFT.getStatus().equals(stockOut.getStatus())) {
+            return;
+        }
+        if (ErpStockOutStatusEnum.APPROVE.getStatus().equals(stockOut.getStatus())) {
+            throw exception(STOCK_OUT_UPDATE_FAIL_APPROVE, stockOut.getNo());
+        }
+        throw exception(STOCK_OUT_UPDATE_FAIL_CONFIRMED, stockOut.getNo());
+    }
+
+    private ErpStockOutDO lockStockOut(Long id) {
+        ErpStockOutDO stockOut = stockOutMapper.selectByIdForUpdate(id);
         if (stockOut == null) {
             throw exception(STOCK_OUT_NOT_EXISTS);
         }

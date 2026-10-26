@@ -61,38 +61,38 @@ public final class ErpStockAgeReportModels {
         private String productName;
         @ExcelProperty("库存数量")
         private BigDecimal stockQuantity;
-        @ExcelProperty("库存成本单价")
+        @ExcelProperty(value = "库存成本单价", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal costUnitPrice;
-        @ExcelProperty("库存金额")
+        @ExcelProperty(value = "库存金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal costAmount;
 
         @ExcelProperty("1月以内数量")
         private BigDecimal within1MonthQuantity;
-        @ExcelProperty("1月以内金额")
+        @ExcelProperty(value = "1月以内金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal within1MonthAmount;
         @ExcelProperty("2~3月数量")
         private BigDecimal months2To3Quantity;
-        @ExcelProperty("2~3月金额")
+        @ExcelProperty(value = "2~3月金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal months2To3Amount;
         @ExcelProperty("4~6月数量")
         private BigDecimal months4To6Quantity;
-        @ExcelProperty("4~6月金额")
+        @ExcelProperty(value = "4~6月金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal months4To6Amount;
         @ExcelProperty("7~12月数量")
         private BigDecimal months7To12Quantity;
-        @ExcelProperty("7~12月金额")
+        @ExcelProperty(value = "7~12月金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal months7To12Amount;
         @ExcelProperty("1~2年数量")
         private BigDecimal years1To2Quantity;
-        @ExcelProperty("1~2年金额")
+        @ExcelProperty(value = "1~2年金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal years1To2Amount;
         @ExcelProperty("2~3年数量")
         private BigDecimal years2To3Quantity;
-        @ExcelProperty("2~3年金额")
+        @ExcelProperty(value = "2~3年金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal years2To3Amount;
         @ExcelProperty("3年以上数量")
         private BigDecimal over3YearsQuantity;
-        @ExcelProperty("3年以上金额")
+        @ExcelProperty(value = "3年以上金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal over3YearsAmount;
 
         @ExcelProperty("最后一次入库时间")

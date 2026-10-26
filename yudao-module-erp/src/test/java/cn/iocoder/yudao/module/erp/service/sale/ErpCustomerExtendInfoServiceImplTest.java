@@ -34,6 +34,12 @@ public class ErpCustomerExtendInfoServiceImplTest extends BaseMockitoUnitTest {
 
     // ==================== saveExtendInfo - insert branch ====================
 
+    @org.junit.jupiter.api.BeforeEach
+    void visibleCustomerFixture() {
+        org.mockito.Mockito.lenient().when(customerService.getCustomer(org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> new cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO().setId(invocation.getArgument(0)));
+    }
+
     @Test
     public void testSaveExtendInfo_newRecord_insert() {
         ErpCustomerExtendInfoSaveReqVO reqVO = buildSaveReq(100L);

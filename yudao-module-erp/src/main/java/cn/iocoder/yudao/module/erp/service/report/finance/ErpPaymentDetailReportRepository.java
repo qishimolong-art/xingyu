@@ -63,8 +63,8 @@ public class ErpPaymentDetailReportRepository {
                 + " payment_no," + collate("COALESCE(pin.no,pret.no,padj.no,pm.no,i.biz_no)") + " business_no,"
                 + collate("CASE i.biz_type WHEN 11 THEN '采购入库' WHEN 12 THEN '采购退货' WHEN 13 THEN '采购调价'"
                 + " WHEN 14 THEN '其他应付' END") + " business_type,"
-                + "ROUND(COALESCE(i.payment_price,0),2) settlement_amount,"
-                + "ROUND(COALESCE(p.payment_price,0),2) payment_actual," + collate("a.name")
+                + "ROUND(COALESCE(i.payment_price,0),6) settlement_amount,"
+                + "ROUND(COALESCE(p.payment_price,0),6) payment_actual," + collate("a.name")
                 + " account_name," + collate("p.payment_voucher_no") + " payment_voucher_no,"
                 + collate("v.voucher_no") + " voucher_no," + collate("pu.nickname")
                 + " payer_name," + collate("su.nickname") + " purchaser_name," + collate("s.supplier_type")
@@ -97,9 +97,9 @@ public class ErpPaymentDetailReportRepository {
                 + " WHERE p.tenant_id=:tenant AND p.deleted=b'0' AND p.status=20" + paymentScope + "),"
                 + "allocated AS (SELECT raw.*,CASE WHEN allocation_total=0 THEN NULL"
                 + " WHEN allocation_rank=1 THEN ROUND(payment_actual-COALESCE(SUM(CASE WHEN allocation_rank>1"
-                + " THEN ROUND(payment_actual*settlement_amount/allocation_total,2) ELSE 0 END)"
-                + " OVER(PARTITION BY payment_id),0),2)"
-                + " ELSE ROUND(payment_actual*settlement_amount/allocation_total,2) END actual_payment_amount FROM raw),"
+                + " THEN ROUND(payment_actual*settlement_amount/allocation_total,6) ELSE 0 END)"
+                + " OVER(PARTITION BY payment_id),0),6)"
+                + " ELSE ROUND(payment_actual*settlement_amount/allocation_total,6) END actual_payment_amount FROM raw),"
                 + "report AS (SELECT * FROM allocated WHERE business_type_code IN (11,12,13,14))";
         applyDisplayFilters(sql, filter);
         return sql;

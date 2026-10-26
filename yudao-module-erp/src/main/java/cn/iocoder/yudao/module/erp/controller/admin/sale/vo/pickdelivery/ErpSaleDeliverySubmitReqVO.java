@@ -26,9 +26,9 @@ public class ErpSaleDeliverySubmitReqVO {
     @Schema(description = "分批提交请求唯一标识，重试时必须复用")
     private String requestId;
 
-    @Schema(description = "本次送货凭证", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "本次送货快递单", requiredMode = Schema.RequiredMode.REQUIRED)
     @Valid
-    @NotEmpty(message = "请至少上传一张送货凭证")
+    @NotEmpty(message = "请至少上传一张快递单")
     private List<ErpSalePickSubmitReqVO.File> files;
 
     @Schema(description = "备注")

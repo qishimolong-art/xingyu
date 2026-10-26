@@ -33,6 +33,7 @@ public class ErpSupplierExtendInfoServiceImpl implements ErpSupplierExtendInfoSe
         ErpSupplierExtendInfoDO old = supplierExtendInfoMapper.selectBySupplierId(saveReqVO.getSupplierId());
         ErpSupplierExtendInfoDO saveObj = BeanUtils.toBean(saveReqVO, ErpSupplierExtendInfoDO.class);
         if (old == null) {
+            saveObj.setId(null);
             supplierExtendInfoMapper.insert(saveObj);
             return saveObj.getId();
         }

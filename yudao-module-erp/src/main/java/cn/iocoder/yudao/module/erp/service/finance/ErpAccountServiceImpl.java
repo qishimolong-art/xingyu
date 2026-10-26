@@ -85,6 +85,7 @@ public class ErpAccountServiceImpl implements ErpAccountService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createAccount(ErpAccountSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         ValidationUtils.validate(createReqVO);
         ErpAccountDO account = BeanUtils.toBean(createReqVO, ErpAccountDO.class);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, account);
@@ -101,6 +102,7 @@ public class ErpAccountServiceImpl implements ErpAccountService {
 
     @Override
     public Long createAccountDraft(ErpAccountDraftSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         ErpAccountDO account = BeanUtils.toBean(createReqVO, ErpAccountDO.class);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, account);
         permissionFieldFiller.fillCreateFields(account);
@@ -114,12 +116,14 @@ public class ErpAccountServiceImpl implements ErpAccountService {
 
     @Override
     public Long createAndSubmitAccount(ErpAccountSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         return createAccount(createReqVO);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateAccount(ErpAccountSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ValidationUtils.validate(updateReqVO);
         ErpAccountDO account = accountMapper.selectById(updateReqVO.getId());
         if (account == null) {
@@ -147,6 +151,7 @@ public class ErpAccountServiceImpl implements ErpAccountService {
 
     @Override
     public void updateAccountDraft(ErpAccountDraftSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         if (updateReqVO.getId() == null) {
             throw exception(ACCOUNT_NOT_EXISTS);
         }
@@ -184,6 +189,7 @@ public class ErpAccountServiceImpl implements ErpAccountService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateAndSubmitAccountDraft(ErpAccountSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         if (updateReqVO.getId() == null) {
             throw exception(ACCOUNT_NOT_EXISTS);
         }
@@ -280,6 +286,11 @@ public class ErpAccountServiceImpl implements ErpAccountService {
     @Override
     public ErpAccountDO getAccount(Long id) {
         return accountMapper.selectById(id);
+    }
+
+    @Override
+    public ErpAccountDO getDefaultAccount() {
+        return accountMapper.selectEnabledDefaultAccount();
     }
 
     @Override

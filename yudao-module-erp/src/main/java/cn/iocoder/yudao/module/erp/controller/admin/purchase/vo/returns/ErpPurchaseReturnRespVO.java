@@ -128,6 +128,25 @@ public class ErpPurchaseReturnRespVO {
 
     @Schema(description = "经办人/制单人（用户ID）", example = "1")
     private Long handler;
+    @Schema(description = "经办人/制单人名称", example = "张三")
+    private String handlerName;
+
+    @Schema(description = "开票类型")
+    private String invoiceType;
+    @Schema(description = "运输方式")
+    private String transportMethod;
+    @Schema(description = "结算方式")
+    private String settleMethod;
+    @Schema(description = "运费金额")
+    private BigDecimal freightAmount;
+    @Schema(description = "物流公司")
+    private String logisticsCompany;
+    @Schema(description = "厂家单号")
+    private String factoryOrderNo;
+    @Schema(description = "优先级")
+    private String priority;
+    @Schema(description = "开单方式")
+    private String orderMethod;
 
     @Data
     public static class Item {
@@ -255,6 +274,15 @@ public class ErpPurchaseReturnRespVO {
 
         @Schema(description = "所属经营", example = "汽配业务")
         private String businessEntity;
+
+        @Schema(description = "产品规格")
+        private String standard;
+
+        @Schema(description = "特征码")
+        private String featureCode;
+
+        @Schema(description = "厂家编码")
+        private String factoryCode;
 
         // ========== 关联字段 ==========
 

@@ -39,6 +39,12 @@ public class ErpCustomerAreaServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpCustomerService customerService;
 
+    @org.junit.jupiter.api.BeforeEach
+    void visibleCustomerFixture() {
+        org.mockito.Mockito.lenient().when(customerService.getCustomer(org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> new cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO().setId(invocation.getArgument(0)).setName("可见客户"));
+    }
+
     // ==================== createArea ====================
 
     @Test
@@ -168,8 +174,25 @@ public class ErpCustomerAreaServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(401L, result.get(0).getId());
         assertEquals(402L, result.get(1).getId());
         // 校验：先 validateCustomer 再查询
-        verify(customerService).validateCustomer(eq(customerId));
+        verify(customerService).getCustomer(eq(customerId));
         verify(areaMapper).selectListByCustomerId(eq(customerId));
     }
 
+
+    @Test
+    void cannotMoveChildToAnotherCustomer() {
+        when(areaMapper.selectById(1L)).thenReturn(new ErpCustomerAreaDO().setId(1L).setCustomerId(10L));
+        ErpCustomerAreaSaveReqVO req = new ErpCustomerAreaSaveReqVO(); req.setId(1L); req.setCustomerId(20L);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> areaService.updateArea(req));
+        org.mockito.Mockito.verify(areaMapper, org.mockito.Mockito.never()).updateById(org.mockito.ArgumentMatchers.<ErpCustomerAreaDO>any());
+    }
+
+    @Test
+    void hiddenParentPreventsReadAndDelete() {
+        when(areaMapper.selectById(1L)).thenReturn(new ErpCustomerAreaDO().setId(1L).setCustomerId(99L));
+        when(customerService.getCustomer(99L)).thenReturn(null);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> areaService.getArea(1L));
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> areaService.deleteArea(1L));
+        org.mockito.Mockito.verify(areaMapper, org.mockito.Mockito.never()).deleteById(1L);
+    }
 }

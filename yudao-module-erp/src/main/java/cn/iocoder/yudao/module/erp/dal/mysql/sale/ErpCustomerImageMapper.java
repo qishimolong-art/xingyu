@@ -16,7 +16,9 @@ public interface ErpCustomerImageMapper extends BaseMapperX<ErpCustomerImageDO> 
     default PageResult<ErpCustomerImageDO> selectPage(ErpCustomerImagePageReqVO reqVO) {
         LambdaQueryWrapperX<ErpCustomerImageDO> wrapper = new LambdaQueryWrapperX<>();
         wrapper.eqIfPresent(ErpCustomerImageDO::getCustomerId, reqVO.getCustomerId());
-        wrapper.eqIfPresent(ErpCustomerImageDO::getImageType, reqVO.getImageType());
+        wrapper.eqIfPresent(ErpCustomerImageDO::getImageType, ("__other__".equals(reqVO.getImageType()) || "__store__".equals(reqVO.getImageType())) ? null : reqVO.getImageType());
+        if ("__other__".equals(reqVO.getImageType())) wrapper.and(query -> query.isNull(ErpCustomerImageDO::getImageType).or().notIn(ErpCustomerImageDO::getImageType, java.util.Arrays.asList("营业执照", "门店图片", "门头照片")));
+        if ("__store__".equals(reqVO.getImageType())) wrapper.in(ErpCustomerImageDO::getImageType, java.util.Arrays.asList("门店图片", "门头照片"));
         wrapper.orderByAsc(ErpCustomerImageDO::getSort);
         wrapper.orderByDesc(ErpCustomerImageDO::getId);
         ErpKeywordQuery.append(wrapper, reqVO.getKeyword(),

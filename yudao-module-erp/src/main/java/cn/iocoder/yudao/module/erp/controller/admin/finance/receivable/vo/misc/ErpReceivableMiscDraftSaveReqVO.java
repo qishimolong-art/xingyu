@@ -21,6 +21,7 @@ public class ErpReceivableMiscDraftSaveReqVO {
     private Long accountId;
 
     @Schema(description = "金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal amount;
 
     @Schema(description = "备注")

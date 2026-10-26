@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinan
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceTransferDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
@@ -68,6 +69,13 @@ class ErpFinanceTransferControllerTest extends BaseMockitoUnitTest {
         transfer.setFinanceUserId(9L);
         transfer.setUpdater("7");
         transfer.setUpdateTime(auditTime);
+        transfer.setOutAccountId(1L);
+        transfer.setInAccountId(2L);
+
+        ErpAccountDO outAccount = new ErpAccountDO().setId(1L).setName("转出户")
+                .setBankName("转出银行").setBankAccount("OUT-001");
+        ErpAccountDO inAccount = new ErpAccountDO().setId(2L).setName("转入户")
+                .setBankName("转入银行").setBankAccount("IN-002");
 
         ErpVoucherDO voucher = new ErpVoucherDO();
         voucher.setId(88L);
@@ -88,6 +96,7 @@ class ErpFinanceTransferControllerTest extends BaseMockitoUnitTest {
         when(financeTransferService.getFinanceTransferPage(any()))
                 .thenReturn(new PageResult<>(Collections.singletonList(transfer), 1L));
         when(adminUserApi.getUserMap(any())).thenReturn(userMap);
+        when(accountService.getAccountMap(any())).thenReturn(Map.of(1L, outAccount, 2L, inAccount));
         when(voucherMapper.selectList(any())).thenReturn(Collections.singletonList(voucher));
 
         CommonResult<PageResult<ErpFinanceTransferRespVO>> result =
@@ -100,6 +109,10 @@ class ErpFinanceTransferControllerTest extends BaseMockitoUnitTest {
         assertEquals("审核员", row.getAuditorName());
         assertEquals(auditTime, row.getAuditTime());
         assertEquals("记-202607-000088", row.getVoucherNo());
+        assertEquals("转出银行", row.getOutAccountBankName());
+        assertEquals("OUT-001", row.getOutAccountBankAccount());
+        assertEquals("转入银行", row.getInAccountBankName());
+        assertEquals("IN-002", row.getInAccountBankAccount());
     }
 
     @Test

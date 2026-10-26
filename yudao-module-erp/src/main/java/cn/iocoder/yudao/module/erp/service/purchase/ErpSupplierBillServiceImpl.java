@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplierbill.ErpSupplierBillSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierBillDO;
@@ -33,7 +35,10 @@ public class ErpSupplierBillServiceImpl implements ErpSupplierBillService {
     @Override
     public void updateSupplierBill(ErpSupplierBillSaveReqVO updateReqVO) {
         validateSupplierExists(updateReqVO.getSupplierId());
-        validateSupplierBillExists(updateReqVO.getId());
+        ErpSupplierBillDO existing = validateSupplierBillExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getSupplierId(), updateReqVO.getSupplierId())) {
+            throw exception(SUPPLIER_BILL_NOT_EXISTS);
+        }
         supplierBillMapper.updateById(BeanUtils.toBean(updateReqVO, ErpSupplierBillDO.class));
     }
 
@@ -43,10 +48,11 @@ public class ErpSupplierBillServiceImpl implements ErpSupplierBillService {
         supplierBillMapper.deleteById(id);
     }
 
-    private void validateSupplierBillExists(Long id) {
-        if (supplierBillMapper.selectById(id) == null) {
-            throw exception(SUPPLIER_BILL_NOT_EXISTS);
-        }
+    private ErpSupplierBillDO validateSupplierBillExists(Long id) {
+        ErpSupplierBillDO existing = supplierBillMapper.selectById(id);
+        if (existing == null) throw exception(SUPPLIER_BILL_NOT_EXISTS);
+        validateSupplierExists(existing.getSupplierId());
+        return existing;
     }
 
     private void validateSupplierExists(Long supplierId) {
@@ -57,7 +63,7 @@ public class ErpSupplierBillServiceImpl implements ErpSupplierBillService {
 
     @Override
     public ErpSupplierBillDO getSupplierBill(Long id) {
-        return supplierBillMapper.selectById(id);
+        return validateSupplierBillExists(id);
     }
 
     @Override
@@ -66,4 +72,11 @@ public class ErpSupplierBillServiceImpl implements ErpSupplierBillService {
         return supplierBillMapper.selectListBySupplierId(supplierId);
     }
 
+
+    @Override
+    public PageResult<ErpSupplierBillDO> getSupplierBillPage(ErpSupplierItemPageReqVO reqVO) {
+        validateSupplierExists(reqVO.getSupplierId());
+        reqVO.boundPageSize();
+        return supplierBillMapper.selectPage(reqVO);
+    }
 }

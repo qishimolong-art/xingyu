@@ -9,9 +9,12 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartDraf
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartLatestOnlineOrderRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
@@ -30,6 +33,8 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.idev.excel.annotation.write.style.ContentStyle;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -40,7 +45,9 @@ import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -74,6 +81,8 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
     private ErpProductService productService;
     @Mock
     private ErpWarehouseService warehouseService;
+    @Mock
+    private ErpStockService stockService;
     @Mock
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Mock
@@ -453,6 +462,36 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetLatestOnlineOrder_returnsLightweightMarker() {
+        LocalDateTime createTime = LocalDateTime.of(2026, 10, 20, 9, 30);
+        ErpSaleCartDO cart = ErpSaleCartDO.builder()
+                .id(101L).no("SC101").sourceNo("MO101").build();
+        cart.setCreateTime(createTime);
+        when(saleCartService.getLatestOnlineOrder()).thenReturn(cart);
+
+        CommonResult<ErpSaleCartLatestOnlineOrderRespVO> result = controller.getLatestOnlineOrder();
+
+        assertEquals(0, result.getCode());
+        assertEquals(101L, result.getData().getId());
+        assertEquals("SC101", result.getData().getNo());
+        assertEquals("MO101", result.getData().getSourceNo());
+        assertEquals(createTime, result.getData().getCreateTime());
+    }
+
+    @Test
+    public void testGetLatestOnlineOrder_emptyAndPermission() throws NoSuchMethodException {
+        when(saleCartService.getLatestOnlineOrder()).thenReturn(null);
+
+        CommonResult<ErpSaleCartLatestOnlineOrderRespVO> result = controller.getLatestOnlineOrder();
+
+        assertNull(result.getData());
+        Method method = ErpSaleCartController.class.getMethod("getLatestOnlineOrder");
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-cart:query"));
+    }
+
+    @Test
     public void testGetSaleCartPage_withData() {
         ErpSaleCartPageReqVO pageReqVO = new ErpSaleCartPageReqVO();
         ErpSaleCartDO cart = new ErpSaleCartDO();
@@ -648,6 +687,42 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-cart:export"));
+    }
+
+    @Test
+    public void testImportSaleCartOrder_hasCreatePermission() throws NoSuchMethodException {
+        Method method = ErpSaleCartController.class.getMethod(
+                "importSaleCartOrder", org.springframework.web.multipart.MultipartFile.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-cart:create"));
+    }
+
+    @Test
+    public void testOrderImportTemplate_containsMainAndDetailColumns() throws NoSuchFieldException {
+        assertNotNull(ErpSaleCartOrderImportExcelVO.class.getDeclaredField("customerName"));
+        assertNotNull(ErpSaleCartOrderImportExcelVO.class.getDeclaredField("remark"));
+        assertNotNull(ErpSaleCartOrderImportExcelVO.class.getDeclaredField("warehouseName"));
+        assertNotNull(ErpSaleCartOrderImportExcelVO.class.getDeclaredField("itemCount"));
+        assertNotNull(ErpSaleCartOrderImportExcelVO.class.getDeclaredField("productPrice"));
+        assertNotNull(ErpSaleCartOrderImportExcelVO.class.getDeclaredField("itemRemark"));
+    }
+
+    @Test
+    public void testExportSchema_containsExtendedFieldsAndMoneyFormats() throws NoSuchFieldException {
+        for (String fieldName : Arrays.asList("customerCode", "saleUserName", "deptName",
+                "totalProductPrice", "discountPrice", "otherPrice", "warehouseDeptName",
+                "stockCount", "pieceCount", "lastSalePrice", "giftFlag", "batchNo",
+                "productBarCode", "drawingNo")) {
+            assertNotNull(ErpSaleCartExportRespVO.class.getDeclaredField(fieldName));
+        }
+        for (String fieldName : Arrays.asList("totalPrice", "totalProductPrice", "discountPrice",
+                "feeAmount", "otherPrice", "productPrice", "lastSalePrice", "itemTotalPrice")) {
+            Field field = ErpSaleCartExportRespVO.class.getDeclaredField(fieldName);
+            ContentStyle style = field.getAnnotation(ContentStyle.class);
+            assertNotNull(style, fieldName + " should have a numeric Excel style");
+            assertEquals(2, style.dataFormat());
+        }
     }
 
 }

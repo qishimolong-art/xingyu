@@ -236,7 +236,7 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         ErpAccountDrilldownSummaryRespVO summary = buildDrilldownSummary(rows, type,
                 resolveEmptyBalanceAmount(reqVO, rows, type));
         List<ErpReceivableDetailRespVO> sortedRows = sortDrilldownRows(rows, reqVO.getOrderField(),
-                reqVO.getOrderDirection());
+                reqVO.getOrderDirection(), reqVO.isApproveTimeBasis());
         int from = Math.min((reqVO.getPageNo() - 1) * reqVO.getPageSize(), sortedRows.size());
         int to = Math.min(from + reqVO.getPageSize(), sortedRows.size());
         return new ErpAccountDrilldownPageRespVO<>(new ArrayList<>(sortedRows.subList(from, to)),
@@ -266,8 +266,14 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         detailReqVO.setCustomerId(reqVO.getCustomerId());
         detailReqVO.setDeptId(reqVO.getDeptId());
         detailReqVO.setDeptUnassigned(reqVO.getDeptUnassigned());
-        detailReqVO.setBizTime(type == ErpReceivableDrilldownTypeEnum.OPENING_BALANCE
-                ? new LocalDateTime[]{null, reqVO.getStartTime()} : reqVO.getBizTime());
+        detailReqVO.setDateBasis(reqVO.getDateBasis());
+        if (reqVO.isApproveTimeBasis()) {
+            detailReqVO.setApproveTime(type == ErpReceivableDrilldownTypeEnum.OPENING_BALANCE
+                    ? new LocalDateTime[]{null, reqVO.getStartTime()} : reqVO.getApproveTime());
+        } else {
+            detailReqVO.setBizTime(type == ErpReceivableDrilldownTypeEnum.OPENING_BALANCE
+                    ? new LocalDateTime[]{null, reqVO.getStartTime()} : reqVO.getBizTime());
+        }
         List<ErpReceivableDetailRespVO> rows = detailDisplayService.decorate(detailReqVO,
                 buildReceivableDetailList(detailReqVO, scope));
         rows = rows.stream().filter(row -> matchesDrilldownType(row, type)).collect(Collectors.toList());
@@ -319,9 +325,14 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
                                                                     ReceivableVisibleScope scope) {
         LambdaQueryWrapperX<ErpReceivableMiscDO> query = new LambdaQueryWrapperX<ErpReceivableMiscDO>()
                 .eq(ErpReceivableMiscDO::getCustomerId, reqVO.getCustomerId())
-                .eq(ErpReceivableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                .geIfPresent(ErpReceivableMiscDO::getBizTime, reqVO.getStartTime())
-                .leIfPresent(ErpReceivableMiscDO::getBizTime, reqVO.getEndTime());
+                .eq(ErpReceivableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        if (reqVO.isApproveTimeBasis()) {
+            query.geIfPresent(ErpReceivableMiscDO::getApproveTime, reqVO.getStartTime())
+                    .ltIfPresent(ErpReceivableMiscDO::getApproveTime, reqVO.getEndTime());
+        } else {
+            query.geIfPresent(ErpReceivableMiscDO::getBizTime, reqVO.getStartTime())
+                    .leIfPresent(ErpReceivableMiscDO::getBizTime, reqVO.getEndTime());
+        }
         if (Boolean.TRUE.equals(reqVO.getDeptUnassigned())) {
             query.isNull(ErpReceivableMiscDO::getDeptId);
         } else {
@@ -329,7 +340,8 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         }
         applyMiscScope(query, scope);
         List<ErpMiscSettlementLedgerRow> ledgerRows = receivableMiscMapper.selectSettlementLedger(query
-                .orderByAsc(ErpReceivableMiscDO::getBizTime)
+                .orderByAsc(reqVO.isApproveTimeBasis(), ErpReceivableMiscDO::getApproveTime)
+                .orderByAsc(!reqVO.isApproveTimeBasis(), ErpReceivableMiscDO::getBizTime)
                 .orderByAsc(ErpReceivableMiscDO::getNo)
                 .orderByAsc(ErpReceivableMiscDO::getId));
         List<ErpReceivableDetailRespVO> rows = new ArrayList<>(ledgerRows.size());
@@ -341,6 +353,9 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
             row.setBizType(item.getDocumentId() == null ? ErpBizTypeEnum.RECEIVABLE_MISC.getType() : null);
             row.setBizId(item.getDocumentId() == null ? item.getId() : item.getDocumentId());
             row.setDocDate(item.getBizTime());
+            row.setApproveTime(item.getApproveTime());
+            row.setEventKey(buildEventKey(item.getDocumentId() == null ? "70" : "71",
+                    item.getDocumentId() == null ? item.getId() : item.getDocumentId()));
             row.setDocNo(item.getNo());
             row.setDeptId(item.getDeptId());
             row.setRemark(item.getRemark());
@@ -409,14 +424,19 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         detailReqVO.setCustomerId(reqVO.getCustomerId());
         detailReqVO.setDeptId(reqVO.getDeptId());
         detailReqVO.setDeptUnassigned(reqVO.getDeptUnassigned());
+        detailReqVO.setDateBasis(reqVO.getDateBasis());
         detailReqVO.setBizTime(reqVO.getBizTime());
+        detailReqVO.setApproveTime(reqVO.getApproveTime());
         return DataPermissionUtils.executeIgnore(() -> getInitialBalance(detailReqVO, scope));
     }
 
     private List<ErpReceivableDetailRespVO> sortDrilldownRows(List<ErpReceivableDetailRespVO> rows,
-                                                               String field, String direction) {
+                                                               String field, String direction,
+                                                               boolean approveTimeBasis) {
         if (field == null || direction == null) {
-            return new ArrayList<>(rows);
+            List<ErpReceivableDetailRespVO> defaults = new ArrayList<>(rows);
+            if (approveTimeBasis) defaults.sort(approvalDisplayComparator());
+            return defaults;
         }
         Comparator<ErpReceivableDetailRespVO> comparator;
         switch (field) {
@@ -429,14 +449,22 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
             case "balance": comparator = comparing(ErpReceivableDetailRespVO::getBalance); break;
             case "deptName": comparator = comparing(ErpReceivableDetailRespVO::getDeptName); break;
             case "docDate": comparator = comparing(ErpReceivableDetailRespVO::getDocDate); break;
+            case "approveTime": comparator = comparing(ErpReceivableDetailRespVO::getApproveTime); break;
             default: return new ArrayList<>(rows);
         }
         if ("desc".equalsIgnoreCase(direction)) {
             comparator = comparator.reversed();
         }
         List<ErpReceivableDetailRespVO> sorted = new ArrayList<>(rows);
-        sorted.sort(comparator);
+        sorted.sort(comparator.thenComparing(approvalDisplayComparator()));
         return sorted;
+    }
+
+    private Comparator<ErpReceivableDetailRespVO> approvalDisplayComparator() {
+        return Comparator.comparing(ErpReceivableDetailRespVO::getApproveTime,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ErpReceivableDetailRespVO::getEventKey,
+                        Comparator.nullsLast(Comparator.naturalOrder()));
     }
 
     private <U extends Comparable<? super U>> Comparator<ErpReceivableDetailRespVO> comparing(
@@ -446,6 +474,7 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
 
     @Override
     public Long writeOffReceivable(ErpReceivableWriteOffReqVO reqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(reqVO);
         customerService.validateCustomer(reqVO.getCustomerId());
         ReceivableVisibleScope scope = getReceivableVisibleScope();
         if (scope == null || !scope.hasAccess()) {
@@ -544,7 +573,12 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         copy.setCustomerId(reqVO.getCustomerId());
         copy.setDeptId(reqVO.getDeptId());
         copy.setDeptUnassigned(reqVO.getDeptUnassigned());
-        copy.setBizTime(new LocalDateTime[]{null, reqVO.getStartTime()});
+        copy.setDateBasis(reqVO.getDateBasis());
+        if (reqVO.isApproveTimeBasis()) {
+            copy.setApproveTime(new LocalDateTime[]{null, reqVO.getStartTime()});
+        } else {
+            copy.setBizTime(new LocalDateTime[]{null, reqVO.getStartTime()});
+        }
 
         BigDecimal total = BigDecimal.ZERO;
         for (ErpReceivableDetailRespVO row : buildRows(copy, scope)) {
@@ -575,9 +609,14 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
 
         LambdaQueryWrapperX<ErpSaleOutDO> saleOutQuery = new LambdaQueryWrapperX<ErpSaleOutDO>()
                 .eq(ErpSaleOutDO::getCustomerId, reqVO.getCustomerId())
-                .eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                .geIfPresent(ErpSaleOutDO::getOutTime, reqVO.getStartTime())
-                .ltIfPresent(ErpSaleOutDO::getOutTime, reqVO.getEndTime());
+                .eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        if (reqVO.isApproveTimeBasis()) {
+            saleOutQuery.geIfPresent(ErpSaleOutDO::getApproveTime, reqVO.getStartTime())
+                    .ltIfPresent(ErpSaleOutDO::getApproveTime, reqVO.getEndTime());
+        } else {
+            saleOutQuery.geIfPresent(ErpSaleOutDO::getOutTime, reqVO.getStartTime())
+                    .ltIfPresent(ErpSaleOutDO::getOutTime, reqVO.getEndTime());
+        }
         applyDetailDeptFilter(saleOutQuery, reqVO, ErpSaleOutDO::getDeptId);
         applyScope(saleOutQuery, scope, ErpSaleOutDO::getDeptId, ErpSaleOutDO::getSaleUserId);
         List<ErpSaleOutDO> saleOuts = saleOutMapper.selectList(saleOutQuery);
@@ -593,39 +632,62 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
 
         LambdaQueryWrapperX<ErpSaleReturnDO> saleReturnQuery = new LambdaQueryWrapperX<ErpSaleReturnDO>()
                 .eq(ErpSaleReturnDO::getCustomerId, reqVO.getCustomerId())
-                .eq(ErpSaleReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                .geIfPresent(ErpSaleReturnDO::getReturnTime, reqVO.getStartTime())
-                .ltIfPresent(ErpSaleReturnDO::getReturnTime, reqVO.getEndTime());
+                .eq(ErpSaleReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        if (reqVO.isApproveTimeBasis()) {
+            saleReturnQuery.geIfPresent(ErpSaleReturnDO::getApproveTime, reqVO.getStartTime())
+                    .ltIfPresent(ErpSaleReturnDO::getApproveTime, reqVO.getEndTime());
+        } else {
+            saleReturnQuery.geIfPresent(ErpSaleReturnDO::getReturnTime, reqVO.getStartTime())
+                    .ltIfPresent(ErpSaleReturnDO::getReturnTime, reqVO.getEndTime());
+        }
         applyDetailDeptFilter(saleReturnQuery, reqVO, ErpSaleReturnDO::getDeptId);
         applyScope(saleReturnQuery, scope, ErpSaleReturnDO::getDeptId, ErpSaleReturnDO::getSaleUserId);
         List<ErpSaleReturnDO> saleReturns = saleReturnMapper.selectList(saleReturnQuery);
         Map<Long, BigDecimal> saleReturnAllocated = financeReceiptItemMapper
                 .selectReceiptPriceSumMapByBizIdsAndBizType(saleReturns.stream().map(ErpSaleReturnDO::getId)
                         .collect(Collectors.toSet()), ErpBizTypeEnum.SALE_RETURN.getType());
-        saleReturns.forEach(item -> rows.add(buildAllocatedRow("销售退货", ErpBizTypeEnum.SALE_RETURN.getType(),
-                item.getId(), item.getReturnTime(), item.getNo(), negateAmount(item.getTotalPrice()),
-                saleReturnAllocated.get(item.getId()), item.getDeptId())));
+        saleReturns.forEach(item -> {
+            ErpReceivableDetailRespVO row = buildAllocatedRow("销售退货", ErpBizTypeEnum.SALE_RETURN.getType(),
+                    item.getId(), item.getReturnTime(), item.getNo(), negateAmount(item.getTotalPrice()),
+                    saleReturnAllocated.get(item.getId()), item.getDeptId());
+            setLedgerIdentity(row, "20", item.getId(), item.getApproveTime());
+            rows.add(row);
+        });
 
         LambdaQueryWrapperX<ErpSalePriceAdjustDO> priceAdjustQuery = new LambdaQueryWrapperX<ErpSalePriceAdjustDO>()
                 .eq(ErpSalePriceAdjustDO::getCustomerId, reqVO.getCustomerId())
-                .eq(ErpSalePriceAdjustDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                .geIfPresent(ErpSalePriceAdjustDO::getAdjustDate, reqVO.getStartTime())
-                .ltIfPresent(ErpSalePriceAdjustDO::getAdjustDate, reqVO.getEndTime());
+                .eq(ErpSalePriceAdjustDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        if (reqVO.isApproveTimeBasis()) {
+            priceAdjustQuery.geIfPresent(ErpSalePriceAdjustDO::getApproveTime, reqVO.getStartTime())
+                    .ltIfPresent(ErpSalePriceAdjustDO::getApproveTime, reqVO.getEndTime());
+        } else {
+            priceAdjustQuery.geIfPresent(ErpSalePriceAdjustDO::getAdjustDate, reqVO.getStartTime())
+                    .ltIfPresent(ErpSalePriceAdjustDO::getAdjustDate, reqVO.getEndTime());
+        }
         applyDetailDeptFilter(priceAdjustQuery, reqVO, ErpSalePriceAdjustDO::getDeptId);
         applyScope(priceAdjustQuery, scope, ErpSalePriceAdjustDO::getDeptId, ErpSalePriceAdjustDO::getAdjustUserId);
         List<ErpSalePriceAdjustDO> priceAdjusts = salePriceAdjustMapper.selectList(priceAdjustQuery);
         Map<Long, BigDecimal> priceAdjustAllocated = financeReceiptItemMapper
                 .selectReceiptPriceSumMapByBizIdsAndBizType(priceAdjusts.stream().map(ErpSalePriceAdjustDO::getId)
                         .collect(Collectors.toSet()), ErpBizTypeEnum.SALE_PRICE_ADJUST.getType());
-        priceAdjusts.forEach(item -> rows.add(buildAllocatedRow("销售调价",
-                ErpBizTypeEnum.SALE_PRICE_ADJUST.getType(), item.getId(), item.getAdjustDate(), item.getNo(),
-                item.getTotalAdjustPrice(), priceAdjustAllocated.get(item.getId()), item.getDeptId())));
+        priceAdjusts.forEach(item -> {
+            ErpReceivableDetailRespVO row = buildAllocatedRow("销售调价",
+                    ErpBizTypeEnum.SALE_PRICE_ADJUST.getType(), item.getId(), item.getAdjustDate(), item.getNo(),
+                    item.getTotalAdjustPrice(), priceAdjustAllocated.get(item.getId()), item.getDeptId());
+            setLedgerIdentity(row, "30", item.getId(), item.getApproveTime());
+            rows.add(row);
+        });
 
         LambdaQueryWrapperX<ErpFinanceReceiptDO> receiptQuery = new LambdaQueryWrapperX<ErpFinanceReceiptDO>()
                 .eq(ErpFinanceReceiptDO::getCustomerId, reqVO.getCustomerId())
-                .eq(ErpFinanceReceiptDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                .geIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getStartTime())
-                .ltIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getEndTime());
+                .eq(ErpFinanceReceiptDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        if (reqVO.isApproveTimeBasis()) {
+            receiptQuery.geIfPresent(ErpFinanceReceiptDO::getApproveTime, reqVO.getStartTime())
+                    .ltIfPresent(ErpFinanceReceiptDO::getApproveTime, reqVO.getEndTime());
+        } else {
+            receiptQuery.geIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getStartTime())
+                    .ltIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getEndTime());
+        }
         applyDetailDeptFilter(receiptQuery, reqVO, ErpFinanceReceiptDO::getDeptId);
         applyScope(receiptQuery, scope, ErpFinanceReceiptDO::getDeptId, ErpFinanceReceiptDO::getFinanceUserId);
         List<ErpFinanceReceiptDO> receipts = financeReceiptMapper.selectList(receiptQuery);
@@ -642,6 +704,7 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
                     item.getReceiptTime(), item.getNo(), receiptAmount,
                     receiptAllocated.get(item.getId()), item.getDeptId());
             row.setReceiptDisplayAmount(resolveReceiptDisplayAmount(item, receiptAmount));
+            setLedgerIdentity(row, "40", item.getId(), item.getApproveTime());
             rows.add(row);
         });
 
@@ -653,31 +716,50 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
                             item.getWriteOffTime(), item.getBizNo() == null ? String.valueOf(item.getId()) : item.getBizNo(),
                             negateAmount(item.getWriteOffAmount()), true, item.getDeptId());
                     row.setRemark(item.getRemark());
+                    setLedgerIdentity(row, "50", item.getId(), item.getWriteOffTime());
                     rows.add(row);
                 });
 
         LambdaQueryWrapperX<ErpReceivableOtherDO> otherQuery = new LambdaQueryWrapperX<ErpReceivableOtherDO>()
                 .eq(ErpReceivableOtherDO::getCustomerId, reqVO.getCustomerId())
-                .eq(ErpReceivableOtherDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                .geIfPresent(ErpReceivableOtherDO::getBizTime, reqVO.getStartTime() == null ? null : reqVO.getStartTime().toLocalDate())
-                .leIfPresent(ErpReceivableOtherDO::getBizTime, reqVO.getEndTime() == null ? null : reqVO.getEndTime().toLocalDate());
+                .eq(ErpReceivableOtherDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        if (reqVO.isApproveTimeBasis()) {
+            otherQuery.geIfPresent(ErpReceivableOtherDO::getApproveTime, reqVO.getStartTime())
+                    .ltIfPresent(ErpReceivableOtherDO::getApproveTime, reqVO.getEndTime());
+        } else {
+            otherQuery.geIfPresent(ErpReceivableOtherDO::getBizTime,
+                            reqVO.getStartTime() == null ? null : reqVO.getStartTime().toLocalDate())
+                    .leIfPresent(ErpReceivableOtherDO::getBizTime,
+                            reqVO.getEndTime() == null ? null : reqVO.getEndTime().toLocalDate());
+        }
         applyDetailDeptFilter(otherQuery, reqVO, ErpReceivableOtherDO::getDeptId);
         applyScope(otherQuery, scope, ErpReceivableOtherDO::getDeptId, ErpReceivableOtherDO::getHandlerId);
         List<ErpReceivableOtherDO> otherReceivables = receivableOtherMapper.selectList(otherQuery);
         Map<Long, LocalDateTime> receiptDiscountTimeMap = getReceiptDiscountTimeMap(otherReceivables);
-        otherReceivables
-                .forEach(item -> rows.add(buildOtherReceivableRow("应收调账", null, item.getId(),
-                        resolveOtherReceivableDocDate(item, receiptDiscountTimeMap),
-                        item.getNo(), item.getReceivableAmount(), item.getDeptId())));
+        otherReceivables.forEach(item -> {
+            ErpReceivableDetailRespVO row = buildOtherReceivableRow("应收调账", null, item.getId(),
+                    resolveOtherReceivableDocDate(item, receiptDiscountTimeMap),
+                    item.getNo(), item.getReceivableAmount(), item.getDeptId());
+            setLedgerIdentity(row, "60", item.getId(), item.getApproveTime());
+            rows.add(row);
+        });
 
         rows.forEach(row -> {
             if (row.getReceiptDisplayAmount() == null) {
                 row.setReceiptDisplayAmount(row.getReceiptAmount());
             }
         });
-        rows.sort(Comparator.comparing(ErpReceivableDetailRespVO::getDocDate, Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(ErpReceivableDetailRespVO::getDocType)
-                .thenComparing(ErpReceivableDetailRespVO::getDocNo, Comparator.nullsLast(String::compareTo)));
+        if (reqVO.isApproveTimeBasis()) {
+            rows.sort(Comparator.comparing(ErpReceivableDetailRespVO::getApproveTime,
+                            Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(ErpReceivableDetailRespVO::getEventKey,
+                            Comparator.nullsLast(Comparator.naturalOrder())));
+        } else {
+            rows.sort(Comparator.comparing(ErpReceivableDetailRespVO::getDocDate,
+                            Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(ErpReceivableDetailRespVO::getDocType)
+                    .thenComparing(ErpReceivableDetailRespVO::getDocNo, Comparator.nullsLast(String::compareTo)));
+        }
         return rows;
     }
 
@@ -732,7 +814,18 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
                 originalSettlementAmount, allocatedAmount, originalSettlementAmount, saleOut.getDeptId());
         row.setReturnStatus(saleOut.getReturnStatus());
         row.setPriceAdjusted(isSaleOutPriceAdjusted(saleOut, items));
+        setLedgerIdentity(row, "10", saleOut.getId(), saleOut.getApproveTime());
         return row;
+    }
+
+    private void setLedgerIdentity(ErpReceivableDetailRespVO row, String sourceOrder, Long recordId,
+                                   LocalDateTime approveTime) {
+        row.setApproveTime(approveTime);
+        row.setEventKey(buildEventKey(sourceOrder, recordId));
+    }
+
+    private String buildEventKey(String sourceOrder, Long recordId) {
+        return sourceOrder + ":" + String.format("%020d", recordId == null ? 0L : recordId);
     }
 
     private boolean isSaleOutPriceAdjusted(ErpSaleOutDO saleOut, List<ErpSaleOutItemDO> items) {

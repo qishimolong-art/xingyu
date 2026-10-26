@@ -1130,8 +1130,13 @@ public class ErpProductServiceImpl implements ErpProductService {
         syncProductOpenDeptByStockDistribution(product.getId());
 
         // 3. 校验并插入通用件子表
-        validateUniversalCodes(product.getId(), createReqVO.getUniversals());
-        saveUniversals(product.getId(), createReqVO.getUniversals());
+        if (createReqVO.getUniversalChanges() != null) {
+            if (createReqVO.getUniversals() != null) throw new IllegalArgumentException("通用件增量与整表不能同时提交");
+            applyUniversalChanges(product.getId(), createReqVO.getUniversalChanges());
+        } else {
+            validateUniversalCodes(product.getId(), createReqVO.getUniversals());
+            saveUniversals(product.getId(), createReqVO.getUniversals());
+        }
 
         ProductLogSnapshot after = loadProductLogSnapshot(product.getId());
         recordProductLog(ERP_CREATE_SUB_TYPE, product.getId(), buildProductLogAction("新增配件信息", after));
@@ -1239,8 +1244,13 @@ public class ErpProductServiceImpl implements ErpProductService {
 
         // 4. 子表：先删后插
         validateUniversalCodes(updateReqVO.getId(), updateReqVO.getUniversals());
-        productUniversalMapper.deleteByProductId(updateReqVO.getId());
-        saveUniversals(updateReqVO.getId(), updateReqVO.getUniversals());
+        if (updateReqVO.getUniversalChanges() != null) {
+            if (updateReqVO.getUniversals() != null) throw new IllegalArgumentException("通用件增量与整表不能同时提交");
+            applyUniversalChanges(updateReqVO.getId(), updateReqVO.getUniversalChanges());
+        } else {
+            productUniversalMapper.deleteByProductId(updateReqVO.getId());
+            saveUniversals(updateReqVO.getId(), updateReqVO.getUniversals());
+        }
         ProductLogSnapshot after = loadProductLogSnapshot(updateReqVO.getId());
         recordProductLog(ERP_UPDATE_SUB_TYPE, updateReqVO.getId(), buildProductLogAction("修改配件信息", before, after));
         mallProductSyncPublisher.publishProductSync(updateReqVO.getId());
@@ -1705,6 +1715,35 @@ public class ErpProductServiceImpl implements ErpProductService {
         }
     }
 
+    private void applyUniversalChanges(Long productId, ProductSaveReqVO.UniversalChanges changes) {
+        List<ProductSaveReqVO.Universal> upserts = changes.getUpserts() == null ? Collections.emptyList() : changes.getUpserts();
+        List<Long> deletes = changes.getDeletedIds() == null ? Collections.emptyList() : changes.getDeletedIds();
+        if (deletes.stream().anyMatch(Objects::isNull)) throw new IllegalArgumentException("通用件编号不能为空");
+        Set<Long> ids = new HashSet<>(deletes);
+        Set<Long> updateIds = new HashSet<>();
+        for (ProductSaveReqVO.Universal row : upserts) {
+            if (row == null || !StringUtils.hasText(row.getUniversalCode())) throw new IllegalArgumentException("通用件编码不能为空");
+            if (row.getId() != null) {
+                if (!updateIds.add(row.getId()) || ids.contains(row.getId())) throw new IllegalArgumentException("通用件重复修改");
+                ids.add(row.getId());
+            }
+        }
+        if (!ids.isEmpty()) {
+            List<ErpProductUniversalDO> existing = productUniversalMapper.selectByIds(ids);
+            if (existing.size() != ids.size() || existing.stream().anyMatch(row -> !productId.equals(row.getProductId())))
+                throw new IllegalArgumentException("通用件不存在或不属于当前配件");
+        }
+        validateUniversalCodes(productId, upserts);
+        if (!deletes.isEmpty()) productUniversalMapper.deleteByIds(deletes);
+        for (ProductSaveReqVO.Universal row : upserts) {
+            ErpProductUniversalDO record = new ErpProductUniversalDO().setProductId(productId)
+                    .setUniversalCode(row.getUniversalCode()).setUniversalName(row.getUniversalName())
+                    .setUniversalVehicle(row.getUniversalVehicle());
+            if (row.getId() == null) productUniversalMapper.insert(record);
+            else { record.setId(row.getId()); productUniversalMapper.updateById(record); }
+        }
+    }
+
     private void saveUniversals(Long productId, List<ProductSaveReqVO.Universal> universals) {
         if (CollUtil.isEmpty(universals)) {
             return;
@@ -1731,8 +1770,31 @@ public class ErpProductServiceImpl implements ErpProductService {
     }
 
     @Override
+    public Set<String> getExportHiddenFields() { return getHiddenFieldSet(); }
+
+    @Override
     public ErpProductRespVO getProductArchiveDetail(Long id) {
-        return buildProductDetail(getArchiveVisibleProduct(id), true);
+        return getProductArchiveDetail(id, true);
+    }
+
+    @Override
+    public ErpProductRespVO getProductArchiveDetail(Long id, boolean includeUniversals) {
+        ErpProductDO product = getArchiveVisibleProduct(id);
+        if (product == null) return null;
+        List<ErpProductRespVO> rows = buildProductVOList(Collections.singletonList(product), true, includeUniversals);
+        applyProductFieldPermissions(rows);
+        return rows.get(0);
+    }
+
+    @Override
+    public PageResult<ErpProductRespVO.Universal> getUniversalPage(
+            cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductUniversalPageReqVO reqVO) {
+        if (getArchiveVisibleProduct(reqVO.getProductId()) == null) throw exception(PRODUCT_NOT_EXISTS);
+        PageResult<ErpProductUniversalDO> page = productUniversalMapper.selectPage(reqVO,
+                new cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX<ErpProductUniversalDO>()
+                        .eq(ErpProductUniversalDO::getProductId, reqVO.getProductId())
+                        .orderByAsc(ErpProductUniversalDO::getId));
+        return new PageResult<>(BeanUtils.toBean(page.getList(), ErpProductRespVO.Universal.class), page.getTotal());
     }
 
     private ErpProductRespVO buildProductDetail(ErpProductDO product,
@@ -1935,6 +1997,14 @@ public class ErpProductServiceImpl implements ErpProductService {
     }
 
     @Override
+    public Map<Long, ErpProductRespVO> getProductDisplayVOMap(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) return Collections.emptyMap();
+        List<ErpProductRespVO> rows = buildProductVOList(productMapper.selectByIds(ids), false, false);
+        applyProductFieldPermissions(rows, null, true);
+        return rows.stream().collect(Collectors.toMap(ErpProductRespVO::getId, row -> row));
+    }
+
+    @Override
     public List<ErpProductRespVO> getProductVOList(Collection<Long> ids) {
         return getProductVOList(ids, null);
     }
@@ -1983,7 +2053,7 @@ public class ErpProductServiceImpl implements ErpProductService {
                                 ? Collections.emptyList()
                                 : buildCustomKeywordSearchColumns(hiddenFieldSet)));
         List<ErpProductRespVO> result = buildProductVOList(
-                pageResult.getList(), includeSaleDistributedArchive);
+                pageResult.getList(), includeSaleDistributedArchive, false);
         applyProductFieldPermissions(result, null, includeProductPricePermission);
         return new PageResult<>(result, pageResult.getTotal());
     }
@@ -2099,6 +2169,11 @@ public class ErpProductServiceImpl implements ErpProductService {
 
     private List<ErpProductRespVO> buildProductVOList(List<ErpProductDO> list,
                                                       boolean markReadonlyBySaleDistribution) {
+        return buildProductVOList(list, markReadonlyBySaleDistribution, true);
+    }
+
+    private List<ErpProductRespVO> buildProductVOList(List<ErpProductDO> list,
+            boolean markReadonlyBySaleDistribution, boolean includeUniversals) {
         if (CollUtil.isEmpty(list)) {
             return Collections.emptyList();
         }
@@ -2169,7 +2244,7 @@ public class ErpProductServiceImpl implements ErpProductService {
                 lockCountMap.put(productId, readonlyLockCountMap.getOrDefault(productId, BigDecimal.ZERO));
             });
         }
-        List<ErpProductUniversalDO> universalList = productUniversalMapper.selectListByProductIds(productIds);
+        List<ErpProductUniversalDO> universalList = includeUniversals ? productUniversalMapper.selectListByProductIds(productIds) : Collections.emptyList();
         Map<Long, List<ErpProductUniversalDO>> universalByProduct = universalList.stream()
                 .collect(Collectors.groupingBy(ErpProductUniversalDO::getProductId));
 
@@ -3417,10 +3492,23 @@ public class ErpProductServiceImpl implements ErpProductService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ErpProductImportRespVO importProductList(List<ErpProductImportExcelVO> list) {
+        return importProductList(list, ErpProductImportProgressListener.NOOP);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpProductImportRespVO importProductList(List<ErpProductImportExcelVO> list,
+                                                    ErpProductImportProgressListener progressListener) {
         ErpProductImportRespVO respVO = new ErpProductImportRespVO();
         if (CollUtil.isEmpty(list)) {
             return respVO;
         }
+
+        ErpProductImportProgressListener listener = progressListener == null
+                ? ErpProductImportProgressListener.NOOP : progressListener;
+        int totalCount = (int) list.stream().filter(row -> !isEmptyRow(row)).count();
+        int processedCount = 0;
+        listener.onRowsProgress(0, totalCount, respVO);
 
         Map<String, ErpProductCategoryDO> categoryMap = buildCategoryCodeMap();
         Map<String, ErpProductUnitDO> unitMap = buildUnitNameMap();
@@ -3456,8 +3544,14 @@ public class ErpProductServiceImpl implements ErpProductService {
             } catch (Exception ex) {
                 respVO.getFailureDetails().add(new ErpProductImportRespVO.FailureItem(
                         rowNo, code, getImportFailureReason(ex)));
+            } finally {
+                processedCount++;
+                respVO.setSuccessCount(respVO.getCreateCount() + respVO.getUpdateCount());
+                respVO.setFailureCount(respVO.getFailureDetails().size());
+                listener.onRowsProgress(processedCount, totalCount, respVO);
             }
         }
+        listener.onFinalizing(totalCount, respVO);
         productStockInitService.ensureProductsStockForEnabledRealWarehouses(successfulProductIds);
         syncProductOpenDeptByStockDistribution(successfulProductIds);
 

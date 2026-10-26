@@ -16,6 +16,18 @@ public class ErpPurchaseOrderImportResultRespVO {
     @Schema(description = "失败行数")
     private Integer failureCount = 0;
 
+    @Schema(description = "订单总数")
+    private Integer totalOrderCount = 0;
+
+    @Schema(description = "已处理订单数")
+    private Integer processedOrderCount = 0;
+
+    @Schema(description = "失败订单数")
+    private Integer failureOrderCount = 0;
+
+    @Schema(description = "扫描的非空数据行数")
+    private Integer scannedRowCount = 0;
+
     @Schema(description = "创建成功的采购订单编号")
     private List<Long> orderIds = new ArrayList<>();
 

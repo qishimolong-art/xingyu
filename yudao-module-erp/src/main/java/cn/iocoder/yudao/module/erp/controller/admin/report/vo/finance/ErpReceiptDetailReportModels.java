@@ -84,9 +84,9 @@ public final class ErpReceiptDetailReportModels {
         private String businessNo;
         @ExcelProperty(value = "业务类型", index = 4)
         private String businessType;
-        @ExcelProperty(value = "结算金额", index = 5)
+        @ExcelProperty(value = "结算金额", index = 5, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal settlementAmount;
-        @ExcelProperty(value = "实收金额", index = 6)
+        @ExcelProperty(value = "实收金额", index = 6, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal actualReceiptAmount;
         @ExcelProperty(value = "结算方式", index = 7)
         private String settleMethod;
@@ -108,9 +108,9 @@ public final class ErpReceiptDetailReportModels {
         private String businessCreatorName;
         @ExcelProperty(value = "业务日期", index = 16)
         private LocalDateTime businessDate;
-        @ExcelProperty(value = "成本金额", index = 17)
+        @ExcelProperty(value = "成本金额", index = 17, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal costAmount;
-        @ExcelProperty(value = "毛利", index = 18)
+        @ExcelProperty(value = "毛利", index = 18, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal grossProfit;
         @ExcelProperty(value = "毛利率", index = 19)
         private BigDecimal grossProfitRate;

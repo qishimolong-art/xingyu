@@ -23,6 +23,8 @@ class ErpStockOccupiedDetailMapperSqlTest {
         assertNotNull(select);
         String sql = String.join(" ", select.value()).replaceAll("\\s+", " ");
         assertTrue(sql.contains("sc.status &lt;&gt; 20 OR sc.billing_confirm_time IS NULL"));
+        assertTrue(sql.contains("wm.status IN (#{processStatus}, 15)"));
+        assertTrue(sql.contains("so2.status IN (10, 15)"));
 
         String[] aliases = {"sc", "so", "pr", "so2", "sm", "wm", "sc2", "sob"};
         for (String alias : aliases) {

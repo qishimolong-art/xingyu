@@ -11,7 +11,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleDecimalUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
@@ -25,9 +25,12 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnOrderImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPickPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPurchaseReturnableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPurchaseReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRefundSummaryRespVO;
@@ -56,6 +59,12 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryOperationItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliveryItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickSourceDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -78,6 +87,7 @@ import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -89,6 +99,9 @@ import java.util.Objects;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_RETURN_MANUAL_APPROVE_FORBIDDEN;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_RETURN_NOT_EXISTS;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSetByFlatMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
@@ -118,6 +131,8 @@ public class ErpSaleReturnController {
 
     @Resource
     private ErpSaleReturnService saleReturnService;
+    @Resource
+    private ErpSalePickDeliveryService salePickDeliveryService;
     @Resource
     private ErpStockService stockService;
     @Resource
@@ -195,6 +210,23 @@ public class ErpSaleReturnController {
         return success(true);
     }
 
+    @PutMapping("/confirm")
+    @Operation(summary = "下单确认销售退货并生成拣货任务")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:confirm')")
+    public CommonResult<Boolean> confirmSaleReturn(@RequestParam("id") Long id,
+            @RequestParam(value = "expectedCostBasisSignature", required = false) String expectedCostBasisSignature) {
+        saleReturnService.confirmSaleReturn(id, expectedCostBasisSignature);
+        return success(true);
+    }
+
+    @PutMapping("/cancel-confirm")
+    @Operation(summary = "撤销尚未开始拣货的销售退货下单确认")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:cancel-confirm')")
+    public CommonResult<Boolean> cancelConfirmSaleReturn(@RequestParam("id") Long id) {
+        saleReturnService.cancelConfirmSaleReturn(id);
+        return success(true);
+    }
+
     @PutMapping("/update-remark")
     @Operation(summary = "修改销售退货备注")
     @PreAuthorize("@ss.hasPermission('erp:sale-return:update')")
@@ -211,12 +243,7 @@ public class ErpSaleReturnController {
                                                         @RequestParam("status") Integer status,
             @RequestParam(value = "expectedCostBasisSignature", required = false) String expectedCostBasisSignature) {
         ErpAuditStatusRequestValidator.validateApproveStatus(status);
-        if (expectedCostBasisSignature == null) {
-            saleReturnService.updateSaleReturnStatus(id, status);
-        } else {
-            saleReturnService.updateSaleReturnStatusWithCostBasis(id, status, expectedCostBasisSignature);
-        }
-        return success(true);
+        throw exception(SALE_RETURN_MANUAL_APPROVE_FORBIDDEN);
     }
 
     @GetMapping("/transfer-outable-items")
@@ -295,6 +322,11 @@ public class ErpSaleReturnController {
         Map<Long, ErpWarehouseDO> warehouseMap = saleReturnItemList.isEmpty()
                 ? Collections.emptyMap()
                 : getWarehouseMapIgnoreDataPermission(convertSet(saleReturnItemList, ErpSaleReturnItemDO::getWarehouseId));
+        Map<String, ErpStockDO> stockMap = saleReturnItemList.isEmpty()
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(
+                        convertSet(saleReturnItemList, ErpSaleReturnItemDO::getProductId),
+                        convertSet(saleReturnItemList, ErpSaleReturnItemDO::getWarehouseId)));
         Set<Long> itemDeptIds = convertSet(saleReturnItemList, ErpSaleReturnItemDO::getDeptId);
         itemDeptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
         itemDeptIds.remove(null);
@@ -315,7 +347,7 @@ public class ErpSaleReturnController {
                 saleReturnVO.setCustomerName(customer.getName());
             }
             List<ErpSaleReturnRespVO.Item> items = BeanUtils.toBean(saleReturnItemList, ErpSaleReturnRespVO.Item.class, item -> {
-                ErpStockDO stock = getStockIgnoreDataPermission(item.getProductId(), item.getWarehouseId());
+                ErpStockDO stock = stockMap.get(item.getProductId() + "_" + item.getWarehouseId());
                 item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
                 MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                         .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
@@ -330,6 +362,7 @@ public class ErpSaleReturnController {
             saleReturnVO.setItems(emptyIfNull(items));
         });
         fillDocumentSummary(respVO, saleReturnItemMapper.selectDocumentSummaryByReturnId(id));
+        fillPickSummary(respVO, salePickDeliveryService.getSummaryMapBySaleReturnIds(Collections.singleton(id)).get(id));
         itemPriceReferenceFiller.fill(respVO.getItems());
         fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
@@ -338,6 +371,45 @@ public class ErpSaleReturnController {
     @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
     public CommonResult<ErpSaleReturnRespVO> getSaleReturn(Long id) {
         return getSaleReturn(id, true);
+    }
+
+    @GetMapping("/pick-detail")
+    @Operation(summary = "获得销售退货拣货详情")
+    @Parameter(name = "id", description = "销售退货编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
+    public CommonResult<ErpSalePickSourceDetailRespVO> getSaleReturnPickDetail(
+            @RequestParam("id") Long id) {
+        validateReadableSaleReturn(id);
+        return success(salePickDeliveryService.getSourcePickDetail(
+                ErpSaleBizSourceTypeEnum.SALE_RETURN.getType(), id));
+    }
+
+    @GetMapping("/pick-item-page")
+    @Operation(summary = "获得销售退货累计拣货明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
+    public CommonResult<PageResult<ErpSalePickDeliveryItemRespVO>> getSaleReturnPickItemPage(
+            @Valid ErpSaleReturnPickPageReqVO pageReqVO) {
+        validateReadableSaleReturn(pageReqVO.getReturnId());
+        return success(salePickDeliveryService.getSourcePickItemPage(
+                ErpSaleBizSourceTypeEnum.SALE_RETURN.getType(), pageReqVO.getReturnId(), pageReqVO));
+    }
+
+    @GetMapping("/pick-operation-item-page")
+    @Operation(summary = "获得销售退货分批拣货人员明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
+    public CommonResult<PageResult<ErpSaleOutPickDeliveryOperationItemRespVO>>
+    getSaleReturnPickOperationItemPage(@Valid ErpSaleReturnPickPageReqVO pageReqVO) {
+        validateReadableSaleReturn(pageReqVO.getReturnId());
+        return success(salePickDeliveryService.getSourcePickOperationItemPage(
+                ErpSaleBizSourceTypeEnum.SALE_RETURN.getType(), pageReqVO.getReturnId(), pageReqVO));
+    }
+
+    private ErpSaleReturnDO validateReadableSaleReturn(Long id) {
+        ErpSaleReturnDO saleReturn = saleReturnService.getSaleReturn(id);
+        if (saleReturn == null) {
+            throw exception(SALE_RETURN_NOT_EXISTS);
+        }
+        return saleReturn;
     }
 
     @GetMapping("/refund-summary")
@@ -384,7 +456,7 @@ public class ErpSaleReturnController {
         BigDecimal discountPercent = zeroIfNull(respVO.getDiscountPercent());
         BigDecimal feeAmount = respVO.getFeeAmount() != null
                 ? respVO.getFeeAmount() : zeroIfNull(respVO.getOtherPrice());
-        BigDecimal discountPrice = MoneyUtils.priceMultiplyPercent(totalProductPrice, discountPercent);
+        BigDecimal discountPrice = ErpSaleDecimalUtils.multiplyPercent(totalProductPrice, discountPercent);
         respVO.setTotalCount(totalCount);
         respVO.setTotalProductPrice(totalProductPrice);
         respVO.setTotalTaxPrice(BigDecimal.ZERO);
@@ -606,6 +678,38 @@ public class ErpSaleReturnController {
         return success(saleReturnService.parseImportData(list));
     }
 
+    @PostMapping("/import-order")
+    @Operation(summary = "导入销售退货整单")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:create')")
+    public CommonResult<ErpSaleImportResultRespVO> importSaleReturnOrder(
+            @RequestParam("file") MultipartFile file) throws Exception {
+        return success(saleReturnService.importSaleReturnOrderList(
+                ExcelUtils.read(file, ErpSaleReturnOrderImportExcelVO.class)));
+    }
+
+    @GetMapping("/get-order-import-template")
+    @Operation(summary = "获取销售退货整单导入模板")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:create')")
+    public void getOrderImportTemplate(HttpServletResponse response) throws IOException {
+        ErpSaleReturnOrderImportExcelVO first = new ErpSaleReturnOrderImportExcelVO();
+        first.setImportNo("XSTH-001");
+        first.setReturnMode(10);
+        first.setCustomerName("示例客户");
+        first.setSourceOutNo("XSCK202610220001");
+        first.setRemark("整单备注");
+        first.setProductCode("P000001");
+        first.setWarehouseName("默认仓");
+        first.setItemCount(BigDecimal.ONE);
+        first.setProductPrice(new BigDecimal("100.00"));
+        ErpSaleReturnOrderImportExcelVO second = new ErpSaleReturnOrderImportExcelVO();
+        second.setProductCode("P000002");
+        second.setWarehouseName("默认仓");
+        second.setItemCount(new BigDecimal("2"));
+        second.setProductPrice(new BigDecimal("120.00"));
+        ExcelUtils.writeImportTemplate(response, "销售退货整单导入模板.xls", "销售退货整单",
+                ErpSaleReturnOrderImportExcelVO.class, Arrays.asList(first, second), null, null);
+    }
+
     @GetMapping("/import-failure-details/download")
     @Operation(summary = "下载销售退货导入错误数据")
     @PreAuthorize("@ss.hasPermission('erp:sale-return:create')")
@@ -630,6 +734,11 @@ public class ErpSaleReturnController {
         Map<Long, ErpWarehouseDO> warehouseMap = saleReturnItemList.isEmpty()
                 ? Collections.emptyMap()
                 : getWarehouseMapIgnoreDataPermission(convertSet(saleReturnItemList, ErpSaleReturnItemDO::getWarehouseId));
+        Map<String, ErpStockDO> stockMap = saleReturnItemList.isEmpty()
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(
+                        convertSet(saleReturnItemList, ErpSaleReturnItemDO::getProductId),
+                        convertSet(saleReturnItemList, ErpSaleReturnItemDO::getWarehouseId)));
         // 1.3 客户信息
         Map<Long, ErpCustomerDO> customerMap = emptyIfNull(customerService.getCustomerMap(
                 convertSet(saleReturnList, ErpSaleReturnDO::getCustomerId)));
@@ -643,17 +752,24 @@ public class ErpSaleReturnController {
         deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
         deptIds.remove(null);
         Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : emptyIfNull(deptApi.getDeptMap(deptIds));
+        Map<Long, ErpSalePickDeliverySummaryRespVO> pickSummaryMap =
+                salePickDeliveryService.getSummaryMapBySaleReturnIds(convertSet(saleReturnList, ErpSaleReturnDO::getId));
         // 2. 开始拼接
-        return BeanUtils.toBean(pageResult, ErpSaleReturnRespVO.class, saleReturn -> {
+        PageResult<ErpSaleReturnRespVO> result = BeanUtils.toBean(pageResult, ErpSaleReturnRespVO.class, saleReturn -> {
             List<ErpSaleReturnItemDO> safeItems = emptyIfNull(saleReturnItemMap.get(saleReturn.getId()));
             List<ErpSaleReturnRespVO.Item> items = BeanUtils.toBean(safeItems, ErpSaleReturnRespVO.Item.class,
-                    item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item
-                            .setProductName(product.getName()).setProductBarCode(product.getBarCode())
-                            .setProductUnitName(product.getUnitName()).setProductCode(product.getCode())));
+                    item -> {
+                        MapUtils.findAndThen(productMap, item.getProductId(), product -> item
+                                .setProductName(product.getName()).setProductBarCode(product.getBarCode())
+                                .setProductUnitName(product.getUnitName()).setProductCode(product.getCode()));
+                        MapUtils.findAndThen(stockMap, item.getProductId() + "_" + item.getWarehouseId(),
+                                stock -> item.setStockCount(stock.getCount()));
+                    });
             saleReturn.setItems(emptyIfNull(items));
             saleReturn.setProductNames(CollUtil.join(saleReturn.getItems(), "，", ErpSaleReturnRespVO.Item::getProductName));
             MapUtils.findAndThen(customerMap, saleReturn.getCustomerId(), supplier -> saleReturn.setCustomerName(supplier.getName()));
             fillUserNames(saleReturn, userMap);
+            fillPickSummary(saleReturn, pickSummaryMap.get(saleReturn.getId()));
             MapUtils.findAndThen(deptMap, saleReturn.getDeptId(), dept -> saleReturn.setDeptName(dept.getName()));
             saleReturn.getItems().forEach(item ->
                     MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
@@ -662,8 +778,11 @@ public class ErpSaleReturnController {
                         MapUtils.findAndThen(deptMap, warehouse.getDeptId(),
                                 dept -> item.setWarehouseDeptName(dept.getName()));
                     }));
-            itemPriceReferenceFiller.fill(saleReturn.getItems());
         });
+        List<ErpSaleReturnRespVO.Item> allItems = result.getList().stream()
+                .flatMap(saleReturn -> emptyIfNull(saleReturn.getItems()).stream()).toList();
+        itemPriceReferenceFiller.fill(allItems);
+        return result;
     }
 
     private PageResult<ErpSaleReturnRespVO> buildSaleReturnVOPageResultWithoutItems(
@@ -684,11 +803,14 @@ public class ErpSaleReturnController {
         deptIds.remove(null);
         Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
                 ? Collections.emptyMap() : emptyIfNull(deptApi.getDeptMap(deptIds));
+        Map<Long, ErpSalePickDeliverySummaryRespVO> pickSummaryMap =
+                salePickDeliveryService.getSummaryMapBySaleReturnIds(returnIds);
         return BeanUtils.toBean(pageResult, ErpSaleReturnRespVO.class, saleReturn -> {
             saleReturn.setProductNames(productNamesMap.get(saleReturn.getId()));
             MapUtils.findAndThen(customerMap, saleReturn.getCustomerId(),
                     customer -> saleReturn.setCustomerName(customer.getName()));
             fillUserNames(saleReturn, userMap);
+            fillPickSummary(saleReturn, pickSummaryMap.get(saleReturn.getId()));
             MapUtils.findAndThen(deptMap, saleReturn.getDeptId(), dept -> saleReturn.setDeptName(dept.getName()));
         });
     }
@@ -714,10 +836,6 @@ public class ErpSaleReturnController {
             return Collections.emptyMap();
         }
         return emptyIfNull(DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(productIds)));
-    }
-
-    private ErpStockDO getStockIgnoreDataPermission(Long productId, Long warehouseId) {
-        return DataPermissionUtils.executeIgnore(() -> stockService.getStock(productId, warehouseId));
     }
 
     private Map<Long, ErpWarehouseDO> getWarehouseMapIgnoreDataPermission(Set<Long> warehouseIds) {
@@ -757,9 +875,15 @@ public class ErpSaleReturnController {
         row.setWeight(item.getWeight());
         row.setPackageQty(item.getPackageQty());
         row.setWarehouseName(item.getWarehouseName());
+        row.setWarehouseDeptName(item.getWarehouseDeptName());
+        row.setStockCount(item.getStockCount());
+        row.setProductBarCode(item.getProductBarCode());
+        row.setLastSalePrice(item.getLastSalePrice());
         row.setBatchNo(item.getBatchNo());
         row.setItemCount(item.getCount());
         row.setProductPrice(item.getProductPrice());
+        row.setTaxPercent(item.getTaxPercent());
+        row.setTaxPrice(item.getTaxPrice());
         row.setReturnReason(item.getReturnReason());
         row.setWarehousePosition(item.getWarehousePosition());
         row.setItemRemark(item.getRemark());
@@ -773,6 +897,7 @@ public class ErpSaleReturnController {
             parseUserId(saleReturn.getUpdater(), ids);
             ids.add(saleReturn.getSaleUserId());
             ids.add(saleReturn.getHandler());
+            ids.add(saleReturn.getConfirmUserId());
             return ids.stream();
         });
         userIds.remove(null);
@@ -794,6 +919,19 @@ public class ErpSaleReturnController {
         if (saleReturn.getHandler() != null) {
             MapUtils.findAndThen(userMap, saleReturn.getHandler(), user -> saleReturn.setHandlerName(user.getNickname()));
         }
+        if (saleReturn.getConfirmUserId() != null) {
+            MapUtils.findAndThen(userMap, saleReturn.getConfirmUserId(),
+                    user -> saleReturn.setConfirmUserName(user.getNickname()));
+        }
+    }
+
+    private void fillPickSummary(ErpSaleReturnRespVO saleReturn, ErpSalePickDeliverySummaryRespVO summary) {
+        if (summary == null) {
+            return;
+        }
+        saleReturn.setPickStatus(summary.getPickStatus());
+        saleReturn.setPickedItemCount(summary.getPickedItemCount());
+        saleReturn.setPickTotalItemCount(summary.getTotalItemCount());
     }
 
     private Long parseUserId(String userId) {
@@ -819,10 +957,20 @@ public class ErpSaleReturnController {
         map.put("no", "main");
         map.put("customerName", "main");
         map.put("status", "main");
+        map.put("returnMode", "main");
+        map.put("sourceOutNo", "main");
+        map.put("deptName", "main");
+        map.put("saleUserName", "main");
         map.put("returnTime", "main");
         map.put("creatorName", "system");
+        map.put("confirmUserName", "system");
+        map.put("confirmTime", "system");
+        map.put("pickStatus", "main");
         map.put("totalCount", "main");
         map.put("totalPrice", "main");
+        map.put("totalProductPrice", "main");
+        map.put("discountPrice", "main");
+        map.put("refundPrice", "main");
         map.put("feeAmount", "main");
         map.put("remark", "main");
         map.put("productCode", "detail");
@@ -831,9 +979,15 @@ public class ErpSaleReturnController {
         map.put("weight", "detail");
         map.put("packageQty", "detail");
         map.put("warehouseName", "detail");
+        map.put("warehouseDeptName", "detail");
+        map.put("stockCount", "detail");
+        map.put("productBarCode", "detail");
+        map.put("lastSalePrice", "detail");
         map.put("batchNo", "detail");
         map.put("itemCount", "detail");
         map.put("productPrice", "detail");
+        map.put("taxPercent", "detail");
+        map.put("taxPrice", "detail");
         map.put("returnReason", "detail");
         map.put("warehousePosition", "detail");
         map.put("itemRemark", "detail");
@@ -843,15 +997,23 @@ public class ErpSaleReturnController {
     private static Map<String, String> buildExportFieldPermissionMap() {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("customerName", "customerId");
+        map.put("deptName", "deptId");
+        map.put("saleUserName", "saleUserId");
         map.put("productCode", "item_productCode");
         map.put("productName", "item_productId");
         map.put("productUnitName", "item_productUnitName");
         map.put("weight", "item_weight");
         map.put("packageQty", "item_packageQty");
         map.put("warehouseName", "item_warehouseId");
+        map.put("warehouseDeptName", "item_deptId");
+        map.put("stockCount", "item_stockCount");
+        map.put("productBarCode", "item_productBarCode");
+        map.put("lastSalePrice", "item_lastSalePrice");
         map.put("batchNo", "item_batchNo");
         map.put("itemCount", "item_count");
         map.put("productPrice", "item_productPrice");
+        map.put("taxPercent", "item_taxPercent");
+        map.put("taxPrice", "item_taxPrice");
         map.put("returnReason", "item_returnReason");
         map.put("warehousePosition", "item_warehousePosition");
         map.put("itemRemark", "item_remark");

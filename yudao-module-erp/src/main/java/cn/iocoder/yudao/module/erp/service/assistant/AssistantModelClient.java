@@ -26,7 +26,6 @@ public class AssistantModelClient {
 
     public AssistantToolCall chooseTool(String question,Map<String,Object> context,List<Map<String,Object>> tools,
                                         String systemInstruction) {
-        tokens.set(0);
         Map<String,Object> input=new LinkedHashMap<>();input.put("question",redact(question));input.put("context",context==null?Collections.emptyMap():context);
         Map<String,Object> body=new LinkedHashMap<>();body.put("model",properties.getModel());body.put("thinking",Collections.singletonMap("type","disabled"));
         body.put("max_tokens",1200);body.put("tool_choice","required");body.put("tools",tools);
@@ -677,12 +676,21 @@ public class AssistantModelClient {
         return result;
     }
 
+    public String understand(String instructions, Map<String,Object> input) throws IOException {
+        return call(instructions, toJson(input), true, 4000, 0D);
+    }
+
     protected String call(String system,String input,boolean structured) throws IOException {
+        return call(system, input, structured, 1200, null);
+    }
+
+    private String call(String system,String input,boolean structured,int maximumTokens,Double temperature) throws IOException {
         if(properties.getApiKey()==null || properties.getApiKey().trim().isEmpty())
             throw new AssistantFailure("MODEL_NOT_CONFIGURED","DeepSeek 尚未配置，请联系管理员");
         if(!properties.getBaseUrl().startsWith("https://")) throw new AssistantFailure("MODEL_CONFIG","模型接口必须使用 HTTPS");
         Map<String,Object> body=new LinkedHashMap<>(); body.put("model",properties.getModel());
-        body.put("thinking",Collections.singletonMap("type","disabled")); body.put("max_tokens",1200);
+        body.put("thinking",Collections.singletonMap("type","disabled")); body.put("max_tokens",maximumTokens);
+        if (temperature != null) body.put("temperature", temperature);
         List<Map<String,String>> messages=new ArrayList<>();
         Map<String,String> sys=new HashMap<>(); sys.put("role","system");sys.put("content",system); messages.add(sys);
         Map<String,String> user=new HashMap<>();user.put("role","user");user.put("content",input);messages.add(user);body.put("messages",messages);

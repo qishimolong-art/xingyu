@@ -29,6 +29,8 @@ public class ErpImportExportRecordDO extends BaseDO {
     @TableId
     private Long id;
 
+    private Long tenantId;
+
     private String operationType;
     private String moduleKey;
     private String moduleName;
@@ -36,7 +38,9 @@ public class ErpImportExportRecordDO extends BaseDO {
     private String fileName;
     private String fileType;
     private String status;
+    private String stage;
     private Integer totalCount;
+    private Integer processedCount;
     private Integer successCount;
     private Integer failureCount;
     private Integer createCount;
@@ -49,5 +53,6 @@ public class ErpImportExportRecordDO extends BaseDO {
     private String operatorName;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
+    private LocalDateTime heartbeatTime;
 
 }

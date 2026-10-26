@@ -56,6 +56,63 @@ public class ErpSaleReturnCurrentCostService {
 
     public boolean isEnabled() { return enabled; }
 
+    /** 下单确认时把当前完整成本基准固化为不可变版本，供稍后的拣货完成自动审批使用。 */
+    @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
+    public String freezeForOrderConfirm(Long id, String expectedBasisSignature) {
+        if (!enabled) { return null; }
+        Source source = source(id);
+        repository.checkSchema();
+        repository.ensureState(tenant(), id);
+        complete(source);
+        if (source.masked) { throw error("两套成本必须均可查看，才能下单确认"); }
+        if (!"READY".equals(source.status)) { throw error(source.reason); }
+        if (!StringUtils.hasText(expectedBasisSignature)
+                || !Objects.equals(source.basisSignature, expectedBasisSignature)) {
+            throw error("成本基准已变化，请刷新成本预览后重新下单确认");
+        }
+        if (source.amounts.size() != source.items.size()) {
+            throw error("冻结成本必须覆盖销售退货全部明细");
+        }
+        int nextRevision = revision(source.confirmation) + 1;
+        String requestKey = "ORDER-FREEZE-" + UUID.randomUUID();
+        String requestHash = hash(JsonUtils.toJsonString(Arrays.asList(tenant(), id, source.sourceSignature,
+                source.stockSignature, source.stockBasis, nextRevision)));
+        long confirmationId = repository.insert("INSERT INTO erp_sale_return_current_cost_confirmation "
+                        + "(tenant_id,return_id,revision,request_key,request_hash,source_signature,stock_signature,stock_basis,evidence,confirmed_by,confirmed_at) "
+                        + "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                tenant(), id, nextRevision, requestKey, requestHash, source.sourceSignature,
+                source.stockSignature, source.stockBasis, "销售退货下单确认冻结", operator(), now());
+        for (ErpSaleReturnItemDO item : source.items) {
+            Amounts value = source.amounts.get(item.getId());
+            repository.execute("INSERT INTO erp_sale_return_current_cost_line "
+                            + "(tenant_id,confirmation_id,return_item_id,financial_amount,settlement_amount,evidence) "
+                            + "VALUES (?,?,?,?,?,?)", tenant(), confirmationId, item.getId(),
+                    value.financial, value.settlement, value.kind);
+        }
+        repository.setLatest(tenant(), id, confirmationId);
+        return frozenBasisSignature(source.sourceSignature, source.stockSignature, nextRevision, requestHash);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
+    public void invalidateFrozenOrderConfirm(Long id) {
+        if (!enabled) { return; }
+        repository.checkSchema();
+        Map<String, Object> confirmation = repository.latest(tenant(), id);
+        if (confirmation != null && confirmation.get("consumed_at") == null) {
+            repository.execute("UPDATE erp_sale_return_current_cost_confirmation SET consumed_at=? "
+                    + "WHERE tenant_id=? AND id=? AND consumed_at IS NULL", now(), tenant(), number(confirmation, "id"));
+        }
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
+    public void authorizeFrozenApproval(Long id, String frozenBasisSignature) {
+        if (!enabled) { return; }
+        if (!StringUtils.hasText(frozenBasisSignature)) { throw error("销售退货缺少下单确认冻结成本基准"); }
+        Context context = context();
+        context.approvalTokens.put(id, frozenBasisSignature);
+        context.frozenApprovals.add(id);
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public Header preview(Long id) {
         Source source = source(id);
@@ -63,7 +120,8 @@ public class ErpSaleReturnCurrentCostService {
             return header(source);
         }
         try {
-            complete(source);
+            source = Integer.valueOf(15).equals(source.header.getStatus())
+                    ? frozenSource(id, source.header.getFrozenCostBasisSignature()) : completeAndReturn(source);
         } catch (BadSqlGrammarException exception) {
             source.status = "SCHEMA_MISSING";
             source.reason = "无单退货成本或库存核算增量表未完整迁移";
@@ -77,7 +135,8 @@ public class ErpSaleReturnCurrentCostService {
         if (pageNo < 1 || pageSize < 1 || pageSize > 200) { throw error("明细分页参数无效，单页最多200行"); }
         Source source = source(id);
         if (!enabled) { throw error("新核算尚未启用"); }
-        complete(source);
+        source = Integer.valueOf(15).equals(source.header.getStatus())
+                ? frozenSource(id, source.header.getFrozenCostBasisSignature()) : completeAndReturn(source);
         checkSignatures(source, expectedSourceSignature, expectedBasisSignature);
         int start = (int) Math.min((long) (pageNo - 1) * pageSize, source.items.size());
         int end = Math.min(start + pageSize, source.items.size());
@@ -178,11 +237,12 @@ public class ErpSaleReturnCurrentCostService {
         if (!enabled || !context.approvalTokens.containsKey(id)) { throw error("请先预览本次无单成本再审核"); }
         ErpSaleReturnDO source = returnMapper.selectByIdForUpdate(id);
         List<ErpSaleReturnItemDO> items = itemMapper.selectListByReturnIdForUpdate(id);
-        if (source == null || !Integer.valueOf(10).equals(source.getStatus()) || items.isEmpty()) { throw error("无单退货已审核或不处于可审核状态"); }
+        Integer expectedStatus = context.frozenApprovals.contains(id) ? 15 : 10;
+        if (source == null || !expectedStatus.equals(source.getStatus()) || items.isEmpty()) { throw error("无单退货已审核或不处于可审核状态"); }
         validateNoOriginalSource(source, items);
         repository.checkSchema();
         repository.ensureState(tenant(), id);
-        int changed = returnMapper.updateByIdAndStatus(id, 10, new ErpSaleReturnDO().setStatus(20));
+        int changed = returnMapper.updateByIdAndStatus(id, expectedStatus, new ErpSaleReturnDO().setStatus(20));
         if (changed != 1 || !context.claimed.add(id)) { throw error("无单退货审核认领冲突，请刷新"); }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void beforeCommit(boolean readOnly) {
@@ -214,12 +274,15 @@ public class ErpSaleReturnCurrentCostService {
     public Map<Long, ErpStockRecordCreateReqBO> prepareApproval(ErpSaleReturnDO header,
                                                               List<ErpSaleReturnItemDO> requestedItems) {
         if (!enabled) { return Collections.emptyMap(); }
-        Source source = source(header.getId());
+        Source source = context().frozenApprovals.contains(header.getId())
+                ? frozenSource(header.getId(), context().approvalTokens.get(header.getId())) : source(header.getId());
         if (!context().claimed.contains(header.getId()) || !Integer.valueOf(20).equals(source.header.getStatus())
                 || !source.sourceSignature.equals(signature(header, requestedItems))) {
             throw error("无单成本仅能在本次真实完整审核事务中消费");
         }
-        complete(source);
+        if (!context().frozenApprovals.contains(header.getId())) {
+            complete(source);
+        }
         Context context = context();
         if (source.masked) { throw error("本次审核人员没有完整双成本查看权限"); }
         if (!"READY".equals(source.status)) { throw error(source.reason); }
@@ -301,6 +364,42 @@ public class ErpSaleReturnCurrentCostService {
         source.sourceSignature = signature(header, source.items);
         source.status = enabled ? "NOT_APPLICABLE" : "DISABLED";
         source.reason = enabled ? "仅明确按库存退货适用此成本流程" : "新核算尚未启用";
+        return source;
+    }
+
+    private Source frozenSource(Long id, String expectedBasisSignature) {
+        Source source = source(id);
+        validateNoOriginalSource(source.header, source.items);
+        repository.checkSchema();
+        source.confirmation = repository.latest(tenant(), id);
+        if (source.confirmation == null || source.confirmation.get("consumed_at") != null) {
+            throw error("下单确认冻结成本不存在或已被消费");
+        }
+        if (!Objects.equals(source.sourceSignature, source.confirmation.get("source_signature"))) {
+            throw error("销售退货明细已变化，冻结成本不能继续使用");
+        }
+        source.stockSignature = String.valueOf(source.confirmation.get("stock_signature"));
+        source.stockBasis = String.valueOf(source.confirmation.get("stock_basis"));
+        source.basisSignature = frozenBasisSignature(source.sourceSignature, source.stockSignature,
+                revision(source.confirmation), String.valueOf(source.confirmation.get("request_hash")));
+        if (!Objects.equals(source.basisSignature, expectedBasisSignature)) {
+            throw error("下单确认冻结成本签名不一致");
+        }
+        List<Map<String, Object>> lines = repository.lines(tenant(), number(source.confirmation, "id"),
+                source.items.stream().map(ErpSaleReturnItemDO::getId).collect(Collectors.toList()));
+        for (Map<String, Object> line : lines) {
+            source.amounts.put(number(line, "return_item_id"), new Amounts(
+                    decimal(line, "financial_amount"), decimal(line, "settlement_amount"), "ORDER_CONFIRM_FROZEN"));
+        }
+        if (source.amounts.size() != source.items.size()) { throw error("冻结成本未覆盖完整退货明细"); }
+        source.manualValid = true;
+        source.reconciled = true;
+        source.status = "READY";
+        return source;
+    }
+
+    private Source completeAndReturn(Source source) {
+        complete(source);
         return source;
     }
 
@@ -563,6 +662,10 @@ public class ErpSaleReturnCurrentCostService {
                 request.getProductId(), request.getWarehouseId(), request.getBatchNo(), request.getCount(), request.getUnitPrice(),
                 request.getAccountingDeptId(), request.getFinancialMovementAmount(), request.getSettlementMovementAmount(), request.getBizNo(), request.getBizDate())));
     }
+    private static String frozenBasisSignature(String sourceSignature, String stockSignature,
+                                               int revision, String requestHash) {
+        return hash(tenant() + ":" + sourceSignature + ":" + stockSignature + ":" + revision + ":" + requestHash);
+    }
     private static String requestHash(ConfirmRequest request) {
         List<ConfirmItem> items = new ArrayList<>(request.getItems()); items.sort(Comparator.comparing(ConfirmItem::getSourceItemId));
         return hash(JsonUtils.toJsonString(Arrays.asList(tenant(), request.getId(), request.getExpectedSourceSignature(),
@@ -624,6 +727,7 @@ public class ErpSaleReturnCurrentCostService {
     private static final class Context {
         private final long tenant = tenant();
         private final Map<Long, String> approvalTokens = new HashMap<>();
+        private final Set<Long> frozenApprovals = new HashSet<>();
         private final Set<Long> claimed = new HashSet<>();
         private final Map<String, Prepared> prepared = new HashMap<>();
     }

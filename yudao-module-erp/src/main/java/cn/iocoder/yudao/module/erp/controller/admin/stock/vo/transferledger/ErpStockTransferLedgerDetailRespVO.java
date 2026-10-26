@@ -56,16 +56,16 @@ public class ErpStockTransferLedgerDetailRespVO {
     private String productUnitName;
     @ExcelProperty("包装数")
     private Integer packageQty;
-    @ExcelProperty("单重")
+    @ExcelProperty(value = "单重", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal weight;
-    @ExcelProperty("总重")
+    @ExcelProperty(value = "总重", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal totalWeight;
 
-    @ExcelProperty("出库数量")
+    @ExcelProperty(value = "出库数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal transferOutCount;
-    @ExcelProperty("入库数量")
+    @ExcelProperty(value = "入库数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal transferInCount;
-    @ExcelProperty("差异数量")
+    @ExcelProperty(value = "差异数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal differenceCount;
     private Integer transferOutStatus;
     private Integer transferInStatus;

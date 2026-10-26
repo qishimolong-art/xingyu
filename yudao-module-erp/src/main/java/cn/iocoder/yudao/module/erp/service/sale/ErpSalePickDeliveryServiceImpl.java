@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutExpressFileRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryFileRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryOperationItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.*;
@@ -16,22 +17,47 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.pickdelivery.*;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.pickdelivery.*;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockInItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockInMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMoveItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMoveMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleDeliveryStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickDeliverySubmitTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpWarehouseMoveStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockInStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockOutStatusEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
+import cn.iocoder.yudao.module.erp.service.sale.notification.ErpSalePickTaskCreatedEvent;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockInPickCompletedEvent;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutPickCompletedEvent;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseMovePickCompletedEvent;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.infra.api.file.FileApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -73,6 +99,22 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
     @Resource
     private ErpSaleCartItemMapper saleCartItemMapper;
     @Resource
+    private ErpSaleReturnMapper saleReturnMapper;
+    @Resource
+    private ErpSaleReturnItemMapper saleReturnItemMapper;
+    @Resource
+    private ErpWarehouseMoveMapper warehouseMoveMapper;
+    @Resource
+    private ErpWarehouseMoveItemMapper warehouseMoveItemMapper;
+    @Resource
+    private ErpStockInMapper stockInMapper;
+    @Resource
+    private ErpStockInItemMapper stockInItemMapper;
+    @Resource
+    private ErpStockOutMapper stockOutMapper;
+    @Resource
+    private ErpStockOutItemMapper stockOutItemMapper;
+    @Resource
     private ErpSalePickDeliveryOrderMapper orderMapper;
     @Resource
     private ErpSalePickDeliveryPickTaskMapper pickTaskMapper;
@@ -86,6 +128,8 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
     private ErpSalePickDeliverySubmitFileMapper submitFileMapper;
     @Resource
     private ErpCustomerService customerService;
+    @Resource
+    private ErpSupplierService supplierService;
     @Resource
     private ErpProductService productService;
     @Resource
@@ -173,7 +217,7 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
                     .setStatus(ErpSalePickStatusEnum.WAITING.getStatus())
                     .setTotalItemCount(entry.getValue().size()).setPickedItemCount(0);
             task.setTenantId(tenantId);
-            pickTaskMapper.insert(task);
+            insertPickTask(task, tenantId);
             for (ErpSaleOutItemDO saleOutItem : entry.getValue()) {
                 ErpProductRespVO product = productMap.get(saleOutItem.getProductId());
                 ErpSalePickDeliveryItemDO item = new ErpSalePickDeliveryItemDO()
@@ -280,7 +324,7 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
                     .setStatus(ErpSalePickStatusEnum.WAITING.getStatus())
                     .setTotalItemCount(entry.getValue().size()).setPickedItemCount(0);
             task.setTenantId(tenantId);
-            pickTaskMapper.insert(task);
+            insertPickTask(task, tenantId);
             for (SaleCartFulfillmentItem sourceItem : entry.getValue()) {
                 ErpProductRespVO product = productMap.get(sourceItem.productId);
                 ErpSalePickDeliveryItemDO item = new ErpSalePickDeliveryItemDO()
@@ -300,6 +344,391 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
                 itemMapper.insert(item);
             }
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void generateForSaleReturn(Long saleReturnId) {
+        if (saleReturnId == null || orderMapper.selectBySource(
+                ErpSaleBizSourceTypeEnum.SALE_RETURN.getType(), saleReturnId) != null) {
+            return;
+        }
+        ErpSaleReturnDO saleReturn = saleReturnMapper.selectByIdForUpdate(saleReturnId);
+        if (saleReturn == null || !cn.iocoder.yudao.module.erp.enums.sale.ErpSaleReturnStatusEnum.PICKING
+                .getStatus().equals(saleReturn.getStatus())) {
+            throw exception(SALE_RETURN_CONFIRM_FAIL);
+        }
+        List<ErpSaleReturnItemDO> returnItems = saleReturnItemMapper.selectListByReturnIdForUpdate(saleReturnId);
+        if (CollUtil.isEmpty(returnItems) || returnItems.stream().anyMatch(item -> item.getWarehouseId() == null)) {
+            throw exception(SALE_PICK_DELIVERY_WAREHOUSE_REQUIRED);
+        }
+        Long tenantId = TenantContextHolder.getRequiredTenantId();
+        ErpCustomerDO customer = saleReturn.getCustomerId() == null ? null
+                : customerService.getCustomer(saleReturn.getCustomerId());
+        String customerName = customer == null ? null : customer.getName();
+        Map<Long, ErpWarehouseDO> warehouses = warehouseService.getWarehouseMap(
+                convertSet(returnItems, ErpSaleReturnItemDO::getWarehouseId));
+        Map<Long, ErpProductRespVO> products = productService.getProductVOMap(
+                convertSet(returnItems, ErpSaleReturnItemDO::getProductId));
+
+        ErpSalePickDeliveryOrderDO order = new ErpSalePickDeliveryOrderDO()
+                .setSourceType(ErpSaleBizSourceTypeEnum.SALE_RETURN.getType())
+                .setSourceId(saleReturn.getId()).setSourceNo(saleReturn.getNo())
+                .setCustomerId(saleReturn.getCustomerId()).setCustomerName(customerName)
+                .setDeptId(saleReturn.getDeptId())
+                .setPickStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus())
+                .setTotalItemCount(returnItems.size()).setPickedItemCount(0).setDeliveredItemCount(0);
+        order.setTenantId(tenantId);
+        orderMapper.insert(order);
+
+        Map<Long, List<ErpSaleReturnItemDO>> grouped = returnItems.stream().collect(Collectors.groupingBy(
+                ErpSaleReturnItemDO::getWarehouseId, LinkedHashMap::new, Collectors.toList()));
+        for (Map.Entry<Long, List<ErpSaleReturnItemDO>> entry : grouped.entrySet()) {
+            Long warehouseId = entry.getKey();
+            ErpWarehouseDO warehouse = warehouses.get(warehouseId);
+            ErpSalePickDeliveryPickTaskDO task = new ErpSalePickDeliveryPickTaskDO()
+                    .setOrderId(order.getId()).setSourceType(order.getSourceType())
+                    .setSourceId(order.getSourceId()).setSourceNo(order.getSourceNo())
+                    .setCustomerId(saleReturn.getCustomerId()).setCustomerName(customerName)
+                    .setWarehouseId(warehouseId).setWarehouseName(warehouse == null ? null : warehouse.getName())
+                    .setStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                    .setTotalItemCount(entry.getValue().size()).setPickedItemCount(0);
+            task.setTenantId(tenantId);
+            insertPickTask(task, tenantId);
+            for (ErpSaleReturnItemDO returnItem : entry.getValue()) {
+                ErpProductRespVO product = products.get(returnItem.getProductId());
+                ErpSalePickDeliveryItemDO item = new ErpSalePickDeliveryItemDO()
+                        .setOrderId(order.getId()).setPickTaskId(task.getId())
+                        .setSaleReturnItemId(returnItem.getId())
+                        .setWarehouseId(warehouseId).setWarehouseName(task.getWarehouseName())
+                        .setProductId(returnItem.getProductId())
+                        .setProductCode(product == null ? null : product.getCode())
+                        .setProductName(product == null ? null : product.getName())
+                        .setStandard(product == null ? null : product.getStandard())
+                        .setCount(returnItem.getCount()).setPickedCount(BigDecimal.ZERO)
+                        .setDeliveredCount(BigDecimal.ZERO).setWarehousePosition(returnItem.getWarehousePosition())
+                        .setPackageQty(returnItem.getPackageQty())
+                        .setPickStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                        .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus());
+                item.setTenantId(tenantId);
+                itemMapper.insert(item);
+            }
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void generateForWarehouseMove(Long warehouseMoveId) {
+        generateWarehouseMovePick(warehouseMoveId, false, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void generateCompletedForWarehouseMove(Long warehouseMoveId, Long pickUserId) {
+        generateWarehouseMovePick(warehouseMoveId, true,
+                pickUserId != null ? pickUserId : getLoginUserId());
+    }
+
+    private void generateWarehouseMovePick(Long warehouseMoveId, boolean completed, Long pickUserId) {
+        if (warehouseMoveId == null || orderMapper.selectBySource(
+                ErpSaleBizSourceTypeEnum.WAREHOUSE_MOVE.getType(), warehouseMoveId) != null) {
+            return;
+        }
+        ErpWarehouseMoveDO warehouseMove = warehouseMoveMapper.selectByIdForUpdate(warehouseMoveId);
+        Integer expectedStatus = completed ? ErpWarehouseMoveStatusEnum.APPROVE.getStatus()
+                : ErpWarehouseMoveStatusEnum.PICKING.getStatus();
+        if (warehouseMove == null || !expectedStatus.equals(warehouseMove.getStatus())) {
+            throw exception(WAREHOUSE_MOVE_CONFIRM_FAIL);
+        }
+        List<ErpWarehouseMoveItemDO> moveItems = warehouseMoveItemMapper
+                .selectListByMoveIdForUpdate(warehouseMoveId);
+        if (CollUtil.isEmpty(moveItems) || warehouseMove.getToWarehouseId() == null
+                || moveItems.stream().anyMatch(item -> item.getToWarehouseId() == null)) {
+            throw exception(SALE_PICK_DELIVERY_WAREHOUSE_REQUIRED);
+        }
+        Long tenantId = TenantContextHolder.getRequiredTenantId();
+        ErpWarehouseDO warehouse = warehouseService.getWarehouse(warehouseMove.getToWarehouseId());
+        Map<Long, ErpProductRespVO> products = productService.getProductVOMap(
+                convertSet(moveItems, ErpWarehouseMoveItemDO::getProductId));
+        LocalDateTime completedTime = completed ? LocalDateTime.now() : null;
+        Integer pickStatus = completed ? ErpSalePickStatusEnum.DONE.getStatus()
+                : ErpSalePickStatusEnum.WAITING.getStatus();
+        int pickedItemCount = completed ? moveItems.size() : 0;
+
+        ErpSalePickDeliveryOrderDO order = new ErpSalePickDeliveryOrderDO()
+                .setSourceType(ErpSaleBizSourceTypeEnum.WAREHOUSE_MOVE.getType())
+                .setSourceId(warehouseMove.getId()).setSourceNo(warehouseMove.getNo())
+                .setDeptId(warehouseMove.getDeptId())
+                .setPickStatus(pickStatus)
+                .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus())
+                .setTotalItemCount(moveItems.size()).setPickedItemCount(pickedItemCount).setDeliveredItemCount(0)
+                .setLatestPickTime(completedTime).setPickCompleteTime(completedTime);
+        order.setTenantId(tenantId);
+        orderMapper.insert(order);
+
+        ErpSalePickDeliveryPickTaskDO task = new ErpSalePickDeliveryPickTaskDO()
+                .setOrderId(order.getId()).setSourceType(order.getSourceType())
+                .setSourceId(order.getSourceId()).setSourceNo(order.getSourceNo())
+                .setWarehouseId(warehouseMove.getToWarehouseId())
+                .setWarehouseName(warehouse == null ? null : warehouse.getName())
+                .setStatus(pickStatus)
+                .setTotalItemCount(moveItems.size()).setPickedItemCount(pickedItemCount)
+                .setLatestPickTime(completedTime).setCompleteTime(completedTime);
+        task.setTenantId(tenantId);
+        if (completed) {
+            // 系统自动完成的移货无需发送“待拣货”通知，但必须保留完整任务与提交记录。
+            pickTaskMapper.insert(task);
+        } else {
+            insertPickTask(task, tenantId);
+        }
+        List<ErpSalePickDeliveryItemDO> pickItems = new ArrayList<>(moveItems.size());
+        for (ErpWarehouseMoveItemDO moveItem : moveItems) {
+            ErpProductRespVO product = products.get(moveItem.getProductId());
+            ErpSalePickDeliveryItemDO item = new ErpSalePickDeliveryItemDO()
+                    .setOrderId(order.getId()).setPickTaskId(task.getId())
+                    .setWarehouseMoveItemId(moveItem.getId())
+                    .setWarehouseId(warehouseMove.getToWarehouseId()).setWarehouseName(task.getWarehouseName())
+                    .setProductId(moveItem.getProductId())
+                    .setProductCode(product == null ? null : product.getCode())
+                    .setProductName(product == null ? null : product.getName())
+                    .setStandard(product == null ? null : product.getStandard())
+                    .setCount(moveItem.getCount())
+                    .setPickedCount(completed ? moveItem.getCount() : BigDecimal.ZERO)
+                    .setDeliveredCount(BigDecimal.ZERO).setWarehousePosition(moveItem.getToShelf())
+                    .setPackageQty(moveItem.getPackageQty())
+                    .setPickStatus(pickStatus).setPickUserId(completed ? pickUserId : null)
+                    .setPickTime(completedTime)
+                    .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus());
+            item.setTenantId(tenantId);
+            itemMapper.insert(item);
+            pickItems.add(item);
+        }
+        if (completed) {
+            Long submitId = insertSubmit(order.getId(), task.getId(), null,
+                    ErpSalePickDeliverySubmitTypeEnum.PICK.getType(), pickUserId, completedTime,
+                    pickItems.size(), "套件组装自动移货同步完成", Collections.emptyList(), null, null);
+            for (ErpSalePickDeliveryItemDO item : pickItems) {
+                insertSubmitItem(submitId, item, item.getCount());
+            }
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void generateForStockIn(Long stockInId) {
+        if (stockInId == null || orderMapper.selectBySource(
+                ErpSaleBizSourceTypeEnum.STOCK_IN.getType(), stockInId) != null) {
+            return;
+        }
+        ErpStockInDO stockIn = stockInMapper.selectByIdForUpdate(stockInId);
+        if (stockIn == null || !ErpStockInStatusEnum.PICKING.getStatus().equals(stockIn.getStatus())) {
+            throw exception(STOCK_IN_CONFIRM_FAIL);
+        }
+        List<ErpStockInItemDO> stockInItems = stockInItemMapper.selectListByInIdForUpdate(stockInId);
+        if (CollUtil.isEmpty(stockInItems)
+                || stockInItems.stream().anyMatch(item -> item.getWarehouseId() == null)) {
+            throw exception(SALE_PICK_DELIVERY_WAREHOUSE_REQUIRED);
+        }
+        Long tenantId = TenantContextHolder.getRequiredTenantId();
+        ErpSupplierDO supplier = stockIn.getSupplierId() == null ? null
+                : supplierService.getSupplier(stockIn.getSupplierId());
+        String supplierName = supplier == null ? null : supplier.getName();
+        Map<Long, ErpWarehouseDO> warehouses = warehouseService.getWarehouseMap(
+                convertSet(stockInItems, ErpStockInItemDO::getWarehouseId));
+        Map<Long, ErpProductRespVO> products = productService.getProductVOMap(
+                convertSet(stockInItems, ErpStockInItemDO::getProductId));
+
+        ErpSalePickDeliveryOrderDO order = new ErpSalePickDeliveryOrderDO()
+                .setSourceType(ErpSaleBizSourceTypeEnum.STOCK_IN.getType())
+                .setSourceId(stockIn.getId()).setSourceNo(stockIn.getNo())
+                .setCustomerName(supplierName).setDeptId(stockIn.getDeptId())
+                .setPickStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus())
+                .setTotalItemCount(stockInItems.size()).setPickedItemCount(0).setDeliveredItemCount(0);
+        order.setTenantId(tenantId);
+        orderMapper.insert(order);
+
+        Map<Long, List<ErpStockInItemDO>> grouped = stockInItems.stream().collect(Collectors.groupingBy(
+                ErpStockInItemDO::getWarehouseId, LinkedHashMap::new, Collectors.toList()));
+        for (Map.Entry<Long, List<ErpStockInItemDO>> entry : grouped.entrySet()) {
+            Long warehouseId = entry.getKey();
+            ErpWarehouseDO warehouse = warehouses.get(warehouseId);
+            ErpSalePickDeliveryPickTaskDO task = new ErpSalePickDeliveryPickTaskDO()
+                    .setOrderId(order.getId()).setSourceType(order.getSourceType())
+                    .setSourceId(order.getSourceId()).setSourceNo(order.getSourceNo())
+                    .setCustomerName(supplierName)
+                    .setWarehouseId(warehouseId).setWarehouseName(warehouse == null ? null : warehouse.getName())
+                    .setStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                    .setTotalItemCount(entry.getValue().size()).setPickedItemCount(0);
+            task.setTenantId(tenantId);
+            insertPickTask(task, tenantId);
+            for (ErpStockInItemDO stockInItem : entry.getValue()) {
+                ErpProductRespVO product = products.get(stockInItem.getProductId());
+                ErpSalePickDeliveryItemDO item = new ErpSalePickDeliveryItemDO()
+                        .setOrderId(order.getId()).setPickTaskId(task.getId())
+                        .setStockInItemId(stockInItem.getId())
+                        .setWarehouseId(warehouseId).setWarehouseName(task.getWarehouseName())
+                        .setProductId(stockInItem.getProductId())
+                        .setProductCode(product == null ? null : product.getCode())
+                        .setProductName(product == null ? null : product.getName())
+                        .setStandard(product == null ? null : product.getStandard())
+                        .setCount(stockInItem.getCount()).setPickedCount(BigDecimal.ZERO)
+                        .setDeliveredCount(BigDecimal.ZERO).setPackageQty(stockInItem.getPackageQty())
+                        .setPickStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                        .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus());
+                item.setTenantId(tenantId);
+                itemMapper.insert(item);
+            }
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void generateForStockOut(Long stockOutId) {
+        if (stockOutId == null || orderMapper.selectBySource(
+                ErpSaleBizSourceTypeEnum.STOCK_OUT.getType(), stockOutId) != null) {
+            return;
+        }
+        ErpStockOutDO stockOut = stockOutMapper.selectByIdForUpdate(stockOutId);
+        if (stockOut == null || !ErpStockOutStatusEnum.PICKING.getStatus().equals(stockOut.getStatus())) {
+            throw exception(STOCK_OUT_CONFIRM_FAIL);
+        }
+        List<ErpStockOutItemDO> stockOutItems = stockOutItemMapper.selectListByOutIdForUpdate(stockOutId);
+        if (CollUtil.isEmpty(stockOutItems)
+                || stockOutItems.stream().anyMatch(item -> item.getWarehouseId() == null)) {
+            throw exception(SALE_PICK_DELIVERY_WAREHOUSE_REQUIRED);
+        }
+        Long tenantId = TenantContextHolder.getRequiredTenantId();
+        ErpCustomerDO customer = stockOut.getCustomerId() == null ? null
+                : customerService.getCustomer(stockOut.getCustomerId());
+        String customerName = customer == null ? null : customer.getName();
+        Map<Long, ErpWarehouseDO> warehouses = warehouseService.getWarehouseMap(
+                convertSet(stockOutItems, ErpStockOutItemDO::getWarehouseId));
+        Map<Long, ErpProductRespVO> products = productService.getProductVOMap(
+                convertSet(stockOutItems, ErpStockOutItemDO::getProductId));
+
+        ErpSalePickDeliveryOrderDO order = new ErpSalePickDeliveryOrderDO()
+                .setSourceType(ErpSaleBizSourceTypeEnum.STOCK_OUT.getType())
+                .setSourceId(stockOut.getId()).setSourceNo(stockOut.getNo())
+                .setCustomerId(stockOut.getCustomerId()).setCustomerName(customerName)
+                .setDeptId(stockOut.getDeptId())
+                .setPickStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus())
+                .setTotalItemCount(stockOutItems.size()).setPickedItemCount(0).setDeliveredItemCount(0);
+        order.setTenantId(tenantId);
+        orderMapper.insert(order);
+
+        Map<Long, List<ErpStockOutItemDO>> grouped = stockOutItems.stream().collect(Collectors.groupingBy(
+                ErpStockOutItemDO::getWarehouseId, LinkedHashMap::new, Collectors.toList()));
+        for (Map.Entry<Long, List<ErpStockOutItemDO>> entry : grouped.entrySet()) {
+            Long warehouseId = entry.getKey();
+            ErpWarehouseDO warehouse = warehouses.get(warehouseId);
+            ErpSalePickDeliveryPickTaskDO task = new ErpSalePickDeliveryPickTaskDO()
+                    .setOrderId(order.getId()).setSourceType(order.getSourceType())
+                    .setSourceId(order.getSourceId()).setSourceNo(order.getSourceNo())
+                    .setCustomerId(stockOut.getCustomerId()).setCustomerName(customerName)
+                    .setWarehouseId(warehouseId).setWarehouseName(warehouse == null ? null : warehouse.getName())
+                    .setStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                    .setTotalItemCount(entry.getValue().size()).setPickedItemCount(0);
+            task.setTenantId(tenantId);
+            insertPickTask(task, tenantId);
+            for (ErpStockOutItemDO stockOutItem : entry.getValue()) {
+                ErpProductRespVO product = products.get(stockOutItem.getProductId());
+                ErpSalePickDeliveryItemDO item = new ErpSalePickDeliveryItemDO()
+                        .setOrderId(order.getId()).setPickTaskId(task.getId())
+                        .setStockOutItemId(stockOutItem.getId())
+                        .setWarehouseId(warehouseId).setWarehouseName(task.getWarehouseName())
+                        .setProductId(stockOutItem.getProductId())
+                        .setProductCode(product == null ? null : product.getCode())
+                        .setProductName(product == null ? null : product.getName())
+                        .setStandard(product == null ? null : product.getStandard())
+                        .setCount(stockOutItem.getCount()).setPickedCount(BigDecimal.ZERO)
+                        .setDeliveredCount(BigDecimal.ZERO).setPackageQty(stockOutItem.getPackageQty())
+                        .setPickStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                        .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus());
+                item.setTenantId(tenantId);
+                itemMapper.insert(item);
+            }
+        }
+    }
+
+    /**
+     * 新增拣货任务并发布事务后通知事件。事件监听器仅在事务提交成功后执行，
+     * 因此后续任一明细写入失败导致回滚时不会误发通知。
+     */
+    private void insertPickTask(ErpSalePickDeliveryPickTaskDO task, Long tenantId) {
+        pickTaskMapper.insert(task);
+        eventPublisher.publishEvent(new ErpSalePickTaskCreatedEvent(tenantId, task.getId()));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rollbackUnstartedSaleReturnFulfillment(Long saleReturnId) {
+        ErpSalePickDeliveryOrderDO order = orderMapper.selectBySourceForUpdate(
+                ErpSaleBizSourceTypeEnum.SALE_RETURN.getType(), saleReturnId);
+        if (order == null) {
+            return;
+        }
+        List<ErpSalePickDeliverySubmitDO> submits = submitMapper.selectListByOrderId(order.getId());
+        List<ErpSalePickDeliveryPickTaskDO> tasks = pickTaskMapper.selectListByOrderId(order.getId());
+        List<ErpSalePickDeliveryItemDO> items = itemMapper.selectListByOrderId(order.getId());
+        if (!isUnstartedFulfillment(order, tasks, items, submits)) {
+            throw exception(SALE_RETURN_PICK_ALREADY_STARTED);
+        }
+        itemMapper.deleteByOrderId(order.getId());
+        pickTaskMapper.deleteByOrderId(order.getId());
+        orderMapper.deleteById(order.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rollbackUnstartedWarehouseMoveFulfillment(Long warehouseMoveId) {
+        ErpSalePickDeliveryOrderDO order = orderMapper.selectBySourceForUpdate(
+                ErpSaleBizSourceTypeEnum.WAREHOUSE_MOVE.getType(), warehouseMoveId);
+        if (order == null) {
+            return;
+        }
+        List<ErpSalePickDeliverySubmitDO> submits = submitMapper.selectListByOrderId(order.getId());
+        List<ErpSalePickDeliveryPickTaskDO> tasks = pickTaskMapper.selectListByOrderId(order.getId());
+        List<ErpSalePickDeliveryItemDO> items = itemMapper.selectListByOrderId(order.getId());
+        if (!isUnstartedFulfillment(order, tasks, items, submits)) {
+            throw exception(WAREHOUSE_MOVE_PICK_ALREADY_STARTED);
+        }
+        itemMapper.deleteByOrderId(order.getId());
+        pickTaskMapper.deleteByOrderId(order.getId());
+        orderMapper.deleteById(order.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rollbackUnstartedStockInFulfillment(Long stockInId) {
+        rollbackUnstartedPickOnlyFulfillment(ErpSaleBizSourceTypeEnum.STOCK_IN.getType(), stockInId,
+                STOCK_IN_PICK_ALREADY_STARTED);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rollbackUnstartedStockOutFulfillment(Long stockOutId) {
+        rollbackUnstartedPickOnlyFulfillment(ErpSaleBizSourceTypeEnum.STOCK_OUT.getType(), stockOutId,
+                STOCK_OUT_PICK_ALREADY_STARTED);
+    }
+
+    private void rollbackUnstartedPickOnlyFulfillment(Integer sourceType, Long sourceId,
+                                                       cn.iocoder.yudao.framework.common.exception.ErrorCode errorCode) {
+        ErpSalePickDeliveryOrderDO order = orderMapper.selectBySourceForUpdate(sourceType, sourceId);
+        if (order == null) {
+            return;
+        }
+        List<ErpSalePickDeliverySubmitDO> submits = submitMapper.selectListByOrderId(order.getId());
+        List<ErpSalePickDeliveryPickTaskDO> tasks = pickTaskMapper.selectListByOrderId(order.getId());
+        List<ErpSalePickDeliveryItemDO> items = itemMapper.selectListByOrderId(order.getId());
+        if (!isUnstartedFulfillment(order, tasks, items, submits)) {
+            throw exception(errorCode);
+        }
+        itemMapper.deleteByOrderId(order.getId());
+        pickTaskMapper.deleteByOrderId(order.getId());
+        orderMapper.deleteById(order.getId());
     }
 
     @Override
@@ -452,10 +881,12 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
             BigDecimal picked = completedCount(item.getPickedCount(), item.getPickStatus(), item.getCount())
                     .add(quantities.get(item.getId()));
             BigDecimal delivered = completedCount(item.getDeliveredCount(), item.getDeliveryStatus(), item.getCount());
+            boolean pickOnly = ErpSaleBizSourceTypeEnum.isPickOnly(order.getSourceType());
             itemMapper.updateById(new ErpSalePickDeliveryItemDO().setId(item.getId()).setPickedCount(picked)
                     .setPickStatus(quantityStatus(picked, item.getCount()))
                     .setPickUserId(userId).setPickTime(now)
-                    .setDeliveryStatus(deliveryQuantityStatus(picked, delivered, item.getCount())));
+                    .setDeliveryStatus(pickOnly ? ErpSaleDeliveryStatusEnum.NOT_READY.getStatus()
+                            : deliveryQuantityStatus(picked, delivered, item.getCount())));
             insertSubmitItem(submitId, item, quantities.get(item.getId()));
         }
         refreshPickProgress(task, order, now);
@@ -488,6 +919,7 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
         if (order == null) {
             throw exception(SALE_PICK_DELIVERY_ORDER_NOT_EXISTS);
         }
+        validateDeliveryRequired(order);
         ErpSaleDeliveryOrderRespVO resp = buildDeliveryTaskResp(
                 task, order, itemMapper.selectListByPickTaskId(task.getId()), includeDetail);
         resp.setLegacyHistoryWarning(submitMapper.selectUnassignedLegacyDeliveryCount(task.getOrderId()) > 0);
@@ -496,9 +928,11 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
 
     @Override
     public PageResult<ErpSalePickDeliveryItemRespVO> getDeliveryItemPage(Long taskId, PageParam pageParam, boolean mobile) {
-        if (pickTaskMapper.selectById(taskId) == null) {
+        ErpSalePickDeliveryPickTaskDO task = pickTaskMapper.selectById(taskId);
+        if (task == null) {
             throw exception(SALE_PICK_TASK_NOT_EXISTS);
         }
+        validateDeliveryRequired(orderMapper.selectById(task.getOrderId()));
         PageResult<ErpSalePickDeliveryItemDO> pageResult = itemMapper.selectPageByPickTaskId(pageParam, taskId);
         return new PageResult<>(buildItemRespList(pageResult.getList()), pageResult.getTotal());
     }
@@ -509,6 +943,7 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
         if (task == null) {
             throw exception(SALE_PICK_TASK_NOT_EXISTS);
         }
+        validateDeliveryRequired(orderMapper.selectById(task.getOrderId()));
         PageResult<ErpSalePickDeliverySubmitDO> pageResult = submitMapper.selectDeliveryPageByTaskId(
                 pageParam, taskId, task.getOrderId());
         return new PageResult<>(buildDeliverySubmitRespList(pageResult.getList(), taskId), pageResult.getTotal());
@@ -526,6 +961,7 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
         if (order == null) {
             throw exception(SALE_PICK_DELIVERY_ORDER_NOT_EXISTS);
         }
+        validateDeliveryRequired(order);
         ErpSalePickDeliveryPickTaskDO task = pickTaskMapper.selectByIdForUpdate(reqVO.getTaskId());
         if (task == null || !Objects.equals(task.getOrderId(), order.getId())) {
             throw exception(SALE_PICK_TASK_NOT_EXISTS);
@@ -586,6 +1022,87 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
     }
 
     @Override
+    public Set<Long> getSaleOutIdsWithDeliveryFiles(Collection<Long> saleOutIds) {
+        if (CollUtil.isEmpty(saleOutIds)) {
+            return Collections.emptySet();
+        }
+        List<ErpSalePickDeliverySubmitDO> submits = submitMapper.selectListBySaleOutIdsAndType(
+                saleOutIds, ErpSalePickDeliverySubmitTypeEnum.DELIVERY.getType());
+        if (CollUtil.isEmpty(submits)) {
+            return Collections.emptySet();
+        }
+        Set<Long> submitIdsWithFiles = new HashSet<>(submitFileMapper.selectSubmitIdsWithFiles(
+                convertSet(submits, ErpSalePickDeliverySubmitDO::getId)));
+        if (submitIdsWithFiles.isEmpty()) {
+            return Collections.emptySet();
+        }
+        return submits.stream()
+                .filter(submit -> submitIdsWithFiles.contains(submit.getId()))
+                .map(ErpSalePickDeliverySubmitDO::getSaleOutId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+    }
+
+    @Override
+    public PageResult<ErpSaleOutExpressFileRespVO> getSaleOutExpressFilePage(Long saleOutId,
+                                                                             PageParam pageParam) {
+        ErpSaleOutDO saleOut = saleOutMapper.selectById(saleOutId);
+        if (saleOut == null) {
+            return PageResult.empty();
+        }
+        LinkedHashMap<String, ErpSaleOutExpressFileRespVO> deliveryFiles = new LinkedHashMap<>();
+        List<ErpSalePickDeliverySubmitDO> deliverySubmits = new ArrayList<>(
+                submitMapper.selectListBySaleOutIdAndType(
+                        saleOutId, ErpSalePickDeliverySubmitTypeEnum.DELIVERY.getType()));
+        deliverySubmits.sort(Comparator
+                .comparing(ErpSalePickDeliverySubmitDO::getSubmitTime,
+                        Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(ErpSalePickDeliverySubmitDO::getId,
+                        Comparator.nullsLast(Comparator.reverseOrder())));
+        List<ErpSalePickDeliverySubmitRespVO> submits = buildSubmitRespList(deliverySubmits);
+        for (ErpSalePickDeliverySubmitRespVO submit : submits) {
+            if (CollUtil.isEmpty(submit.getFiles())) {
+                continue;
+            }
+            for (ErpSalePickDeliveryFileRespVO file : submit.getFiles()) {
+                if (!StringUtils.hasText(file.getFileUrl())) {
+                    continue;
+                }
+                String fileUrl = file.getFileUrl().trim();
+                deliveryFiles.putIfAbsent(fileUrl, new ErpSaleOutExpressFileRespVO()
+                        .setId(file.getId())
+                        .setSubmitId(submit.getId())
+                        .setFileUrl(fileUrl)
+                        .setFileName(file.getFileName())
+                        .setFileType(file.getFileType())
+                        .setSourceType("DELIVERY")
+                        .setSourceName("送货快递单")
+                        .setSubmitUserId(submit.getSubmitUserId())
+                        .setSubmitUserName(submit.getSubmitUserName())
+                        .setSubmitTime(submit.getSubmitTime())
+                        .setSort(file.getSort()));
+            }
+        }
+        LinkedHashMap<String, ErpSaleOutExpressFileRespVO> uniqueFiles = new LinkedHashMap<>();
+        if (StringUtils.hasText(saleOut.getExpressFileUrl())) {
+            String fileUrl = saleOut.getExpressFileUrl().trim();
+            // 自动同步的兼容主图仍按送货快递单展示；仅真正独立的历史/人工图片标记为补传。
+            if (!deliveryFiles.containsKey(fileUrl)) {
+                uniqueFiles.put(fileUrl, new ErpSaleOutExpressFileRespVO()
+                        .setFileUrl(fileUrl)
+                        .setFileName("销售单补传快递单")
+                        .setFileType(FileUtil.extName(fileUrl))
+                        .setSourceType("MANUAL")
+                        .setSourceName("销售单补传")
+                        .setSubmitTime(saleOut.getUpdateTime() != null
+                                ? saleOut.getUpdateTime() : saleOut.getCreateTime()));
+            }
+        }
+        uniqueFiles.putAll(deliveryFiles);
+        return pageList(new ArrayList<>(uniqueFiles.values()), pageParam);
+    }
+
+    @Override
     public Map<Long, ErpSalePickDeliverySummaryRespVO> getSummaryMapBySaleCartIds(Collection<Long> saleCartIds) {
         if (CollUtil.isEmpty(saleCartIds)) {
             return Collections.emptyMap();
@@ -597,6 +1114,160 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
         }
         return orders.stream().collect(Collectors.toMap(ErpSalePickDeliveryOrderDO::getSourceId,
                 this::buildSummaryResp, (first, second) -> first));
+    }
+
+    @Override
+    public Map<Long, ErpSalePickDeliverySummaryRespVO> getSummaryMapBySaleReturnIds(Collection<Long> saleReturnIds) {
+        if (CollUtil.isEmpty(saleReturnIds)) {
+            return Collections.emptyMap();
+        }
+        List<ErpSalePickDeliveryOrderDO> orders = orderMapper.selectListBySourceIds(
+                ErpSaleBizSourceTypeEnum.SALE_RETURN.getType(), saleReturnIds);
+        return orders.stream().collect(Collectors.toMap(ErpSalePickDeliveryOrderDO::getSourceId,
+                this::buildSummaryResp, (first, second) -> first));
+    }
+
+    @Override
+    public Map<Long, ErpSalePickDeliverySummaryRespVO> getSummaryMapByWarehouseMoveIds(
+            Collection<Long> warehouseMoveIds) {
+        if (CollUtil.isEmpty(warehouseMoveIds)) {
+            return Collections.emptyMap();
+        }
+        List<ErpSalePickDeliveryOrderDO> orders = orderMapper.selectListBySourceIds(
+                ErpSaleBizSourceTypeEnum.WAREHOUSE_MOVE.getType(), warehouseMoveIds);
+        return orders.stream().collect(Collectors.toMap(ErpSalePickDeliveryOrderDO::getSourceId,
+                this::buildSummaryResp, (first, second) -> first));
+    }
+
+    @Override
+    public Map<Long, ErpSalePickDeliverySummaryRespVO> getSummaryMapByStockInIds(Collection<Long> stockInIds) {
+        if (CollUtil.isEmpty(stockInIds)) {
+            return Collections.emptyMap();
+        }
+        List<ErpSalePickDeliveryOrderDO> orders = orderMapper.selectListBySourceIds(
+                ErpSaleBizSourceTypeEnum.STOCK_IN.getType(), stockInIds);
+        return orders.stream().collect(Collectors.toMap(ErpSalePickDeliveryOrderDO::getSourceId,
+                this::buildSummaryResp, (first, second) -> first));
+    }
+
+    @Override
+    public Map<Long, ErpSalePickDeliverySummaryRespVO> getSummaryMapByStockOutIds(Collection<Long> stockOutIds) {
+        if (CollUtil.isEmpty(stockOutIds)) {
+            return Collections.emptyMap();
+        }
+        List<ErpSalePickDeliveryOrderDO> orders = orderMapper.selectListBySourceIds(
+                ErpSaleBizSourceTypeEnum.STOCK_OUT.getType(), stockOutIds);
+        return orders.stream().collect(Collectors.toMap(ErpSalePickDeliveryOrderDO::getSourceId,
+                this::buildSummaryResp, (first, second) -> first));
+    }
+
+    @Override
+    public ErpSalePickSourceDetailRespVO getSourcePickDetail(Integer sourceType, Long sourceId) {
+        ErpSalePickSourceDetailRespVO resp = new ErpSalePickSourceDetailRespVO();
+        resp.setPickTasks(Collections.emptyList());
+        ErpSalePickDeliveryOrderDO order = orderMapper.selectBySource(sourceType, sourceId);
+        if (order == null) {
+            return resp;
+        }
+
+        List<ErpSalePickQuantityAggregateDO> quantityAggregates =
+                itemMapper.selectPickQuantityAggregatesByOrderId(order.getId());
+        Map<Long, ErpSalePickQuantityAggregateDO> quantityAggregateMap = quantityAggregates.stream()
+                .filter(item -> item.getPickTaskId() != null)
+                .collect(Collectors.toMap(ErpSalePickQuantityAggregateDO::getPickTaskId,
+                        item -> item, (first, second) -> first));
+        BigDecimal totalQuantity = quantityAggregates.stream()
+                .map(ErpSalePickQuantityAggregateDO::getTotalQuantity)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal pickedQuantity = quantityAggregates.stream()
+                .map(ErpSalePickQuantityAggregateDO::getPickedQuantity)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        ErpSalePickDeliverySummaryRespVO summary = buildSummaryResp(order);
+        fillPickQuantity(summary, totalQuantity, pickedQuantity);
+        resp.setSummary(summary);
+
+        List<ErpSalePickDeliverySubmitDO> pickSubmits = submitMapper.selectListByOrderIdAndType(
+                order.getId(), ErpSalePickDeliverySubmitTypeEnum.PICK.getType());
+        Set<Long> pickerIds = convertSet(pickSubmits, ErpSalePickDeliverySubmitDO::getSubmitUserId);
+        pickerIds.remove(null);
+        Map<Long, AdminUserRespDTO> userMap = pickerIds.isEmpty()
+                ? Collections.emptyMap() : Optional.ofNullable(adminUserApi.getUserMap(pickerIds))
+                .orElse(Collections.emptyMap());
+        Map<Long, LocalDateTime> taskStartTimeMap = new HashMap<>();
+        Map<Long, LinkedHashSet<String>> taskPickerNameMap = new HashMap<>();
+        pickSubmits.stream().filter(submit -> submit.getPickTaskId() != null)
+                .sorted(Comparator.comparing(ErpSalePickDeliverySubmitDO::getSubmitTime,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .forEach(submit -> {
+                    if (submit.getSubmitTime() != null) {
+                        taskStartTimeMap.merge(submit.getPickTaskId(), submit.getSubmitTime(),
+                                (first, second) -> first.isBefore(second) ? first : second);
+                    }
+                    AdminUserRespDTO user = userMap.get(submit.getSubmitUserId());
+                    if (user != null && StringUtils.hasText(user.getNickname())) {
+                        taskPickerNameMap.computeIfAbsent(submit.getPickTaskId(), key -> new LinkedHashSet<>())
+                                .add(user.getNickname().trim());
+                    }
+                });
+
+        resp.setPickTasks(convertList(pickTaskMapper.selectListByOrderId(order.getId()), task -> {
+            ErpSalePickTaskRespVO taskResp = buildPickResp(task);
+            ErpSalePickQuantityAggregateDO aggregate = quantityAggregateMap.get(task.getId());
+            if (aggregate != null) {
+                fillPickQuantity(taskResp, aggregate.getTotalQuantity(), aggregate.getPickedQuantity());
+            }
+            taskResp.setStartTime(taskStartTimeMap.get(task.getId()));
+            taskResp.setPickerNames(new ArrayList<>(taskPickerNameMap.getOrDefault(
+                    task.getId(), new LinkedHashSet<>())));
+            return taskResp;
+        }));
+        return resp;
+    }
+
+    @Override
+    public PageResult<ErpSalePickDeliveryItemRespVO> getSourcePickItemPage(
+            Integer sourceType, Long sourceId, PageParam pageParam) {
+        ErpSalePickDeliveryOrderDO order = orderMapper.selectBySource(sourceType, sourceId);
+        if (order == null) {
+            return PageResult.empty();
+        }
+        PageResult<ErpSalePickDeliveryItemDO> page = itemMapper.selectPageByOrderId(pageParam, order.getId());
+        return new PageResult<>(buildItemRespList(page.getList()), page.getTotal());
+    }
+
+    @Override
+    public PageResult<ErpSaleOutPickDeliveryOperationItemRespVO> getSourcePickOperationItemPage(
+            Integer sourceType, Long sourceId, PageParam pageParam) {
+        ErpSalePickDeliveryOrderDO order = orderMapper.selectBySource(sourceType, sourceId);
+        if (order == null) {
+            return PageResult.empty();
+        }
+        PageResult<ErpSalePickDeliverySubmitItemDO> page = submitItemMapper.selectPageByOrderIdAndType(
+                pageParam, order.getId(), ErpSalePickDeliverySubmitTypeEnum.PICK.getType());
+        if (CollUtil.isEmpty(page.getList())) {
+            return new PageResult<>(Collections.emptyList(), page.getTotal());
+        }
+        Set<Long> submitIds = convertSet(page.getList(), ErpSalePickDeliverySubmitItemDO::getSubmitId);
+        Map<Long, ErpSalePickDeliverySubmitDO> submitMap = convertMap(
+                submitMapper.selectBatchIds(submitIds), ErpSalePickDeliverySubmitDO::getId);
+        Map<Long, ErpSalePickDeliveryItemDO> itemMap = convertMap(
+                itemMapper.selectBatchIds(convertSet(page.getList(), ErpSalePickDeliverySubmitItemDO::getItemId)),
+                ErpSalePickDeliveryItemDO::getId);
+        Set<Long> userIds = convertSet(submitMap.values(), ErpSalePickDeliverySubmitDO::getSubmitUserId);
+        userIds.remove(null);
+        Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty()
+                ? Collections.emptyMap() : Optional.ofNullable(adminUserApi.getUserMap(userIds))
+                .orElse(Collections.emptyMap());
+        List<ErpSaleOutPickDeliveryOperationItemRespVO> rows = convertList(page.getList(), submitItem -> {
+            ErpSalePickDeliverySubmitDO submit = submitMap.get(submitItem.getSubmitId());
+            ErpSalePickDeliveryItemDO item = itemMap.get(submitItem.getItemId());
+            AdminUserRespDTO user = submit == null ? null : userMap.get(submit.getSubmitUserId());
+            return buildOperationItemResp(submitItem, submit, item, user,
+                    ErpSalePickDeliverySubmitTypeEnum.PICK.getType());
+        });
+        return new PageResult<>(rows, page.getTotal());
     }
 
     @Override
@@ -658,22 +1329,7 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
             ErpSalePickDeliverySubmitDO submit = submitMap.get(submitItem.getSubmitId());
             ErpSalePickDeliveryItemDO item = itemMap.get(submitItem.getItemId());
             AdminUserRespDTO user = submit == null ? null : userMap.get(submit.getSubmitUserId());
-            return new ErpSaleOutPickDeliveryOperationItemRespVO()
-                    .setId(submitItem.getId())
-                    .setSubmitId(submitItem.getSubmitId())
-                    .setType(submit == null ? type : submit.getType())
-                    .setSubmitUserId(submit == null ? null : submit.getSubmitUserId())
-                    .setSubmitUserName(user == null ? null : user.getNickname())
-                    .setSubmitTime(submit == null ? null : submit.getSubmitTime())
-                    .setItemId(submitItem.getItemId())
-                    .setProductCode(StringUtils.hasText(submitItem.getProductCode())
-                            ? submitItem.getProductCode() : item == null ? null : item.getProductCode())
-                    .setProductName(StringUtils.hasText(submitItem.getProductName())
-                            ? submitItem.getProductName() : item == null ? null : item.getProductName())
-                    .setStandard(item == null ? null : item.getStandard())
-                    .setWarehouseId(item == null ? null : item.getWarehouseId())
-                    .setWarehouseName(item == null ? null : item.getWarehouseName())
-                    .setQuantity(submitItem.getQuantity());
+            return buildOperationItemResp(submitItem, submit, item, user, type);
         });
         return new PageResult<>(rows, page.getTotal());
     }
@@ -748,7 +1404,7 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
     }
 
     private boolean validQuantity(BigDecimal quantity) {
-        return quantity != null && quantity.signum() > 0 && quantity.stripTrailingZeros().scale() <= 0
+        return quantity != null && quantity.signum() > 0 && quantity.stripTrailingZeros().scale() <= 6
                 && quantity.precision() - quantity.scale() <= 18;
     }
 
@@ -910,6 +1566,24 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
             update.setPickCompleteTime(now);
         }
         orderMapper.updateById(update);
+        if (ErpSaleBizSourceTypeEnum.isPickOnly(order.getSourceType())) {
+            if (ErpSalePickStatusEnum.DONE.getStatus().equals(orderPickStatus)) {
+                if (ErpSaleBizSourceTypeEnum.SALE_RETURN.getType().equals(order.getSourceType())) {
+                    eventPublisher.publishEvent(new ErpSaleReturnPickCompletedEvent(
+                            order.getSourceId(), getLoginUserId()));
+                } else if (ErpSaleBizSourceTypeEnum.WAREHOUSE_MOVE.getType().equals(order.getSourceType())) {
+                    eventPublisher.publishEvent(new ErpWarehouseMovePickCompletedEvent(
+                            order.getSourceId(), getLoginUserId()));
+                } else if (ErpSaleBizSourceTypeEnum.STOCK_IN.getType().equals(order.getSourceType())) {
+                    eventPublisher.publishEvent(new ErpStockInPickCompletedEvent(
+                            order.getSourceId(), getLoginUserId()));
+                } else if (ErpSaleBizSourceTypeEnum.STOCK_OUT.getType().equals(order.getSourceType())) {
+                    eventPublisher.publishEvent(new ErpStockOutPickCompletedEvent(
+                            order.getSourceId(), getLoginUserId()));
+                }
+            }
+            return;
+        }
         // 补拣只刷新可送状态，不得改写最近送货时间或送货完成时间。
         refreshDeliveryProgress(order, null);
     }
@@ -937,6 +1611,24 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
         }
         orderMapper.updateById(update);
         return deliveryStatus;
+    }
+
+    private void validateDeliveryRequired(ErpSalePickDeliveryOrderDO order) {
+        if (order == null) {
+            throw exception(SALE_PICK_DELIVERY_ORDER_NOT_EXISTS);
+        }
+        if (ErpSaleBizSourceTypeEnum.SALE_RETURN.getType().equals(order.getSourceType())) {
+            throw exception(SALE_RETURN_DELIVERY_NOT_REQUIRED);
+        }
+        if (ErpSaleBizSourceTypeEnum.WAREHOUSE_MOVE.getType().equals(order.getSourceType())) {
+            throw exception(WAREHOUSE_MOVE_DELIVERY_NOT_REQUIRED);
+        }
+        if (ErpSaleBizSourceTypeEnum.STOCK_IN.getType().equals(order.getSourceType())) {
+            throw exception(STOCK_IN_DELIVERY_NOT_REQUIRED);
+        }
+        if (ErpSaleBizSourceTypeEnum.STOCK_OUT.getType().equals(order.getSourceType())) {
+            throw exception(STOCK_OUT_DELIVERY_NOT_REQUIRED);
+        }
     }
 
     private void approveLinkedCartTransferOutsAfterDelivery(ErpSalePickDeliveryOrderDO order, Long userId) {
@@ -1023,9 +1715,70 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
                 .setId(task.getId()).setSaleOutId(saleOut.getId()).setSaleOutNo(saleOut.getNo())));
         itemMapper.selectListByOrderId(order.getId()).forEach(item -> itemMapper.updateById(
                 new ErpSalePickDeliveryItemDO().setId(item.getId()).setSaleOutId(saleOut.getId())));
-        submitMapper.selectListByOrderId(order.getId()).forEach(submit -> submitMapper.updateById(
+        List<ErpSalePickDeliverySubmitDO> submits = submitMapper.selectListByOrderId(order.getId());
+        submits.forEach(submit -> submitMapper.updateById(
                 new ErpSalePickDeliverySubmitDO().setId(submit.getId()).setSaleOutId(saleOut.getId())));
+        syncPrimaryExpressFileIfBlank(saleOut, submits);
         return true;
+    }
+
+    /**
+     * 销售手推车履约完成后生成销售单时，将最新一次送货提交的第一张快递单同步为兼容主图。
+     * 全部附件仍保留在送货附件表中；这里仅填充旧接口依赖的单图字段，绝不覆盖已有值。
+     */
+    private void syncPrimaryExpressFileIfBlank(ErpSaleOutDO saleOut,
+                                               List<ErpSalePickDeliverySubmitDO> submits) {
+        if (StringUtils.hasText(saleOut.getExpressFileUrl()) || CollUtil.isEmpty(submits)) {
+            return;
+        }
+        List<ErpSalePickDeliverySubmitDO> deliverySubmits = submits.stream()
+                .filter(submit -> ErpSalePickDeliverySubmitTypeEnum.DELIVERY.getType().equals(submit.getType()))
+                .sorted(Comparator
+                        .comparing(ErpSalePickDeliverySubmitDO::getSubmitTime,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(ErpSalePickDeliverySubmitDO::getId,
+                                Comparator.nullsLast(Comparator.reverseOrder())))
+                .collect(Collectors.toList());
+        if (deliverySubmits.isEmpty()) {
+            return;
+        }
+        Map<Long, List<ErpSalePickDeliverySubmitFileDO>> fileMap = convertMultiMap(
+                submitFileMapper.selectListBySubmitIds(convertSet(deliverySubmits,
+                        ErpSalePickDeliverySubmitDO::getId)),
+                ErpSalePickDeliverySubmitFileDO::getSubmitId);
+        Comparator<ErpSalePickDeliverySubmitFileDO> fileComparator = Comparator
+                .comparing(ErpSalePickDeliverySubmitFileDO::getSort,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ErpSalePickDeliverySubmitFileDO::getId,
+                        Comparator.nullsLast(Comparator.naturalOrder()));
+        for (ErpSalePickDeliverySubmitDO submit : deliverySubmits) {
+            ErpSalePickDeliverySubmitFileDO primaryFile = fileMap
+                    .getOrDefault(submit.getId(), Collections.emptyList()).stream()
+                    .filter(file -> StringUtils.hasText(file.getFileUrl()))
+                    .min(fileComparator)
+                    .orElse(null);
+            if (primaryFile == null) {
+                continue;
+            }
+            String fileUrl = primaryFile.getFileUrl().trim();
+            saleOutMapper.updateById(new ErpSaleOutDO().setId(saleOut.getId()).setExpressFileUrl(fileUrl));
+            saleOut.setExpressFileUrl(fileUrl);
+            return;
+        }
+    }
+
+    private <T> PageResult<T> pageList(List<T> rows, PageParam pageParam) {
+        if (CollUtil.isEmpty(rows)) {
+            return PageResult.empty();
+        }
+        int pageNo = pageParam.getPageNo() == null ? 1 : pageParam.getPageNo();
+        int pageSize = pageParam.getPageSize() == null ? 10 : pageParam.getPageSize();
+        int from = Math.max(0, (pageNo - 1) * pageSize);
+        if (from >= rows.size()) {
+            return new PageResult<>(Collections.emptyList(), (long) rows.size());
+        }
+        int to = Math.min(rows.size(), from + pageSize);
+        return new PageResult<>(rows.subList(from, to), (long) rows.size());
     }
 
     private Integer buildStatus(Integer doneCount, Integer totalCount, Integer waiting, Integer partial, Integer done) {
@@ -1038,13 +1791,54 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
     private ErpSalePickTaskRespVO buildPickResp(ErpSalePickDeliveryPickTaskDO task) {
         ErpSalePickTaskRespVO resp = BeanUtils.toBean(task, ErpSalePickTaskRespVO.class);
         resp.setDisplayNo(buildDisplayNo(task.getSaleOutNo(), task.getSourceNo()));
+        resp.setSourceTypeName(ErpSaleBizSourceTypeEnum.getPickSourceName(task.getSourceType()));
         resp.setPickProgress(buildProgress(task.getPickedItemCount(), task.getTotalItemCount()));
         return resp;
+    }
+
+    private void fillPickQuantity(ErpSalePickDeliverySummaryRespVO resp,
+                                  BigDecimal totalQuantity, BigDecimal pickedQuantity) {
+        BigDecimal normalizedTotal = totalQuantity == null ? BigDecimal.ZERO : totalQuantity;
+        BigDecimal normalizedPicked = pickedQuantity == null ? BigDecimal.ZERO : pickedQuantity;
+        resp.setTotalQuantity(normalizedTotal);
+        resp.setPickedQuantity(normalizedPicked);
+        resp.setRemainingPickQuantity(normalizedTotal.subtract(normalizedPicked).max(BigDecimal.ZERO));
+    }
+
+    private void fillPickQuantity(ErpSalePickTaskRespVO resp,
+                                  BigDecimal totalQuantity, BigDecimal pickedQuantity) {
+        BigDecimal normalizedTotal = totalQuantity == null ? BigDecimal.ZERO : totalQuantity;
+        BigDecimal normalizedPicked = pickedQuantity == null ? BigDecimal.ZERO : pickedQuantity;
+        resp.setTotalQuantity(normalizedTotal);
+        resp.setPickedQuantity(normalizedPicked);
+        resp.setRemainingPickQuantity(normalizedTotal.subtract(normalizedPicked).max(BigDecimal.ZERO));
+    }
+
+    private ErpSaleOutPickDeliveryOperationItemRespVO buildOperationItemResp(
+            ErpSalePickDeliverySubmitItemDO submitItem, ErpSalePickDeliverySubmitDO submit,
+            ErpSalePickDeliveryItemDO item, AdminUserRespDTO user, Integer defaultType) {
+        return new ErpSaleOutPickDeliveryOperationItemRespVO()
+                .setId(submitItem.getId())
+                .setSubmitId(submitItem.getSubmitId())
+                .setType(submit == null ? defaultType : submit.getType())
+                .setSubmitUserId(submit == null ? null : submit.getSubmitUserId())
+                .setSubmitUserName(user == null ? null : user.getNickname())
+                .setSubmitTime(submit == null ? null : submit.getSubmitTime())
+                .setItemId(submitItem.getItemId())
+                .setProductCode(StringUtils.hasText(submitItem.getProductCode())
+                        ? submitItem.getProductCode() : item == null ? null : item.getProductCode())
+                .setProductName(StringUtils.hasText(submitItem.getProductName())
+                        ? submitItem.getProductName() : item == null ? null : item.getProductName())
+                .setStandard(item == null ? null : item.getStandard())
+                .setWarehouseId(item == null ? null : item.getWarehouseId())
+                .setWarehouseName(item == null ? null : item.getWarehouseName())
+                .setQuantity(submitItem.getQuantity());
     }
 
     private ErpSalePickTaskRespVO buildPickResp(ErpSalePickDeliveryPickTaskDO task, boolean includeDetail) {
         ErpSalePickTaskRespVO resp = BeanUtils.toBean(task, ErpSalePickTaskRespVO.class);
         resp.setDisplayNo(buildDisplayNo(task.getSaleOutNo(), task.getSourceNo()));
+        resp.setSourceTypeName(ErpSaleBizSourceTypeEnum.getPickSourceName(task.getSourceType()));
         resp.setPickProgress(buildProgress(task.getPickedItemCount(), task.getTotalItemCount()));
         List<Long> warehouses = warehouseService.getUserPickWarehouseIds(getLoginUserId());
         resp.setWarehouseOperable(warehouses != null && warehouses.contains(task.getWarehouseId()));

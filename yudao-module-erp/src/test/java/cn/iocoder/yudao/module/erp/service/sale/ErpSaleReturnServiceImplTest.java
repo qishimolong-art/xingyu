@@ -12,6 +12,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
@@ -23,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
@@ -62,12 +64,14 @@ import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -98,6 +102,8 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
     private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
     @Mock
     private ErpSaleReturnItemMapper saleReturnItemMapper;
+    @Mock
+    private ErpSalePickDeliveryService salePickDeliveryService;
     @Mock
     private ErpStockMoveItemMapper stockMoveItemMapper;
     @Mock
@@ -151,6 +157,8 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Mock
+    private ErpSaleDirectDeptPermissionService saleDirectDeptPermissionService;
+    @Mock
     private ErpPurchaseReturnService purchaseReturnService;
     @Mock
     private ErpSupplierService supplierService;
@@ -177,6 +185,43 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
                 .thenAnswer(invocation -> Collections.singletonList(
                         new ErpWarehouseDO().setId(((java.util.Collection<Long>) invocation.getArgument(0))
                                 .stream().filter(java.util.Objects::nonNull).findFirst().orElse(400L))));
+        lenient().when(stockService.getStock(anyLong(), anyLong())).thenAnswer(invocation ->
+                new ErpStockDO().setId(1L).setProductId(invocation.getArgument(0))
+                        .setWarehouseId(invocation.getArgument(1)).setDeptId(30L));
+    }
+
+    @Test
+    public void testCancelConfirm_unstarted_returnsToPendingConfirmation() {
+        ErpSaleReturnDO saleReturn = new ErpSaleReturnDO().setId(70L).setNo("XSTH70")
+                .setStatus(ErpSaleReturnStatusEnum.PICKING.getStatus())
+                .setReturnMode(ErpSaleReturnModeEnum.BY_SALE_OUT.getMode());
+        when(saleReturnMapper.selectById(70L)).thenReturn(saleReturn);
+        when(saleReturnMapper.updateByIdAndStatus(eq(70L), eq(ErpSaleReturnStatusEnum.PICKING.getStatus()),
+                any(ErpSaleReturnDO.class))).thenReturn(1);
+        when(currentCostService.isEnabled()).thenReturn(false);
+
+        saleReturnService.cancelConfirmSaleReturn(70L);
+
+        InOrder inOrder = inOrder(salePickDeliveryService, saleReturnMapper);
+        inOrder.verify(salePickDeliveryService).rollbackUnstartedSaleReturnFulfillment(70L);
+        inOrder.verify(saleReturnMapper).selectByIdForUpdate(70L);
+        verify(saleReturnMapper).updateByIdAndStatus(eq(70L), eq(ErpSaleReturnStatusEnum.PICKING.getStatus()),
+                argThat(update -> ErpSaleReturnStatusEnum.PROCESS.getStatus().equals(update.getStatus())
+                        && update.getConfirmUserId() == null && update.getConfirmTime() == null
+                        && update.getFrozenCostBasisSignature() == null));
+    }
+
+    @Test
+    public void testCancelConfirm_pickStarted_propagatesAndDoesNotUnlockDocument() {
+        ErpSaleReturnDO saleReturn = new ErpSaleReturnDO().setId(70L)
+                .setStatus(ErpSaleReturnStatusEnum.PICKING.getStatus());
+        when(saleReturnMapper.selectById(70L)).thenReturn(saleReturn);
+        doThrow(new ServiceException(ErrorCodeConstants.SALE_RETURN_PICK_ALREADY_STARTED))
+                .when(salePickDeliveryService).rollbackUnstartedSaleReturnFulfillment(70L);
+
+        assertThrows(ServiceException.class, () -> saleReturnService.cancelConfirmSaleReturn(70L));
+
+        verify(saleReturnMapper, never()).updateByIdAndStatus(anyLong(), anyInt(), any());
     }
 
     @Test
@@ -385,7 +430,8 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
         when(saleOutService.validateSaleOut(eq(10L))).thenReturn(new ErpSaleOutDO()
                 .setId(10L).setNo("XSCK001").setCustomerId(20L));
         when(saleOutService.getSaleOutItemListByOutId(eq(10L))).thenReturn(Collections.singletonList(new ErpSaleOutItemDO()
-                .setId(100L).setOutId(10L).setProductId(200L).setWarehouseId(300L)
+                .setId(100L).setOutId(10L).setProductId(200L).setWarehouseId(300L).setDeptId(30L)
+                .setSourceWarehouseId(301L).setSourceDeptId(31L)
                 .setProductPrice(new BigDecimal("10")).setCount(new BigDecimal("5"))));
         when(stockOutBillService.getSaleOutSourceItemList(eq(10L))).thenReturn(Collections.emptyList());
         when(saleReturnMapper.selectListBySourceOutId(eq(10L))).thenReturn(Collections.emptyList());
@@ -410,27 +456,64 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
                 && ErpAuditStatus.PROCESS.getStatus().equals(saleReturn.getStatus())));
         verify(saleReturnItemMapper).insertBatch(argThat(items -> {
             ErpSaleReturnItemDO item = items.iterator().next();
-            return item.getId() == null && item.getSourceOutItemId().equals(100L);
+            return item.getId() == null && item.getSourceOutItemId().equals(100L)
+                    && Long.valueOf(301L).equals(item.getWarehouseId())
+                    && Long.valueOf(31L).equals(item.getDeptId());
         }));
+    }
+
+    @Test
+    public void testCreateBySaleOut_productMismatch_throwException() {
+        ErpSaleReturnSaveReqVO reqVO = buildBaseReq(ErpSaleReturnModeEnum.BY_SALE_OUT.getMode());
+        reqVO.setSourceOutId(10L);
+        reqVO.setItems(Collections.singletonList(buildItem(BigDecimal.ONE).setSourceOutItemId(100L)));
+        when(saleOutService.validateSaleOut(10L)).thenReturn(new ErpSaleOutDO().setId(10L));
+        when(saleOutService.getSaleOutItemListByOutId(10L)).thenReturn(Collections.singletonList(
+                new ErpSaleOutItemDO().setId(100L).setProductId(201L).setWarehouseId(300L)));
+
+        assertException(() -> saleReturnService.createSaleReturn(reqVO),
+                ErrorCodeConstants.SALE_RETURN_SOURCE_OUT_ITEM_PRODUCT_MISMATCH);
+        verify(saleReturnMapper, never()).insert(any(ErpSaleReturnDO.class));
+    }
+
+    @Test
+    public void testCreateBySaleOut_sourceWarehouseStockMissing_throwException() {
+        ErpSaleReturnSaveReqVO reqVO = buildBaseReq(ErpSaleReturnModeEnum.BY_SALE_OUT.getMode());
+        reqVO.setSourceOutId(10L);
+        reqVO.setItems(Collections.singletonList(buildItem(BigDecimal.ONE).setSourceOutItemId(100L)));
+        when(saleOutService.validateSaleOut(10L)).thenReturn(new ErpSaleOutDO().setId(10L));
+        when(saleOutService.getSaleOutItemListByOutId(10L)).thenReturn(Collections.singletonList(
+                new ErpSaleOutItemDO().setId(100L).setProductId(200L).setWarehouseId(300L)
+                        .setSourceWarehouseId(301L).setSourceDeptId(31L)));
+        when(stockService.getStock(200L, 301L)).thenReturn(null);
+
+        assertException(() -> saleReturnService.createSaleReturn(reqVO),
+                ErrorCodeConstants.SALE_RETURN_SOURCE_WAREHOUSE_STOCK_NOT_EXISTS);
+        verify(saleReturnMapper, never()).insert(any(ErpSaleReturnDO.class));
     }
 
     @Test
     public void testCreateBySaleOut_withStockOutBill_exceedPickedCount_throwException() {
         ErpSaleReturnSaveReqVO reqVO = buildBaseReq(ErpSaleReturnModeEnum.BY_SALE_OUT.getMode());
         reqVO.setSourceOutId(10L);
-        reqVO.setItems(Collections.singletonList(buildItem(new BigDecimal("3")).setSourceOutItemId(100L)));
+        reqVO.setItems(Collections.singletonList(buildItem(new BigDecimal("3.000")).setSourceOutItemId(100L)));
 
         when(saleOutService.validateSaleOut(eq(10L))).thenReturn(new ErpSaleOutDO()
                 .setId(10L).setNo("XSCK001").setCustomerId(20L));
         when(saleOutService.getSaleOutItemListByOutId(eq(10L))).thenReturn(Collections.singletonList(new ErpSaleOutItemDO()
                 .setId(100L).setOutId(10L).setProductId(200L).setWarehouseId(300L)
-                .setProductPrice(new BigDecimal("10")).setCount(new BigDecimal("5"))));
+                .setProductPrice(new BigDecimal("10")).setCount(new BigDecimal("5.000"))));
         when(stockOutBillService.getSaleOutSourceItemList(eq(10L))).thenReturn(Collections.singletonList(
-                new ErpStockOutBillItemDO().setSourceItemId(100L).setPickedCount(new BigDecimal("2"))));
+                new ErpStockOutBillItemDO().setSourceItemId(100L).setPickedCount(new BigDecimal("2.000"))));
         when(saleReturnMapper.selectListBySourceOutId(eq(10L))).thenReturn(Collections.emptyList());
+        when(productService.getProduct(200L)).thenReturn(new ErpProductDO()
+                .setId(200L).setName("测试机油").setCode("P200"));
 
-        assertException(() -> saleReturnService.createSaleReturn(reqVO),
-                ErrorCodeConstants.SALE_RETURN_EXCEED_RETURNABLE);
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> saleReturnService.createSaleReturn(reqVO));
+        assertEquals(ErrorCodeConstants.SALE_RETURN_EXCEED_RETURNABLE.getCode(), exception.getCode());
+        assertEquals("产品【测试机油（配件编码：P200）】本次退货数量 3，超过可退数量 2",
+                exception.getMessage());
         verify(saleReturnMapper, never()).insert(any(ErpSaleReturnDO.class));
     }
 
@@ -617,6 +700,60 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testSubmitDraft_bySaleOut_correctsSourceWarehouse() {
+        Long id = 194L;
+        ErpSaleReturnDO draft = new ErpSaleReturnDO().setId(id).setNo("XTH194")
+                .setStatus(ErpSaleReturnStatusEnum.DRAFT.getStatus())
+                .setReturnMode(ErpSaleReturnModeEnum.BY_SALE_OUT.getMode())
+                .setSourceOutId(10L).setCustomerId(20L).setDeptId(30L);
+        ErpSaleReturnItemDO persistedItem = new ErpSaleReturnItemDO().setId(1L).setReturnId(id)
+                .setSourceOutItemId(100L).setProductId(200L).setWarehouseId(300L).setDeptId(30L)
+                .setProductPrice(new BigDecimal("10")).setCount(BigDecimal.ONE);
+        when(saleReturnMapper.selectById(id)).thenReturn(draft);
+        when(saleReturnItemMapper.selectListByReturnId(id)).thenReturn(Collections.singletonList(persistedItem));
+        when(saleOutService.validateSaleOut(10L)).thenReturn(new ErpSaleOutDO().setId(10L).setCustomerId(20L));
+        when(saleOutService.getSaleOutItemListByOutId(10L)).thenReturn(Collections.singletonList(
+                new ErpSaleOutItemDO().setId(100L).setProductId(200L).setWarehouseId(300L).setDeptId(30L)
+                        .setSourceWarehouseId(301L).setSourceDeptId(31L).setCount(new BigDecimal("5"))));
+        when(saleReturnMapper.selectListBySourceOutId(10L)).thenReturn(Collections.emptyList());
+        when(stockOutBillService.getSaleOutSourceItemList(10L)).thenReturn(Collections.emptyList());
+        mockProduct();
+        when(saleReturnMapper.updateByIdAndStatus(eq(id), eq(ErpSaleReturnStatusEnum.DRAFT.getStatus()), any()))
+                .thenReturn(1);
+
+        saleReturnService.submitSaleReturn(id);
+
+        verify(saleReturnItemMapper).updateBatch(org.mockito.Mockito.<Collection<ErpSaleReturnItemDO>>argThat(items -> {
+            ErpSaleReturnItemDO item = items.iterator().next();
+            return Long.valueOf(301L).equals(item.getWarehouseId()) && Long.valueOf(31L).equals(item.getDeptId());
+        }));
+        verify(saleReturnMapper).updateByIdAndStatus(eq(id), eq(ErpSaleReturnStatusEnum.DRAFT.getStatus()), any());
+    }
+
+    @Test
+    public void testGetSaleReturnItemPage_unapprovedBySaleOut_projectsSourceWarehouseWithoutPersisting() {
+        Long id = 195L;
+        ErpSaleReturnItemPageReqVO reqVO = new ErpSaleReturnItemPageReqVO();
+        reqVO.setReturnId(id);
+        ErpSaleReturnItemDO persistedItem = new ErpSaleReturnItemDO().setId(1L).setReturnId(id)
+                .setSourceOutItemId(100L).setProductId(200L).setWarehouseId(300L).setDeptId(30L);
+        when(saleReturnMapper.selectById(id)).thenReturn(new ErpSaleReturnDO().setId(id)
+                .setStatus(ErpSaleReturnStatusEnum.DRAFT.getStatus())
+                .setReturnMode(ErpSaleReturnModeEnum.BY_SALE_OUT.getMode()).setSourceOutId(10L));
+        when(saleReturnItemMapper.selectPageByReturnId(reqVO))
+                .thenReturn(new PageResult<>(Collections.singletonList(persistedItem), 1L));
+        when(saleOutService.getSaleOutItemListByOutId(10L)).thenReturn(Collections.singletonList(
+                new ErpSaleOutItemDO().setId(100L).setProductId(200L).setWarehouseId(300L).setDeptId(30L)
+                        .setSourceWarehouseId(301L).setSourceDeptId(31L)));
+
+        PageResult<ErpSaleReturnItemDO> result = saleReturnService.getSaleReturnItemPage(reqVO);
+
+        assertEquals(301L, result.getList().get(0).getWarehouseId());
+        assertEquals(31L, result.getList().get(0).getDeptId());
+        verify(saleReturnItemMapper, never()).updateBatch(anyCollection());
+    }
+
+    @Test
     public void testUpdateSaleReturn_processStatus_success() {
         Long id = 200L;
         ErpSaleReturnSaveReqVO reqVO = buildBaseReq(ErpSaleReturnModeEnum.BY_STOCK.getMode());
@@ -662,14 +799,18 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
         Long id = 300L;
         ErpSaleReturnDO saleReturn = new ErpSaleReturnDO()
                 .setId(id).setNo("XTH300")
-                .setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setStatus(ErpSaleReturnStatusEnum.PICKING.getStatus())
                 .setRefundPrice(BigDecimal.ZERO)
                 .setReturnTime(LocalDateTime.of(2026, 5, 10, 10, 0))
                 .setSourceOutId(null); // 简化：避免触发 updateSaleOutReturnStatus
         when(saleReturnMapper.selectById(eq(id))).thenReturn(saleReturn);
-        when(saleReturnMapper.updateByIdAndStatus(eq(id), eq(ErpAuditStatus.PROCESS.getStatus()),
+        when(saleReturnMapper.updateByIdAndStatus(eq(id), eq(ErpSaleReturnStatusEnum.PICKING.getStatus()),
                 argThat((ErpSaleReturnDO upd) -> ErpAuditStatus.APPROVE.getStatus().equals(upd.getStatus()))))
                 .thenReturn(1);
+        when(salePickDeliveryService.getSummaryMapBySaleReturnIds(Collections.singleton(id)))
+                .thenReturn(Collections.singletonMap(id,
+                        new cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO()
+                                .setPickStatus(cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum.DONE.getStatus())));
         ErpSaleReturnItemDO item = new ErpSaleReturnItemDO()
                 .setId(1000L).setReturnId(id)
                 .setProductId(200L).setWarehouseId(300L)
@@ -687,6 +828,44 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
                 && Long.valueOf(300L).equals(bo.getWarehouseId())));
         // 未开账不生成凭证
         verify(voucherService, never()).createVoucherFromBiz(anyInt(), anyLong(), anyString(), any(), any(), anyString(), any());
+    }
+
+    @Test
+    public void testUpdateSaleReturnStatus_bySaleOut_postsToSourceWarehouse() {
+        Long id = 304L;
+        ErpSaleReturnDO saleReturn = new ErpSaleReturnDO().setId(id).setNo("XTH304")
+                .setStatus(ErpSaleReturnStatusEnum.PICKING.getStatus())
+                .setReturnMode(ErpSaleReturnModeEnum.BY_SALE_OUT.getMode())
+                .setSourceOutId(10L).setDeptId(30L).setRefundPrice(BigDecimal.ZERO)
+                .setReturnTime(LocalDateTime.of(2026, 10, 20, 10, 0));
+        ErpSaleReturnItemDO item = new ErpSaleReturnItemDO().setId(1000L).setReturnId(id)
+                .setSourceOutItemId(100L).setProductId(200L).setWarehouseId(300L).setDeptId(30L)
+                .setProductPrice(new BigDecimal("10")).setCount(BigDecimal.ONE);
+        when(saleReturnMapper.selectById(id)).thenReturn(saleReturn);
+        when(saleReturnItemMapper.selectListByReturnId(id)).thenReturn(Collections.singletonList(item));
+        when(saleOutService.validateSaleOut(10L)).thenReturn(new ErpSaleOutDO().setId(10L));
+        when(saleOutService.getSaleOutItemListByOutId(10L)).thenReturn(Collections.singletonList(
+                new ErpSaleOutItemDO().setId(100L).setProductId(200L).setWarehouseId(300L).setDeptId(30L)
+                        .setSourceWarehouseId(301L).setSourceDeptId(31L).setCount(new BigDecimal("5"))));
+        when(saleReturnMapper.selectListBySourceOutId(10L)).thenReturn(Collections.emptyList());
+        when(stockOutBillService.getSaleOutSourceItemList(10L)).thenReturn(Collections.emptyList());
+        when(saleReturnMapper.updateByIdAndStatus(eq(id), eq(ErpSaleReturnStatusEnum.PICKING.getStatus()), any()))
+                .thenReturn(1);
+        when(salePickDeliveryService.getSummaryMapBySaleReturnIds(Collections.singleton(id)))
+                .thenReturn(Collections.singletonMap(id,
+                        new cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO()
+                                .setPickStatus(cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum.DONE.getStatus())));
+        when(warehouseService.validSaleWarehouseList(Collections.singletonList(301L)))
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(301L)));
+        when(saleReturnCostService.prepareApproval(any(), any())).thenReturn(Collections.emptyMap());
+        when(saleReturnCostService.getPreparedReturnStatus(id)).thenReturn(1);
+
+        saleReturnService.updateSaleReturnStatus(id, ErpAuditStatus.APPROVE.getStatus());
+
+        verify(saleReturnItemMapper).updateBatch(anyCollection());
+        verify(stockRecordService).createStockRecord(argThat((ErpStockRecordCreateReqBO bo) ->
+                Long.valueOf(301L).equals(bo.getWarehouseId()) && Long.valueOf(200L).equals(bo.getProductId())
+                        && BigDecimal.ONE.compareTo(bo.getCount()) == 0));
     }
 
     @Test
@@ -718,11 +897,15 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
         Long id = 303L;
         ErpSaleReturnDO saleReturn = new ErpSaleReturnDO()
                 .setId(id).setNo("XTH303")
-                .setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setStatus(ErpSaleReturnStatusEnum.PICKING.getStatus())
                 .setRefundPrice(BigDecimal.ZERO);
         when(saleReturnMapper.selectById(eq(id))).thenReturn(saleReturn);
+        when(salePickDeliveryService.getSummaryMapBySaleReturnIds(Collections.singleton(id)))
+                .thenReturn(Collections.singletonMap(id,
+                        new cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO()
+                                .setPickStatus(cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum.DONE.getStatus())));
         // 乐观锁失败：updateByIdAndStatus 返回 0
-        when(saleReturnMapper.updateByIdAndStatus(eq(id), eq(ErpAuditStatus.PROCESS.getStatus()), any()))
+        when(saleReturnMapper.updateByIdAndStatus(eq(id), eq(ErpSaleReturnStatusEnum.PICKING.getStatus()), any()))
                 .thenReturn(0);
 
         assertException(() -> saleReturnService.updateSaleReturnStatus(id, ErpAuditStatus.APPROVE.getStatus()),
@@ -781,17 +964,19 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
     @Test
     public void testCreateTransferOutFromSaleReturn_exceedAvailable_throwException() {
         Long returnId = 702L;
-        ErpSaleReturnItemDO sourceItem = buildSourceReturnItem(901L, returnId, new BigDecimal("5"));
+        ErpSaleReturnItemDO sourceItem = buildSourceReturnItem(901L, returnId, new BigDecimal("5.000"));
         when(saleReturnMapper.selectById(eq(returnId))).thenReturn(new ErpSaleReturnDO()
                 .setId(returnId).setNo("XTH702").setStatus(ErpAuditStatus.APPROVE.getStatus()));
         when(saleReturnItemMapper.selectListByReturnId(eq(returnId)))
                 .thenReturn(Collections.singletonList(sourceItem));
         when(stockMoveItemMapper.selectMovedCountMapBySourceSaleReturnItemIds(anyCollection(), eq(null)))
-                .thenReturn(Collections.singletonMap(901L, new BigDecimal("4")));
+                .thenReturn(Collections.singletonMap(901L, new BigDecimal("4.000")));
+        when(productService.getProduct(200L)).thenReturn(new ErpProductDO()
+                .setId(200L).setName("测试机油").setCode("P200"));
 
         ErpSaleReturnCreateTransferOutReqVO.Item item = new ErpSaleReturnCreateTransferOutReqVO.Item();
         item.setSourceSaleReturnItemId(901L);
-        item.setCount(new BigDecimal("2"));
+        item.setCount(new BigDecimal("2.500"));
         item.setFromWarehouseId(300L);
         item.setFromDeptId(30L);
         item.setToWarehouseId(301L);
@@ -800,9 +985,95 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setReturnId(returnId);
         reqVO.setItems(Collections.singletonList(item));
 
-        assertException(() -> saleReturnService.createTransferOutFromSaleReturn(reqVO),
-                ErrorCodeConstants.SALE_RETURN_TRANSFER_EXCEED_AVAILABLE);
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> saleReturnService.createTransferOutFromSaleReturn(reqVO));
+        assertEquals(ErrorCodeConstants.SALE_RETURN_TRANSFER_EXCEED_AVAILABLE.getCode(), exception.getCode());
+        assertEquals("产品【测试机油（配件编码：P200）】本次转单数量 2.5，超过可转数量 1",
+                exception.getMessage());
         verify(stockMoveService, never()).createStockTransferOutDraft(any());
+    }
+
+    @Test
+    public void testCreatePurchaseReturnFromSaleReturn_exceedAvailable_formatsCounts() {
+        Long returnId = 705L;
+        ErpSaleReturnItemDO sourceItem = buildSourceReturnItem(904L, returnId, new BigDecimal("5.000"));
+        when(saleReturnMapper.selectById(eq(returnId))).thenReturn(new ErpSaleReturnDO()
+                .setId(returnId).setNo("XTH705").setStatus(ErpAuditStatus.APPROVE.getStatus()));
+        when(saleReturnItemMapper.selectListByReturnId(eq(returnId)))
+                .thenReturn(Collections.singletonList(sourceItem));
+        when(purchaseReturnItemMapper.selectReturnedCountMapBySourceSaleReturnItemIds(anyCollection(), eq(null)))
+                .thenReturn(Collections.singletonMap(904L, new BigDecimal("4.500")));
+        when(productService.getProduct(200L)).thenReturn(new ErpProductDO()
+                .setId(200L).setName("测试机油").setCode("P200"));
+
+        ErpSaleReturnCreatePurchaseReturnReqVO.Item item = new ErpSaleReturnCreatePurchaseReturnReqVO.Item();
+        item.setSourceSaleReturnItemId(904L);
+        item.setCount(new BigDecimal("1.250"));
+        item.setProductPrice(new BigDecimal("12"));
+        ErpSaleReturnCreatePurchaseReturnReqVO reqVO = new ErpSaleReturnCreatePurchaseReturnReqVO();
+        reqVO.setReturnId(returnId);
+        reqVO.setSupplierId(11L);
+        reqVO.setDeptId(30L);
+        reqVO.setItems(Collections.singletonList(item));
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> saleReturnService.createPurchaseReturnFromSaleReturn(reqVO));
+        assertEquals(ErrorCodeConstants.SALE_RETURN_TRANSFER_EXCEED_AVAILABLE.getCode(), exception.getCode());
+        assertEquals("产品【测试机油（配件编码：P200）】本次转单数量 1.25，超过可转数量 0.5",
+                exception.getMessage());
+        verify(purchaseReturnService, never()).createPurchaseReturnDraft(any());
+    }
+
+    @Test
+    public void testFormatCountForMessage_stripsTrailingZeros() {
+        assertEquals("1", ErpSaleReturnServiceImpl.formatCountForMessage(new BigDecimal("1.000")));
+        assertEquals("1.25", ErpSaleReturnServiceImpl.formatCountForMessage(new BigDecimal("1.250")));
+        assertEquals("0", ErpSaleReturnServiceImpl.formatCountForMessage(new BigDecimal("0.000")));
+        assertEquals("-2.5", ErpSaleReturnServiceImpl.formatCountForMessage(new BigDecimal("-2.500")));
+    }
+
+    @Test
+    public void testFormatProductForMessage_usesBusinessReadableFields() {
+        assertEquals("测试机油（配件编码：P200）",
+                ErpSaleReturnServiceImpl.formatProductForMessage(" 测试机油 ", " P200 "));
+        assertEquals("测试机油", ErpSaleReturnServiceImpl.formatProductForMessage("测试机油", null));
+        assertEquals("配件编码：P200", ErpSaleReturnServiceImpl.formatProductForMessage(null, "P200"));
+        assertEquals("所选商品", ErpSaleReturnServiceImpl.formatProductForMessage(" ", " "));
+    }
+
+    @Test
+    public void testCreateTransferOutFromSaleReturn_overwritesForgedSourceWarehouse() {
+        Long returnId = 704L;
+        ErpSaleReturnItemDO sourceItem = buildSourceReturnItem(903L, returnId, new BigDecimal("5"));
+        when(saleReturnMapper.selectById(returnId)).thenReturn(new ErpSaleReturnDO()
+                .setId(returnId).setNo("XTH704").setStatus(ErpAuditStatus.APPROVE.getStatus()));
+        when(saleReturnItemMapper.selectListByReturnId(returnId))
+                .thenReturn(Collections.singletonList(sourceItem));
+        when(stockMoveItemMapper.selectMovedCountMapBySourceSaleReturnItemIds(anyCollection(), eq(null)))
+                .thenReturn(Collections.emptyMap());
+        when(warehouseService.validWarehouseList(anyCollection())).thenReturn(java.util.Arrays.asList(
+                new ErpWarehouseDO().setId(300L).setDeptId(30L),
+                new ErpWarehouseDO().setId(301L).setDeptId(31L)));
+        when(stockMoveService.createStockTransferOutDraft(any())).thenReturn(802L);
+
+        ErpSaleReturnCreateTransferOutReqVO.Item item = new ErpSaleReturnCreateTransferOutReqVO.Item();
+        item.setSourceSaleReturnItemId(903L);
+        item.setCount(new BigDecimal("2"));
+        item.setFromWarehouseId(999L);
+        item.setFromDeptId(99L);
+        item.setToWarehouseId(301L);
+        item.setToDeptId(31L);
+        ErpSaleReturnCreateTransferOutReqVO reqVO = new ErpSaleReturnCreateTransferOutReqVO();
+        reqVO.setReturnId(returnId);
+        reqVO.setItems(Collections.singletonList(item));
+
+        ErpSaleReturnCreateTargetDraftRespVO result = saleReturnService.createTransferOutFromSaleReturn(reqVO);
+
+        assertEquals(Collections.singletonList(802L), result.getIds());
+        verify(stockMoveService).createStockTransferOutDraft(argThat(draft ->
+                Long.valueOf(30L).equals(draft.getFromDeptId())
+                        && Long.valueOf(300L).equals(draft.getItems().get(0).getFromWarehouseId())
+                        && Long.valueOf(30L).equals(draft.getItems().get(0).getFromDeptId())));
     }
 
     @Test

@@ -25,6 +25,7 @@ public class ErpReceivableMiscSaveReqVO {
 
     @Schema(description = "金额")
     @NotNull(message = "金额不能为空")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal amount;
 
     @Schema(description = "备注")

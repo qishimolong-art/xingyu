@@ -38,16 +38,16 @@ public class ErpStockRecordReportExportRespVO {
     @ExcelProperty("包装数")
     private Integer packageQty;
 
-    @ExcelProperty("单重")
+    @ExcelProperty(value = "单重", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal weight;
 
-    @ExcelProperty("总重")
+    @ExcelProperty(value = "总重", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal totalWeight;
 
     @ExcelProperty("仓库")
     private String warehouseName;
 
-    @ExcelProperty("入库数")
+    @ExcelProperty(value = "入库数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal inCount;
 
     @ExcelProperty("入库单价")
@@ -56,7 +56,7 @@ public class ErpStockRecordReportExportRespVO {
     @ExcelProperty("入库金额")
     private String inAmount;
 
-    @ExcelProperty("出库数")
+    @ExcelProperty(value = "出库数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal outCount;
 
     @ExcelProperty("出库成本单价")
@@ -65,7 +65,7 @@ public class ErpStockRecordReportExportRespVO {
     @ExcelProperty("出库成本金额")
     private String outAmount;
 
-    @ExcelProperty("结存数")
+    @ExcelProperty(value = "结存数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal totalCount;
 
     @ExcelProperty("结存单价")

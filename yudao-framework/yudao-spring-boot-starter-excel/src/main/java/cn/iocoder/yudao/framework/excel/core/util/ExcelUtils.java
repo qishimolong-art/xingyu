@@ -238,6 +238,11 @@ public class ExcelUtils {
         LAST_OPERATION.remove();
     }
 
+    /** Preserve operation auditing when a workbook is written in bounded batches. */
+    public static void recordStreamedWrite(String filename, int rowCount, Set<String> includeColumnFieldNames) {
+        LAST_OPERATION.set(new ExcelOperationContext("WRITE", filename, rowCount, includeColumnFieldNames));
+    }
+
     private static <T> void setLastWriteOperation(String filename, List<T> data, Set<String> includeColumnFieldNames) {
         LAST_OPERATION.set(new ExcelOperationContext("WRITE", filename, data == null ? 0 : data.size(),
                 includeColumnFieldNames));

@@ -44,14 +44,14 @@ public final class ErpStockReportV2Models {
         @ExcelProperty(value="本期入库数量", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal inQuantity;
         @ExcelProperty(value="本期出库数量", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal outQuantity;
         @ExcelProperty(value="期末数量", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal closingQuantity;
-        @ExcelProperty(value="期初财务成本", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal openingFinancialAmount;
-        @ExcelProperty(value="入库财务成本", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal financialInAmount;
-        @ExcelProperty(value="出库财务成本", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal financialOutAmount;
-        @ExcelProperty(value="期末财务成本", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal closingFinancialAmount;
-        @ExcelProperty(value="期初结算成本", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal openingSettlementAmount;
-        @ExcelProperty(value="入库结算成本", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal settlementInAmount;
-        @ExcelProperty(value="出库结算成本", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal settlementOutAmount;
-        @ExcelProperty(value="期末结算成本", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal closingSettlementAmount;
+        @ExcelProperty(value="期初财务成本", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal openingFinancialAmount;
+        @ExcelProperty(value="入库财务成本", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal financialInAmount;
+        @ExcelProperty(value="出库财务成本", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal financialOutAmount;
+        @ExcelProperty(value="期末财务成本", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal closingFinancialAmount;
+        @ExcelProperty(value="期初结算成本", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal openingSettlementAmount;
+        @ExcelProperty(value="入库结算成本", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal settlementInAmount;
+        @ExcelProperty(value="出库结算成本", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal settlementOutAmount;
+        @ExcelProperty(value="期末结算成本", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal closingSettlementAmount;
         private Boolean financialMasked;
         private Boolean settlementMasked;
         /** 按业务类型的本期有符号发生额；不完整时为null，已知无发生时为空数组。 */
@@ -94,7 +94,7 @@ public final class ErpStockReportV2Models {
         @ExcelProperty("来源单据编号") private Long sourceBizId;
         @ExcelProperty("来源明细编号") private Long sourceBizItemId;
         @ExcelProperty("原过账编号") private Long reversalPostingId;
-        @ExcelProperty("过账时间") @JsonSerialize(using = ToStringSerializer.class) private LocalDateTime postedAt;
+        @ExcelProperty(value = "过账时间") @JsonSerialize(using = ToStringSerializer.class) private LocalDateTime postedAt;
         @ExcelProperty("核算起点类型") private String originKind;
         @ExcelProperty(value="可计算起点", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDateTimeTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private LocalDateTime availableFrom;
         @ExcelProperty("业务日期") @JsonSerialize(using = ToStringSerializer.class) private LocalDateTime bizDate;
@@ -102,8 +102,8 @@ public final class ErpStockReportV2Models {
         @ExcelProperty(value="财务成本发生额", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal financialMovement;
         @ExcelProperty(value="结算成本发生额", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal settlementMovement;
         @ExcelProperty(value="结存数量", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal balanceQuantity;
-        @ExcelProperty(value="财务成本结存", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal financialBalance;
-        @ExcelProperty(value="结算成本结存", converter=cn.iocoder.yudao.module.erp.service.stock.report.ErpReportDecimalTextConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal settlementBalance;
+        @ExcelProperty(value="财务成本结存", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal financialBalance;
+        @ExcelProperty(value="结算成本结存", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class) @JsonSerialize(using = ToStringSerializer.class) private BigDecimal settlementBalance;
         @ExcelProperty("数据状态") private String dataStatus;
         private Boolean financialMasked;
         private Boolean settlementMasked;

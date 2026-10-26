@@ -17,12 +17,15 @@ import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import cn.iocoder.yudao.module.system.dal.mysql.dept.DeptMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.user.AdminUserMapper;
 import cn.iocoder.yudao.module.system.enums.common.SexEnum;
+import cn.iocoder.yudao.module.system.service.logger.SystemOperateLogService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 
 import javax.annotation.Resource;
 import javax.sql.DataSource;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -56,6 +59,9 @@ public class DeptServiceImplTest extends BaseDbUnitTest {
     @Resource
     private DataSource dataSource;
 
+    @MockBean
+    private SystemOperateLogService operateLogService;
+
     @AfterEach
     public void clearTenantContext() {
         TenantContextHolder.clear();
@@ -68,6 +74,9 @@ public class DeptServiceImplTest extends BaseDbUnitTest {
             o.setId(null); // 防止 id 被设置
             o.setParentId(DeptDO.PARENT_ID_ROOT);
             o.setStatus(randomCommonStatus());
+            // 带 DecimalMin/Max 的随机 VO 可能产生超长小数，使用数据库支持的六位精度。
+            o.setLongitude(new BigDecimal("104.065735"));
+            o.setLatitude(new BigDecimal("30.659462"));
         });
 
         // 调用
@@ -126,6 +135,8 @@ public class DeptServiceImplTest extends BaseDbUnitTest {
             o.setParentId(DeptDO.PARENT_ID_ROOT);
             o.setId(dbDeptDO.getId());
             o.setStatus(randomCommonStatus());
+            o.setLongitude(new BigDecimal("-104.065735"));
+            o.setLatitude(new BigDecimal("-30.659462"));
         });
 
         // 调用

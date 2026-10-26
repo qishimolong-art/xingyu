@@ -21,6 +21,9 @@ public class ErpSalePickPageReqVO extends PageParam {
     @Schema(description = "销售单号")
     private String saleOutNo;
 
+    @Schema(description = "拣货来源类型；0 销售单、30 销售手推车、70 销售退货、80 仓库移货")
+    private Integer sourceType;
+
     @Schema(description = "客户编号")
     private Long customerId;
 

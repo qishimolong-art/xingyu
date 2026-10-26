@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -117,6 +118,21 @@ class ErpReceivableAccountMapperSortTest {
     }
 
     @Test
+    void selectList_usesApprovalTimeForPeriodOpeningAndCutoffWhenRequested() {
+        ErpReceivableAccountPageReqVO reqVO = new ErpReceivableAccountPageReqVO();
+        reqVO.setDateBasis("approveTime");
+        reqVO.setApproveTime(new LocalDateTime[]{LocalDateTime.of(2026, 10, 1, 0, 0),
+                LocalDateTime.of(2026, 11, 1, 0, 0)});
+        String sql = render(reqVO);
+
+        assertTrue(sql.contains("t.approve_time >= ? AND t.approve_time < ?"));
+        assertTrue(sql.contains("t.approve_time < ?"));
+        assertTrue(sql.contains("rc.approve_time >= ? AND rc.approve_time < ?"));
+        assertTrue(sql.contains("rm.approve_time >= ? AND rm.approve_time < ?"));
+        assertFalse(sql.contains("${"));
+    }
+
+    @Test
     void selectList_usesReceivableAccountSaleOutAmountBeforeAddingPriceAdjustments() {
         String script = getSelectListScript();
 
@@ -171,6 +187,20 @@ class ErpReceivableAccountMapperSortTest {
 
     private String getSelectListScript() {
         return new ErpReceivableAccountMapper.SqlProvider().selectList();
+    }
+
+    private String render(ErpReceivableAccountPageReqVO reqVO) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("reqVO", reqVO);
+        params.put("deptIds", Collections.emptyList());
+        params.put("selfUserId", null);
+        params.put("all", true);
+        params.put("docDeptIds", Collections.emptyList());
+        params.put("docSelfUserId", null);
+        params.put("docAll", true);
+        BoundSql boundSql = new XMLLanguageDriver().createSqlSource(new Configuration(),
+                new ErpReceivableAccountMapper.SqlProvider().selectList(), Map.class).getBoundSql(params);
+        return boundSql.getSql().replaceAll("\\s+", " ");
     }
 
 }

@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.suppliertask.ErpSupplierTaskSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierTaskDO;
@@ -36,7 +38,10 @@ public class ErpSupplierTaskServiceImpl implements ErpSupplierTaskService {
     public void updateSupplierTask(ErpSupplierTaskSaveReqVO updateReqVO) {
         validateMonth(updateReqVO.getMonth());
         validateSupplierExists(updateReqVO.getSupplierId());
-        validateSupplierTaskExists(updateReqVO.getId());
+        ErpSupplierTaskDO existing = validateSupplierTaskExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getSupplierId(), updateReqVO.getSupplierId())) {
+            throw exception(SUPPLIER_TASK_NOT_EXISTS);
+        }
         validateDuplicate(updateReqVO, updateReqVO.getId());
         supplierTaskMapper.updateById(BeanUtils.toBean(updateReqVO, ErpSupplierTaskDO.class));
     }
@@ -61,10 +66,11 @@ public class ErpSupplierTaskServiceImpl implements ErpSupplierTaskService {
         }
     }
 
-    private void validateSupplierTaskExists(Long id) {
-        if (supplierTaskMapper.selectById(id) == null) {
-            throw exception(SUPPLIER_TASK_NOT_EXISTS);
-        }
+    private ErpSupplierTaskDO validateSupplierTaskExists(Long id) {
+        ErpSupplierTaskDO existing = supplierTaskMapper.selectById(id);
+        if (existing == null) throw exception(SUPPLIER_TASK_NOT_EXISTS);
+        validateSupplierExists(existing.getSupplierId());
+        return existing;
     }
 
     private void validateSupplierExists(Long supplierId) {
@@ -75,7 +81,7 @@ public class ErpSupplierTaskServiceImpl implements ErpSupplierTaskService {
 
     @Override
     public ErpSupplierTaskDO getSupplierTask(Long id) {
-        return supplierTaskMapper.selectById(id);
+        return validateSupplierTaskExists(id);
     }
 
     @Override
@@ -84,4 +90,11 @@ public class ErpSupplierTaskServiceImpl implements ErpSupplierTaskService {
         return supplierTaskMapper.selectListBySupplierId(supplierId);
     }
 
+
+    @Override
+    public PageResult<ErpSupplierTaskDO> getSupplierTaskPage(ErpSupplierItemPageReqVO reqVO) {
+        validateSupplierExists(reqVO.getSupplierId());
+        reqVO.boundPageSize();
+        return supplierTaskMapper.selectPage(reqVO);
+    }
 }

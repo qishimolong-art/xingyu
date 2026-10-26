@@ -34,6 +34,7 @@ public class ErpReceivableMiscImportExcelVO {
 
     @ExcelRequired
     @ExcelProperty("金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal amount;
 
     @ExcelProperty("备注")

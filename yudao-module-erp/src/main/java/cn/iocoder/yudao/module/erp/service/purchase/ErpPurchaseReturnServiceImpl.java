@@ -7,7 +7,6 @@ import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermi
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
@@ -25,6 +24,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
@@ -33,6 +33,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
@@ -113,6 +114,8 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     private ErpPurchaseReturnItemMapper purchaseReturnItemMapper;
     @Resource
     private ErpPurchaseInItemMapper purchaseInItemMapper;
+    @Resource
+    private ErpPurchaseInMapper purchaseInMapper;
     @Resource
     private ErpProductMapper productMapper;
     @Resource
@@ -625,7 +628,8 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         BigDecimal feeAmount = resolveFeeAmount(purchaseReturn.getFeeAmount(), purchaseReturn.getOtherPrice());
         purchaseReturn.setFeeAmount(feeAmount);
         purchaseReturn.setOtherPrice(feeAmount);
-        purchaseReturn.setDiscountPrice(MoneyUtils.priceMultiplyPercent(purchaseReturn.getTotalPrice(), purchaseReturn.getDiscountPercent()));
+        purchaseReturn.setDiscountPrice(ErpPurchaseDecimalUtils.multiplyPercent(
+                purchaseReturn.getTotalPrice(), purchaseReturn.getDiscountPercent()));
         purchaseReturn.setTotalPrice(purchaseReturn.getTotalPrice().subtract(purchaseReturn.getDiscountPrice()).add(feeAmount));
     }
 
@@ -709,7 +713,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 productPrice = BigDecimal.ZERO;
             }
             item.setProductPrice(productPrice);
-            item.setTotalPrice(MoneyUtils.priceMultiply(productPrice, item.getCount()));
+            item.setTotalPrice(ErpPurchaseDecimalUtils.multiply(productPrice, item.getCount()));
         }));
     }
 
@@ -876,7 +880,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
             fillDeptIdFromWarehouse(item, warehouseMap);
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
-            item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+            item.setTotalPrice(ErpPurchaseDecimalUtils.multiply(item.getProductPrice(), item.getCount()));
         }));
     }
 
@@ -980,11 +984,26 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 throw exception(PURCHASE_RETURN_SOURCE_IN_ITEM_NOT_EXISTS);
             }
             BigDecimal otherReturned = returnedMap.getOrDefault(sourceInItemId, BigDecimal.ZERO);
-            BigDecimal returnable = inItem.getCount().subtract(otherReturned);
+            BigDecimal returnable = inItem.getCount().subtract(otherReturned).max(BigDecimal.ZERO);
             if (currentCount.compareTo(returnable) > 0) {
-                throw exception(PURCHASE_RETURN_EXCEED_RETURNABLE, sourceInItemId, returnable, currentCount);
+                throw exception(PURCHASE_RETURN_EXCEED_RETURNABLE, describeReturnSource(inItem),
+                        returnable.stripTrailingZeros().toPlainString(),
+                        currentCount.stripTrailingZeros().toPlainString());
             }
         }
+    }
+
+    /** 只在超量报错时查询来源名称，不给正常保存增加查询或信任请求中的商品描述。 */
+    private String describeReturnSource(ErpPurchaseInItemDO inItem) {
+        ErpProductDO product = inItem.getProductId() == null ? null : productMapper.selectById(inItem.getProductId());
+        ErpPurchaseInDO purchaseIn = inItem.getInId() == null ? null : purchaseInMapper.selectById(inItem.getInId());
+        String productName = product != null && StrUtil.isNotBlank(product.getName())
+                ? product.getName() : "未找到商品资料";
+        String productCode = product != null && StrUtil.isNotBlank(product.getCode())
+                ? product.getCode() : "商品编号 " + ObjectUtil.defaultIfNull(inItem.getProductId(), "未知");
+        String sourceNo = purchaseIn != null && StrUtil.isNotBlank(purchaseIn.getNo())
+                ? purchaseIn.getNo() : "入库单编号 " + ObjectUtil.defaultIfNull(inItem.getInId(), "未知");
+        return "商品【" + productName + "】（商品编码：" + productCode + "，原入库单：" + sourceNo + "）";
     }
 
     private void updatePurchaseReturnItemList(Long id, List<ErpPurchaseReturnItemDO> newList) {

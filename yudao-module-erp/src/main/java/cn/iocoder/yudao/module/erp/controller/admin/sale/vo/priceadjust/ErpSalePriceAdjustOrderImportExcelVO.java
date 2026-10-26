@@ -12,6 +12,21 @@ import java.math.BigDecimal;
 @ExcelIgnoreUnannotated
 public class ErpSalePriceAdjustOrderImportExcelVO {
 
+    @ExcelRequired
+    @ExcelProperty("导入单号")
+    private String importNo;
+
+    @ExcelProperty("调价方式")
+    private Integer adjustType;
+
+    @ExcelRequired
+    @ExcelProperty("结算方式")
+    private String settleMethod;
+
+    @ExcelRequired
+    @ExcelProperty("送货方式")
+    private String deliveryMethod;
+
     @ExcelProperty("备注")
     private String remark;
 
@@ -37,6 +52,7 @@ public class ErpSalePriceAdjustOrderImportExcelVO {
 
     @ExcelRequired
     @ExcelProperty("调后价")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "newPrice最多支持 6 位小数")
     private BigDecimal newPrice;
 
     @ExcelProperty("调价原因")

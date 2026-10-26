@@ -29,4 +29,7 @@ public class ErpPurchasePriceAdjustImportExcelVO {
     @ExcelRequired
     @ExcelProperty("调价后单价")
     private BigDecimal newPrice;
+
+    @ExcelProperty("明细备注")
+    private String remark;
 }

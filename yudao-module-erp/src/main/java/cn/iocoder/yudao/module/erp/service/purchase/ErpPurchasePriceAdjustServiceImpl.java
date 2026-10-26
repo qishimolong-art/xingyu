@@ -5,7 +5,6 @@ import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
@@ -54,7 +53,6 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -556,7 +554,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                         ? product.getLastPurchasePrice()
                         : (productDO.getLastPurchasePrice() != null ? productDO.getLastPurchasePrice()
                         : (productDO.getPurchasePrice() != null ? productDO.getPurchasePrice() : BigDecimal.ZERO));
-                BigDecimal adjustPrice = newPrice.subtract(oldPrice).multiply(count).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal adjustPrice = ErpPurchaseDecimalUtils.multiply(newPrice.subtract(oldPrice), count);
                 ErpPurchasePriceAdjustSaveReqVO.Item item = new ErpPurchasePriceAdjustSaveReqVO.Item();
                 item.setProductId(productDO.getId());
                 item.setProductCode(productDO.getCode());
@@ -573,6 +571,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                 item.setCount(count);
                 item.setOldPrice(oldPrice);
                 item.setNewPrice(newPrice);
+                item.setRemark(trimToNull(row.getRemark()));
                 respVO.getItems().add(item);
                 respVO.setSuccessCount(respVO.getSuccessCount() + 1);
             } catch (Exception ex) {
@@ -711,6 +710,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         item.setWarehouseId(importRow.getWarehouse() == null ? null : importRow.getWarehouse().getId());
         item.setCount(row.getItemCount());
         item.setNewPrice(row.getNewPrice());
+        item.setRemark(trimToNull(row.getItemRemark()));
         item.setProductCode(product.getCode());
         item.setProductName(product.getName());
         item.setWeight(product.getWeight());
@@ -910,8 +910,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                     BigDecimal oldPrice = draftItem.getOldPrice() != null
                             ? draftItem.getOldPrice() : BigDecimal.ZERO;
                     draftItem.setOldPrice(oldPrice);
-                    draftItem.setAdjustPrice(draftItem.getNewPrice().subtract(oldPrice)
-                            .multiply(draftItem.getCount()).setScale(2, RoundingMode.HALF_UP));
+                    draftItem.setAdjustPrice(ErpPurchaseDecimalUtils.multiply(
+                            draftItem.getNewPrice().subtract(oldPrice), draftItem.getCount()));
                     return draftItem;
                 })
                 .collect(Collectors.toList());
@@ -1003,8 +1003,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                         ? product.getLastPurchasePrice()
                         : (product.getPurchasePrice() != null ? product.getPurchasePrice() : BigDecimal.ZERO);
                 BigDecimal count = voItem.getCount();
-                BigDecimal adjustPrice = voItem.getNewPrice().subtract(oldPrice).multiply(count)
-                        .setScale(2, RoundingMode.HALF_UP);
+                BigDecimal adjustPrice = ErpPurchaseDecimalUtils.multiply(
+                        voItem.getNewPrice().subtract(oldPrice), count);
 
                 ErpPurchasePriceAdjustItemDO item = BeanUtils.toBean(voItem, ErpPurchasePriceAdjustItemDO.class);
                 item.setInId(null);
@@ -1060,8 +1060,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
             // 以当前入库项单价为 oldPrice；count 以入库明细快照
             BigDecimal oldPrice = inItem.getProductPrice() != null ? inItem.getProductPrice() : BigDecimal.ZERO;
             BigDecimal count = inItem.getCount() != null ? inItem.getCount() : BigDecimal.ZERO;
-            BigDecimal adjustPrice = voItem.getNewPrice().subtract(oldPrice).multiply(count)
-                    .setScale(2, RoundingMode.HALF_UP);
+            BigDecimal adjustPrice = ErpPurchaseDecimalUtils.multiply(
+                    voItem.getNewPrice().subtract(oldPrice), count);
 
             ErpPurchasePriceAdjustItemDO item = BeanUtils.toBean(voItem, ErpPurchasePriceAdjustItemDO.class);
             item.setOldPrice(oldPrice);
@@ -1454,7 +1454,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
             }
         }
         BigDecimal discountPercent = inDO.getDiscountPercent() != null ? inDO.getDiscountPercent() : BigDecimal.ZERO;
-        BigDecimal discountPrice = MoneyUtils.priceMultiplyPercent(totalProductPrice, discountPercent);
+        BigDecimal discountPrice = ErpPurchaseDecimalUtils.multiplyPercent(totalProductPrice, discountPercent);
         if (discountPrice == null) {
             discountPrice = BigDecimal.ZERO;
         }

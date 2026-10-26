@@ -26,6 +26,9 @@ public class AssistantExecutionEnvelope {
     private AssistantSemanticRequest semanticRequest;
     private String engine = "V1";
     private AssistantExecutionAudit executionAudit;
+    private AssistantUnderstandingResult understanding;
+    private AssistantUnderstandingResult.Subtask understandingTask;
+    private List<AssistantExecutionEnvelope> subtasks = new ArrayList<>();
 
     public static AssistantExecutionEnvelope metric(String question, AssistantPlan plan) {
         AssistantExecutionEnvelope value=new AssistantExecutionEnvelope();

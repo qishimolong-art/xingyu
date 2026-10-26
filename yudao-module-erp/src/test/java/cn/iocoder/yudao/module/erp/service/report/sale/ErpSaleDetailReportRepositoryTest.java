@@ -68,7 +68,36 @@ class ErpSaleDetailReportRepositoryTest {
         assertTrue(cte.contains("WHEN so.source_type=50 THEN 'PURCHASE_IN'"));
         assertTrue(cte.contains("WHEN sr.return_mode=10 THEN sr.source_out_id END"));
         assertTrue(cte.contains("sai.id,sa.id,source_out.id,'SALE_OUT'"));
+        assertTrue(cte.contains("LEFT JOIN erp_stock_record cost_record ON cost_record.id=(SELECT MAX(cost_candidate.id)"));
+        assertTrue(cte.contains("cost_candidate.biz_type=50"));
+        assertTrue(cte.contains("cost_candidate.biz_type=60"));
+        assertTrue(cte.contains("cost_candidate.biz_id=so.id AND cost_candidate.biz_item_id=ofi.id"));
+        assertTrue(cte.contains("cost_candidate.biz_id=sr.id AND cost_candidate.biz_item_id=sri.id"));
+        assertTrue(cte.contains("cost_candidate.biz_id=source_out.id AND cost_candidate.biz_item_id=source_item.id"));
+        assertTrue(cte.contains("cost_candidate.tenant_id=ofi.tenant_id"));
+        assertTrue(cte.contains("cost_candidate.deleted=b'0'"));
+        assertTrue(cte.contains("cost_candidate.product_id=ofi.product_id"));
+        assertTrue(cte.contains("cost_candidate.warehouse_id=ofi.warehouse_id"));
+        assertTrue(cte.contains("cost_record.cost_price AS sale_cost_price"));
+        assertTrue(cte.contains("ROUND(COALESCE(ofi.count,0)*cost_record.cost_price,2)"));
+        assertTrue(cte.contains("ROUND(-COALESCE(sri.count,0)*cost_record.cost_price,2)"));
+        assertTrue(cte.contains("CASE WHEN cost_record.cost_price IS NULL THEN NULL"));
+        assertTrue(cte.contains("CAST(0 AS DECIMAL(20,2))"));
+        assertFalse(cte.contains("LEFT JOIN erp_stock stock"));
+        assertFalse(cte.contains("cost_record.unit_price"));
+        assertFalse(cte.contains("NULL AS sale_cost_price"));
         assertFalse(cte.contains("system_area"));
+    }
+
+    @Test
+    void outSummarySuppressesPartialCostWhenAnyFrozenCostIsMissing() {
+        ErpSaleOutDetailReportRepository repository = new ErpSaleOutDetailReportRepository();
+        String select = ReflectionTestUtils.invokeMethod(repository, "summarySelect");
+
+        assertTrue(select.contains("document_type_code IN ('SALE_OUT','SALE_RETURN')"));
+        assertTrue(select.contains("sale_cost_amount IS NULL THEN 1 ELSE 0 END"));
+        assertTrue(select.contains("AS missing_sale_cost_count"));
+        assertTrue(select.contains("THEN NULL ELSE COALESCE(SUM(report.sale_cost_amount),0) END AS total_sale_cost_amount"));
     }
 
     @Test

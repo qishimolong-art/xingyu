@@ -177,4 +177,10 @@ public interface ErpSupplierService {
      */
     ErpSupplierImportRespVO importSupplierList(@Valid List<ErpSupplierImportExcelVO> list);
 
+    /** 导入供应商并报告处理进度。 */
+    default ErpSupplierImportRespVO importSupplierList(@Valid List<ErpSupplierImportExcelVO> list,
+                                                       ErpSupplierImportProgressListener listener) {
+        return importSupplierList(list);
+    }
+
 }

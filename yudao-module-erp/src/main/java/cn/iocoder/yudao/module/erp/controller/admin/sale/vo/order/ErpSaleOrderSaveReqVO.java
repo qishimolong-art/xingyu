@@ -32,12 +32,15 @@ public class ErpSaleOrderSaveReqVO {
     private Long accountId;
 
     @Schema(description = "优惠率，百分比", requiredMode = Schema.RequiredMode.REQUIRED, example = "99.88")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "优惠率，百分比最多支持 6 位小数")
     private BigDecimal discountPercent;
 
     @Schema(description = "费用金额，单位：元", example = "7127")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "费用金额，单位：元最多支持 6 位小数")
     private BigDecimal feeAmount;
 
     @Schema(description = "定金金额，单位：元", example = "7127")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "定金金额，单位：元最多支持 6 位小数")
     private BigDecimal depositPrice;
 
     @Schema(description = "附件地址", example = "https://www.iocoder.cn")
@@ -47,6 +50,7 @@ public class ErpSaleOrderSaveReqVO {
     private String remark;
 
     @Schema(description = "订单清单列表")
+    @javax.validation.Valid
     private List<Item> items;
 
     @Data
@@ -68,6 +72,7 @@ public class ErpSaleOrderSaveReqVO {
         private Long warehouseId;
         private Long deptId;
         @Schema(description = "重量")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "重量最多支持 6 位小数")
         private BigDecimal weight;
         @Schema(description = "包装数")
         private Integer packageQty;
@@ -75,13 +80,16 @@ public class ErpSaleOrderSaveReqVO {
         private String batchNo;
 
         @Schema(description = "产品单价", example = "100.00")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "产品单价最多支持 6 位小数")
         private BigDecimal productPrice;
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @NotNull(message = "产品数量不能为空")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "产品数量最多支持 6 位小数")
         private BigDecimal count;
 
         @Schema(description = "税率，百分比", example = "99.88")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "税率，百分比最多支持 6 位小数")
         private BigDecimal taxPercent;
 
         @Schema(description = "备注", example = "随便")

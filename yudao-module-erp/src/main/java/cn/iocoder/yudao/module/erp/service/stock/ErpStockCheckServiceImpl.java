@@ -3,7 +3,6 @@ package cn.iocoder.yudao.module.erp.service.stock;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
@@ -222,7 +221,7 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         if (incrementalItems) {
             applyStockCheckItemChangeSet(updateReqVO.getId(), itemChangeSet, stockCheckItems);
         } else {
-            updateStockCheckItemList(updateReqVO.getId(), stockCheckItems);
+            updateStockCheckItemList(updateReqVO.getId(), oldItems, stockCheckItems);
         }
         operateLogService.recordUpdate(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
     }
@@ -450,8 +449,10 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
                 }
                 count = item.getCount();
                 actualCount = stockCount.add(count);
-                totalPrice = MoneyUtils.priceMultiply(item.getProductPrice(), count);
+                totalPrice = StockDecimalMath.multiply(item.getProductPrice(), count);
             }
+            StockDecimalMath.require(item.getCount(), "数量", 18, 6);
+            StockDecimalMath.require(item.getProductPrice(), "单价", 18, 6);
             ErpProductDO product = productMap.get(item.getProductId());
             BigDecimal weight = snapshotSupport.resolveWeight(item.getWeight(), product);
             item.setProductUnitId(snapshotSupport.resolveProductUnitId(item.getProductUnitId(), product));
@@ -559,9 +560,10 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         }
     }
 
-    private void updateStockCheckItemList(Long id, List<ErpStockCheckItemDO> newList) {
+    private void updateStockCheckItemList(Long id, List<ErpStockCheckItemDO> oldList,
+                                          List<ErpStockCheckItemDO> newList) {
         // 绗竴姝ワ紝瀵规瘮鏂拌€佹暟鎹紝鑾峰緱娣诲姞銆佷慨鏀广€佸垹闄ょ殑鍒楄〃
-        List<ErpStockCheckItemDO> oldList = stockCheckItemMapper.selectListByCheckId(id);
+        // 复用主表更新前锁定的明细，避免批量写入后提交校验命中当前会话中的旧查询缓存。
         List<List<ErpStockCheckItemDO>> diffList = diffList(oldList, newList, // id 涓嶅悓锛屽氨璁や负鏄笉鍚岀殑璁板綍
                 (oldVal, newVal) -> oldVal.getId().equals(newVal.getId()));
 

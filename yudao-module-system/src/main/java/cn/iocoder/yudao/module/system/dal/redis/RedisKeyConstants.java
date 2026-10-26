@@ -41,6 +41,9 @@ public interface RedisKeyConstants {
      */
     String USER_DENIED_PERMISSION_LIST = "user_denied_permissions";
 
+    /** 平台用户可访问租户范围，KEY 为用户编号。 */
+    String USER_TENANT_VISIT_SCOPE = "user_tenant_visit_scope";
+
     /**
      * 拥有指定菜单的角色编号的缓存
      * <p>

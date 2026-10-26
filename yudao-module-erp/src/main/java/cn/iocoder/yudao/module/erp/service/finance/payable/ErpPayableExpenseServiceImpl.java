@@ -110,6 +110,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPayableExpense(ErpPayableExpenseSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         fillDefaultDeptId(createReqVO);
         validateRequiredItems(createReqVO.getItems());
         validateFormalDeptId(createReqVO.getDeptId());
@@ -142,6 +143,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPayableExpenseDraft(ErpPayableExpenseDraftSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         fillDraftDefaultDeptId(createReqVO);
@@ -169,6 +171,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createAndSubmitPayableExpense(ErpPayableExpenseSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         return createPayableExpense(createReqVO);
     }
 
@@ -319,6 +322,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePayableExpense(ErpPayableExpenseSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpPayableExpenseDO db = validateExists(updateReqVO.getId());
         if (ErpPayableExpenseStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
             throw exception(PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL, db.getNo());
@@ -387,6 +391,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePayableExpenseDraft(ErpPayableExpenseDraftSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpPayableExpenseDO db = validateExists(updateReqVO.getId());
         if (!ErpPayableExpenseStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
             throw exception(PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL, db.getNo());
@@ -443,6 +448,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateAndSubmitPayableExpense(ErpPayableExpenseSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         updatePayableExpenseDraft(BeanUtils.toBean(updateReqVO, ErpPayableExpenseDraftSaveReqVO.class));
         submitPayableExpense(updateReqVO.getId());
     }
@@ -484,6 +490,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
 
     @Override
     public void updatePayableExpenseRemark(ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpPayableExpenseDO db = validateExists(updateReqVO.getId());
         payableExpenseMapper.updateById(new ErpPayableExpenseDO()
                 .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));

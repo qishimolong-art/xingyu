@@ -61,25 +61,31 @@ public class ErpStockCheckSaveReqVO {
         private Integer packageQty;
 
         @Schema(description = "单重", example = "1.25")
-        private BigDecimal weight;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal weight;
 
         @Schema(description = "总重", example = "125.00")
         private BigDecimal totalWeight;
 
         @Schema(description = "产品单价", example = "100.00")
-        private BigDecimal productPrice;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal productPrice;
 
         @Schema(description = "账面数量（当前库存）", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        private BigDecimal stockCount;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal stockCount;
 
         @Schema(description = "实际数量（实际库存），盘成本时由系统按账面数量写入", example = "100.00")
-        private BigDecimal actualCount;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal actualCount;
 
         @Schema(description = "调整数量，盘数量时必填；盘成本时由系统写入 0", example = "100.00")
-        private BigDecimal count;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal count;
 
         @Schema(description = "金额，盘成本时必填", example = "100.00")
-        private BigDecimal totalPrice;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal totalPrice;
 
         @Schema(description = "备注", example = "随便")
         private String remark;

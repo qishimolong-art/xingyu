@@ -39,37 +39,37 @@ public final class ErpPayableAgingReportModels {
         private String supplierType;
         @ExcelProperty(value = {"采购员", "采购员"}, index = 2)
         private String purchaser;
-        @ExcelProperty(value = {"余额", "余额"}, index = 3)
+        @ExcelProperty(value = {"余额", "余额"}, index = 3, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal balance;
-        @ExcelProperty(value = {"一年内", "一月"}, index = 4)
+        @ExcelProperty(value = {"一年内", "一月"}, index = 4, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal month01;
-        @ExcelProperty(value = {"一年内", "二月"}, index = 5)
+        @ExcelProperty(value = {"一年内", "二月"}, index = 5, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal month02;
-        @ExcelProperty(value = {"一年内", "三月"}, index = 6)
+        @ExcelProperty(value = {"一年内", "三月"}, index = 6, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal month03;
-        @ExcelProperty(value = {"一年内", "四月"}, index = 7)
+        @ExcelProperty(value = {"一年内", "四月"}, index = 7, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal month04;
-        @ExcelProperty(value = {"一年内", "五月"}, index = 8)
+        @ExcelProperty(value = {"一年内", "五月"}, index = 8, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal month05;
-        @ExcelProperty(value = {"一年内", "六月"}, index = 9)
+        @ExcelProperty(value = {"一年内", "六月"}, index = 9, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal month06;
-        @ExcelProperty(value = {"一年内", "七月"}, index = 10)
+        @ExcelProperty(value = {"一年内", "七月"}, index = 10, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal month07;
-        @ExcelProperty(value = {"一年内", "八月"}, index = 11)
+        @ExcelProperty(value = {"一年内", "八月"}, index = 11, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal month08;
-        @ExcelProperty(value = {"一年内", "九月"}, index = 12)
+        @ExcelProperty(value = {"一年内", "九月"}, index = 12, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal month09;
-        @ExcelProperty(value = {"一年内", "十月"}, index = 13)
+        @ExcelProperty(value = {"一年内", "十月"}, index = 13, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal month10;
-        @ExcelProperty(value = {"一年内", "十一月"}, index = 14)
+        @ExcelProperty(value = {"一年内", "十一月"}, index = 14, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal month11;
-        @ExcelProperty(value = {"一年内", "十二月"}, index = 15)
+        @ExcelProperty(value = {"一年内", "十二月"}, index = 15, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal month12;
-        @ExcelProperty(value = {"两年内", "两年内"}, index = 16)
+        @ExcelProperty(value = {"两年内", "两年内"}, index = 16, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal withinTwoYears;
-        @ExcelProperty(value = {"三年内", "三年内"}, index = 17)
+        @ExcelProperty(value = {"三年内", "三年内"}, index = 17, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal withinThreeYears;
-        @ExcelProperty(value = {"三年以上", "三年以上"}, index = 18)
+        @ExcelProperty(value = {"三年以上", "三年以上"}, index = 18, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal overThreeYears;
 
         private Boolean amountVisible;

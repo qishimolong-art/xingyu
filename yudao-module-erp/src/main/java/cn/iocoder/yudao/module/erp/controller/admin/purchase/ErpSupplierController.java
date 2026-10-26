@@ -1,5 +1,13 @@
 package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.base.vo.ErpBaseDataPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.base.vo.ErpBaseDataRespVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.base.ErpBaseDataDO;
+import cn.iocoder.yudao.module.erp.service.base.ErpBaseDataService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
@@ -20,9 +28,14 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupp
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportTaskStartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierExportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierExportTaskStartReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierExportTaskStartRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierBusinessInfoDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
@@ -33,6 +46,9 @@ import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierExportTaskService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierImportTaskService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierQueryService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerBusinessLicenseOcrService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -77,7 +93,21 @@ public class ErpSupplierController {
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
 
     @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
+    @Resource
+    private ErpBaseDataService baseDataService;
+    @Resource
+    private ErpFinanceFieldPermissionMasker baseDataFieldPermissionMasker;
+    @Resource
     private ErpSupplierService supplierService;
+    @Resource
+    private ErpSupplierQueryService supplierQueryService;
+    @Resource
+    private ErpSupplierExportTaskService supplierExportTaskService;
+    @Resource
+    private ErpSupplierImportTaskService supplierImportTaskService;
     @Resource
     private ErpSupplierDeptPermissionService supplierDeptPermissionService;
     @Resource
@@ -198,8 +228,8 @@ public class ErpSupplierController {
             throw exception(SUPPLIER_NOT_EXISTS);
         }
         ErpSupplierRespVO respVO = BeanUtils.toBean(supplier, ErpSupplierRespVO.class);
-        fillSupplierExtra(Collections.singletonList(respVO));
-        fieldPermissionMasker.mask("erp_supplier", respVO);
+        supplierQueryService.fillSupplierExtra(Collections.singletonList(respVO));
+        maskSupplierFields(Collections.singletonList(respVO));
         fillBusinessInfoSynced(Collections.singletonList(respVO));
         return success(respVO);
     }
@@ -210,7 +240,7 @@ public class ErpSupplierController {
     public CommonResult<PageResult<ErpSupplierRespVO>> getSupplierPage(@Valid ErpSupplierPageReqVO pageReqVO) {
         PageResult<ErpSupplierDO> pageResult = supplierService.getSupplierPage(pageReqVO);
         PageResult<ErpSupplierRespVO> respPage = BeanUtils.toBean(pageResult, ErpSupplierRespVO.class);
-        fillSupplierExtra(respPage.getList());
+        supplierQueryService.fillSupplierExtra(respPage.getList());
         maskSupplierFields(respPage.getList());
         fillBusinessInfoSynced(respPage.getList());
         return success(respPage);
@@ -261,27 +291,83 @@ public class ErpSupplierController {
                                     @RequestParam(value = "verifyCode", required = false) String verifyCode,
                                     HttpServletResponse response) throws IOException {
         exportCaptchaService.validate(captchaCode, verifyCode);
-        List<ErpSupplierDO> list;
-        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
-            list = supplierService.getSupplierList(pageReqVO.getIds());
-        } else {
-            pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-            list = supplierService.getSupplierPage(pageReqVO).getList();
-        }
-        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpSupplierRespVO.class,
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpSupplierExportRespVO.class,
                 ErpExportFieldUtils.parseFieldParam(fields),
                 fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
-        // 导出 Excel
-        ExcelUtils.write(response, "供应商.xls", "数据", ErpSupplierRespVO.class,
-                        buildSupplierRespList(list), includeFields);
+        ErpSupplierPageReqVO query = BeanUtils.toBean(pageReqVO, ErpSupplierPageReqVO.class);
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            query = new ErpSupplierPageReqVO();
+            query.setIds(pageReqVO.getIds());
+            query.setOrderField(pageReqVO.getOrderField());
+            query.setOrderDirection(pageReqVO.getOrderDirection());
+        }
+        final ErpSupplierPageReqVO exportQuery = query;
+        ErpSupplierExportSupport.write(response, includeFields, pageNo -> {
+            exportQuery.setPageNo(pageNo);
+            exportQuery.setPageSize(500);
+            return convertList(supplierQueryService.buildSupplierRespList(
+                            supplierService.getSupplierPage(exportQuery).getList()),
+                    ErpSupplierExportSupport::toExportRow);
+        });
     }
 
     @GetMapping("/export-fields")
     @Operation(summary = "Get supplier export fields")
     @PreAuthorize("@ss.hasPermission('erp:supplier:export')")
     public CommonResult<List<ErpExportFieldRespVO>> getSupplierExportFields() {
-        return success(ErpExportFieldUtils.listFields(ErpSupplierRespVO.class, EXPORT_FIELD_GROUP_MAP,
+        return success(ErpExportFieldUtils.listFields(ErpSupplierExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
                 fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
+    }
+
+    @PostMapping("/export-task/start")
+    @Operation(summary = "创建供应商异步导出任务")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:export')")
+    public CommonResult<ErpSupplierExportTaskStartRespVO> startExportTask(
+            @Valid @RequestBody ErpSupplierExportTaskStartReqVO reqVO) {
+        exportCaptchaService.validate(reqVO.getCaptchaCode(), reqVO.getVerifyCode());
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpSupplierExportRespVO.class,
+                reqVO.getFields(), fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE),
+                EXPORT_FIELD_PERMISSION_MAP);
+        ErpSupplierPageReqVO query = BeanUtils.toBean(reqVO, ErpSupplierPageReqVO.class);
+        if (CollUtil.isNotEmpty(reqVO.getIds())) {
+            query = new ErpSupplierPageReqVO();
+            query.setIds(new java.util.ArrayList<>(new java.util.LinkedHashSet<>(reqVO.getIds())));
+            query.setOrderField(reqVO.getOrderField());
+            query.setOrderDirection(reqVO.getOrderDirection());
+        }
+        query.setPageNo(1);
+        query.setPageSize(500);
+        return success(supplierExportTaskService.startTask(query, includeFields));
+    }
+
+    @GetMapping("/export-task/active")
+    @Operation(summary = "获得当前用户正在执行的供应商导出任务")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:export')")
+    public CommonResult<ErpSupplierExportTaskRespVO> getActiveExportTask() {
+        return success(supplierExportTaskService.getActiveTask());
+    }
+
+    @GetMapping("/export-task/get")
+    @Operation(summary = "获得供应商导出任务进度")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:export')")
+    public CommonResult<ErpSupplierExportTaskRespVO> getExportTask(@RequestParam("id") Long id) {
+        return success(supplierExportTaskService.getTask(id));
+    }
+
+    @GetMapping("/export-task/history")
+    @Operation(summary = "获得当前用户的供应商导出记录")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:export')")
+    public CommonResult<PageResult<ErpSupplierExportTaskRespVO>> getExportTaskHistory(
+            @RequestParam(value = "pageNo", defaultValue = "1") Integer pageNo,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
+        return success(supplierExportTaskService.getHistory(pageNo, pageSize));
+    }
+
+    @GetMapping("/export-task/download")
+    @Operation(summary = "下载供应商异步导出文件")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:export')")
+    public void downloadExportTask(@RequestParam("id") Long id, HttpServletResponse response) throws IOException {
+        supplierExportTaskService.downloadTask(id, response);
     }
 
     @GetMapping("/get-import-template")
@@ -302,6 +388,28 @@ public class ErpSupplierController {
     public CommonResult<ErpSupplierImportRespVO> importSupplier(@RequestParam("file") MultipartFile file) throws Exception {
         List<ErpSupplierImportExcelVO> list = ExcelUtils.read(file, ErpSupplierImportExcelVO.class);
         return success(supplierService.importSupplierList(list));
+    }
+
+    @PostMapping("/import-task/start")
+    @Operation(summary = "创建供应商异步导入任务")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:import')")
+    public CommonResult<ErpSupplierImportTaskStartRespVO> startImportTask(
+            @RequestParam("file") MultipartFile file) throws IOException {
+        return success(supplierImportTaskService.startTask(file));
+    }
+
+    @GetMapping("/import-task/active")
+    @Operation(summary = "获得当前用户正在执行的供应商导入任务")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:import')")
+    public CommonResult<ErpSupplierImportTaskRespVO> getActiveImportTask() {
+        return success(supplierImportTaskService.getActiveTask());
+    }
+
+    @GetMapping("/import-task/get")
+    @Operation(summary = "获得供应商导入任务进度")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:import')")
+    public CommonResult<ErpSupplierImportTaskRespVO> getImportTask(@RequestParam("id") Long id) {
+        return success(supplierImportTaskService.getTask(id));
     }
 
     private static Map<String, String> buildExportFieldGroupMap() {
@@ -352,86 +460,15 @@ public class ErpSupplierController {
         return map;
     }
 
-    private List<ErpSupplierRespVO> buildSupplierRespList(List<ErpSupplierDO> list) {
-        List<ErpSupplierRespVO> respList = BeanUtils.toBean(list, ErpSupplierRespVO.class);
-        fillSupplierExtra(respList);
-        return respList;
-    }
-
-    private void fillSupplierExtra(List<ErpSupplierRespVO> list) {
-        if (CollUtil.isEmpty(list)) {
-            return;
-        }
-        Map<Long, List<Long>> supplierDeptMap = supplierService.getSupplierDeptMap(convertSet(list, ErpSupplierRespVO::getId));
-        Set<Long> deptIds = new HashSet<>(convertSet(list, ErpSupplierRespVO::getDeptId));
-        supplierDeptMap.values().forEach(ids -> {
-            if (ids != null) {
-                deptIds.addAll(ids);
-            }
-        });
-        Set<Long> userIds = new HashSet<>();
-        list.forEach(supplier -> {
-            addUserId(userIds, supplier.getCreator());
-            addUserId(userIds, supplier.getUpdater());
-        });
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
-        list.forEach(supplier -> {
-            Long creatorId = parseUserId(supplier.getCreator());
-            AdminUserRespDTO creator = creatorId == null ? null : userMap.get(creatorId);
-            if (supplier.getCreateDeptId() == null && creator != null) {
-                supplier.setCreateDeptId(creator.getDeptId());
-            }
-            if (supplier.getCreateDeptId() != null) {
-                deptIds.add(supplier.getCreateDeptId());
-            }
-        });
-        deptIds.remove(null);
-        Map<Long, DeptRespDTO> deptMap = DataPermissionUtils.executeIgnore(() -> deptApi.getDeptMap(deptIds));
-        list.forEach(supplier -> {
-            List<Long> currentDeptIds = supplierDeptMap.getOrDefault(supplier.getId(), Collections.emptyList());
-            supplier.setDeptIds(currentDeptIds);
-            supplier.setDeptNames(currentDeptIds.stream()
-                    .map(deptMap::get)
-                    .filter(dept -> dept != null && dept.getName() != null)
-                    .map(DeptRespDTO::getName)
-                    .collect(java.util.stream.Collectors.joining("、")));
-            MapUtils.findAndThen(deptMap, supplier.getDeptId(), dept -> supplier.setDeptName(dept.getName()));
-            MapUtils.findAndThen(deptMap, supplier.getCreateDeptId(),
-                    dept -> supplier.setCreateDeptName(dept.getName()));
-            Long creatorId = parseUserId(supplier.getCreator());
-            if (creatorId != null) {
-                MapUtils.findAndThen(userMap, creatorId, user -> supplier.setCreatorName(user.getNickname()));
-            }
-            Long updaterId = parseUserId(supplier.getUpdater());
-            if (updaterId != null) {
-                MapUtils.findAndThen(userMap, updaterId, user -> supplier.setUpdaterName(user.getNickname()));
-            }
-        });
-    }
-
-    private void addUserId(Set<Long> userIds, String userId) {
-        Long parsed = parseUserId(userId);
-        if (parsed != null) {
-            userIds.add(parsed);
-        }
-    }
-
-    private Long parseUserId(String userId) {
-        if (userId == null || userId.trim().isEmpty()) {
-            return null;
-        }
-        try {
-            return Long.parseLong(userId);
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
-    }
-
     private void maskSupplierFields(List<ErpSupplierRespVO> list) {
         if (CollUtil.isEmpty(list)) {
             return;
         }
-        list.forEach(supplier -> fieldPermissionMasker.mask(FIELD_PERMISSION_MODULE, supplier));
+        // Resolve permissions once for the whole page, rather than querying them for every supplier.
+        fieldPermissionMasker.maskList(FIELD_PERMISSION_MODULE, list);
+        list.forEach(supplier -> {
+            if (supplier.getPurchaser() == null) supplier.setPurchaserName(null);
+        });
     }
 
     private void fillBusinessInfoSynced(List<ErpSupplierRespVO> list) {
@@ -440,7 +477,7 @@ public class ErpSupplierController {
         }
         Set<Long> supplierIds = convertSet(list, ErpSupplierRespVO::getId);
         Set<Long> syncedSupplierIds = convertSet(
-                supplierBusinessInfoMapper.selectListBySupplierIds(supplierIds),
+                supplierBusinessInfoMapper.selectSyncedSupplierIds(supplierIds),
                 ErpSupplierBusinessInfoDO::getSupplierId);
         list.forEach(supplier -> supplier.setBusinessInfoSynced(syncedSupplierIds.contains(supplier.getId())));
     }
@@ -449,7 +486,77 @@ public class ErpSupplierController {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("deptName", "deptId");
         map.put("deptNames", "deptIds");
+        map.put("creatorName", "creator");
+        map.put("updaterName", "updater");
         return map;
     }
 
+
+    private static void boundSelectorPageSize(PageParam reqVO) {
+        if (reqVO.getPageSize() == null || reqVO.getPageSize() <= 0 || reqVO.getPageSize() > 100) reqVO.setPageSize(100);
+    }
+
+    @GetMapping("/form-dept-simple-page")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:create') or @ss.hasPermission('erp:supplier:update') or @ss.hasPermission('erp:supplier:query')")
+    public CommonResult<PageResult<DeptRespDTO>> getFormDeptSimplePage(@Valid PageParam reqVO,
+            @RequestParam(value = "selectedId", required = false) Long selectedId) {
+        boundSelectorPageSize(reqVO);
+        return success(deptApi.getDeptSimplePage(CommonStatusEnum.ENABLE.getStatus(), reqVO.getKeyword(),
+                selectedId == null ? null : Collections.singleton(selectedId), reqVO));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam reqVO) {
+        boundSelectorPageSize(reqVO);
+        return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, reqVO));
+    }
+
+    @GetMapping("/assignable-users-page")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:create') or @ss.hasPermission('erp:supplier:update') or @ss.hasPermission('erp:supplier:query')")
+    public CommonResult<PageResult<AdminUserRespDTO>> getAssignableUsersPage(@Valid PageParam reqVO) {
+        boundSelectorPageSize(reqVO);
+        return success(adminUserApi.getUserSimplePage(CommonStatusEnum.ENABLE.getStatus(), reqVO.getKeyword(), reqVO));
+    }
+
+    @GetMapping("/merge-simple-page")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:merge')")
+    public CommonResult<PageResult<ErpSupplierRespVO>> getMergeSimplePage(@Valid ErpSupplierPageReqVO reqVO) {
+        boundSelectorPageSize(reqVO);
+        // The old merge selector used simple-list: keep enabled-only candidates.
+        PageResult<ErpSupplierDO> page = supplierService.getSupplierPageByStatus(reqVO, CommonStatusEnum.ENABLE.getStatus());
+        return success(new PageResult<>(buildSupplierSimpleRespList(page.getList()), page.getTotal()));
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
+    }
+
+    @GetMapping("/form-dept-options")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:create') or @ss.hasPermission('erp:supplier:update') or @ss.hasPermission('erp:supplier:query') or @ss.hasPermission('erp:supplier:dept-distribute')")
+    public CommonResult<List<DeptRespDTO>> getFormDeptOptions() {
+        return success(deptApi.getDeptListByStatus(null));
+    }
+
+    @GetMapping("/base-options-page")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:create') or @ss.hasPermission('erp:supplier:update') or @ss.hasPermission('erp:supplier:query')")
+    public CommonResult<PageResult<ErpBaseDataRespVO>> getBaseOptionsPage(@Valid PageParam reqVO,
+            @RequestParam("type") @javax.validation.constraints.Pattern(regexp = "region|supplier_category|settle_method|transport_method|freight_type|logistics_company|invoice_type") String type) {
+        boundSelectorPageSize(reqVO);
+        ErpBaseDataPageReqVO query = BeanUtils.toBean(reqVO, ErpBaseDataPageReqVO.class);
+        query.setType(type);
+        query.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        query.setName(reqVO.getKeyword());
+        query.setKeyword(null);
+        PageResult<ErpBaseDataDO> page = baseDataService.getBaseDataPage(query);
+        return success(new PageResult<>(convertList(page.getList(), item -> {
+            ErpBaseDataRespVO option = new ErpBaseDataRespVO().setId(item.getId()).setName(item.getName()).setCode(item.getCode());
+            baseDataFieldPermissionMasker.maskForm("erp_base_data", option);
+            option.setCode(item.getCode());
+            return option;
+        }), page.getTotal()));
+    }
 }

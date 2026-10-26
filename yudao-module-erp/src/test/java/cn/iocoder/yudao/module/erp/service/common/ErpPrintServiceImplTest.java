@@ -40,6 +40,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableAccountMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpPrintTemplateMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
@@ -155,6 +156,8 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
     private ErpPayableAccountMapper payableAccountMapper;
     @Mock
     private ErpPrintTemplateMapper printTemplateMapper;
+    @Mock
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
 
     @Test
     @SuppressWarnings("unchecked")
@@ -538,6 +541,18 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void testGetFields_purchasePriceAdjustExposesItemRemark() {
+        when(securityFrameworkService.hasPermission("erp:purchase-price-adjust:print-template")).thenReturn(true);
+        when(permissionApi.getFieldDefinitions("erp_purchase_price_adjust")).thenReturn(List.of(
+                definition("item_remark", "明细备注", 360)));
+
+        ErpPrintFieldRespVO result = printService.getFields("purchase_price_adjust");
+
+        assertEquals("purchase_price_adjust", result.getModuleKey());
+        assertEquals("items.remark", fieldCode(result, "明细备注"));
+    }
+
+    @Test
     void testGetFields_saleAddsPieceCountDetailField() {
         when(securityFrameworkService.hasPermission("erp:sale-quote:print-template")).thenReturn(true);
         when(permissionApi.getFieldDefinitions("erp_sale_quote")).thenReturn(List.of());
@@ -667,7 +682,7 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
                 .setCheckTime(LocalDateTime.of(2026, 10, 16, 11, 1, 44))
                 .setCheckType(1)
                 .setTotalCount(new BigDecimal("-4"))
-                .setTotalPrice(new BigDecimal("-2156.15"))
+                .setTotalPrice(new BigDecimal("-2156.151111"))
                 .setStatus(20);
         ErpStockCheckItemDO firstItem = new ErpStockCheckItemDO()
                 .setCheckId(businessId)
@@ -697,7 +712,7 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(2, main.get("document.itemCount"));
         assertEquals("盘亏出库", main.get("document.balanceTypeName"));
         assertEquals("盘亏金额", main.get("document.balanceAmountLabel"));
-        assertEquals("2,156.15", main.get("document.balanceAmount"));
+        assertEquals("2,156.151111", main.get("document.balanceAmount"));
         assertEquals(true, String.valueOf(main.get("document.printDateTime")).matches("\\d{4}/\\d{1,2}/\\d{1,2} \\d{2}:\\d{2}:\\d{2}"));
     }
 
@@ -902,6 +917,8 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
         when(securityFrameworkService.hasPermission("erp:sale-out:print")).thenReturn(true);
         when(saleOutService.getSaleOut(businessId)).thenReturn(saleOut);
         when(saleOutService.getSaleOutItemListByOutId(businessId)).thenReturn(List.of(firstItem, secondItem));
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(businessId, 21))
+                .thenReturn(new BigDecimal("40.00"));
         when(customerService.getCustomerMap(Set.of(customerId))).thenReturn(Map.of(customerId, customer));
         when(customerService.getCustomer(customerId)).thenReturn(customer);
         when(receivableAccountMapper.selectByCustomerId(customerId)).thenReturn(

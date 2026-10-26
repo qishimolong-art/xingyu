@@ -202,14 +202,24 @@ public class ErpProductUnitServiceImpl implements ErpProductUnitService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ErpProductUnitImportRespVO importProductUnitList(List<ErpProductUnitImportExcelVO> list) {
+        return importProductUnitList(list, ErpSimpleArchiveImportProgressListener.NOOP);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpProductUnitImportRespVO importProductUnitList(List<ErpProductUnitImportExcelVO> list,
+                                                            ErpSimpleArchiveImportProgressListener listener) {
         ErpProductUnitImportRespVO result = new ErpProductUnitImportRespVO();
         if (CollUtil.isEmpty(list)) {
+            listener.onFinalizing(0, 0, 0, 0, 0);
             return result;
         }
         Map<String, ErpProductUnitDO> unitMap = buildUnitNameMap();
         for (int i = 0; i < list.size(); i++) {
             ErpProductUnitImportExcelVO row = list.get(i);
             if (isEmptyRow(row)) {
+                listener.onRowsProgress(i + 1, list.size(), result.getCreateCount() + result.getUpdateCount(), result.getCreateCount(),
+                        result.getUpdateCount(), result.getFailureCount());
                 continue;
             }
             int rowNo = i + 2;
@@ -232,10 +242,15 @@ public class ErpProductUnitServiceImpl implements ErpProductUnitService {
                 result.setFailureCount(result.getFailureCount() + 1);
                 result.getFailureDetails().add(new ErpProductUnitImportRespVO.FailureItem(
                         rowNo, name, getImportFailureReason(ex)));
+            } finally {
+                listener.onRowsProgress(i + 1, list.size(), result.getCreateCount() + result.getUpdateCount(), result.getCreateCount(),
+                        result.getUpdateCount(), result.getFailureCount());
             }
         }
         result.setSuccessCount(result.getCreateCount() + result.getUpdateCount());
         result.setFailureCount(result.getFailureDetails().size());
+        listener.onFinalizing(list.size(), result.getSuccessCount(), result.getCreateCount(),
+                result.getUpdateCount(), result.getFailureCount());
         return result;
     }
 

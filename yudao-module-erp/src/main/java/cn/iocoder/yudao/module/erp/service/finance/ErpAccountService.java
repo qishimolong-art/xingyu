@@ -97,6 +97,11 @@ public interface ErpAccountService {
     ErpAccountDO getAccount(Long id);
 
     /**
+     * 获得已启用且已正式提交的默认账户。查询最多返回一条，供表单默认值使用。
+     */
+    ErpAccountDO getDefaultAccount();
+
+    /**
      * 校验结算账户
      *
      * @param id 编号

@@ -131,7 +131,7 @@ public class ErpPayableDetailReportRepository {
                 + " event_order," + documentDate + " document_date," + collate("s.code") + " supplier_code,"
                 + collate("s.name") + " supplier_name," + collate("s.supplier_type") + " supplier_type,"
                 + collate("t.no") + " document_no," + collate("cu.nickname") + " creator_name,"
-                + "ROUND(" + increasePayable + ",2) increase_payable,ROUND(" + paymentAmount + ",2) payment_amount,"
+                + "ROUND(" + increasePayable + ",6) increase_payable,ROUND(" + paymentAmount + ",6) payment_amount,"
                 + collate(voucherNo) + " voucher_no," + collate("t.remark") + " remark";
     }
 

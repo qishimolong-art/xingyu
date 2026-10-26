@@ -23,6 +23,8 @@ public class AssistantSemanticKnowledge {
                     + "(摄氏度|毫升|千克|公斤|℃|升|克|度|"
                     + "°C(?![A-Za-z])|mL(?![A-Za-z])|kg(?![A-Za-z])|L(?![A-Za-z])|g(?![A-Za-z]))",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern PRODUCT_NAME_QUERY_DELIMITER_PATTERN = Pattern.compile(
+            "[\\s\\u3000/\\\\,，;；+|]+");
     private static final int MAX_PRODUCT_UNIT_VARIANTS = 64;
 
     public static final class Match {
@@ -216,17 +218,32 @@ public class AssistantSemanticKnowledge {
         return result.toString();
     }
 
+    /** Splits assistant product-name queries after preserving numeric-unit expressions as one token. */
+    public static List<String> productNameQueryTokens(String raw) {
+        String value = compactProductUnitSpacing(raw);
+        if (value.isEmpty()) return Collections.emptyList();
+        List<String> tokens = new ArrayList<>();
+        for (String token : PRODUCT_NAME_QUERY_DELIMITER_PATTERN.split(value)) {
+            String normalized = token.trim();
+            if (!normalized.isEmpty()) tokens.add(normalized);
+        }
+        return tokens;
+    }
+
     /**
-     * Builds an ordered-character pattern while keeping converted numeric-unit aliases atomic.
-     * For example, the token {@code 18升 -> 18L} remains {@code 18L}; when its caller joins it
-     * after an ordered {@code k40} token, the result is {@code k%4%0%18L}. The generated alias
-     * therefore cannot match a name where {@code 1}, {@code 8}, and {@code L} are separated.
-     * Numeric units unchanged from the user's input retain the existing character-order fallback.
+     * Builds an ordered-character pattern while keeping every numeric-unit expression atomic.
+     * For example, both {@code 18升} and its alias {@code 18L} remain whole fragments; when a
+     * caller joins them after an ordered {@code k40} token, the result is {@code k%4%0%18L}.
      */
     public static String productUnitAwareOrderedPattern(String original, String variant) {
+        return String.join("%", productUnitAwareOrderedFragments(original, variant));
+    }
+
+    /** Same as {@link #productUnitAwareOrderedPattern(String, String)}, without a lossy delimiter. */
+    public static List<String> productUnitAwareOrderedFragments(String original, String variant) {
         String source = compactProductUnitSpacing(original);
         String candidate = compactProductUnitSpacing(variant);
-        if (candidate.isEmpty()) return null;
+        if (candidate.isEmpty()) return Collections.emptyList();
 
         Matcher sourceMatcher = PRODUCT_UNIT_PATTERN.matcher(source);
         Matcher candidateMatcher = PRODUCT_UNIT_PATTERN.matcher(candidate);
@@ -236,37 +253,37 @@ public class AssistantSemanticKnowledge {
         while (true) {
             boolean sourceFound = sourceMatcher.find();
             boolean candidateFound = candidateMatcher.find();
-            if (sourceFound != candidateFound) return orderedCharactersPattern(candidate);
+            if (sourceFound != candidateFound) return orderedCharacterFragments(candidate);
             if (!sourceFound) break;
 
             String sourcePrefix = source.substring(sourceOffset, sourceMatcher.start());
             String candidatePrefix = candidate.substring(candidateOffset, candidateMatcher.start());
             if (!sourcePrefix.equals(candidatePrefix)
                     || !sourceMatcher.group(1).equals(candidateMatcher.group(1))) {
-                return orderedCharactersPattern(candidate);
+                return orderedCharacterFragments(candidate);
             }
             appendOrderedFragments(fragments, candidatePrefix);
 
             String candidateUnitExpression = candidateMatcher.group(1) + candidateMatcher.group(2);
-            if (sourceMatcher.group(2).equals(candidateMatcher.group(2))) {
-                appendOrderedFragments(fragments, candidateUnitExpression);
-            } else {
-                fragments.add(candidateUnitExpression);
-            }
+            fragments.add(candidateUnitExpression);
             sourceOffset = sourceMatcher.end();
             candidateOffset = candidateMatcher.end();
         }
         String sourceSuffix = source.substring(sourceOffset);
         String candidateSuffix = candidate.substring(candidateOffset);
-        if (!sourceSuffix.equals(candidateSuffix)) return orderedCharactersPattern(candidate);
+        if (!sourceSuffix.equals(candidateSuffix)) return orderedCharacterFragments(candidate);
         appendOrderedFragments(fragments, candidateSuffix);
-        return String.join("%", fragments);
+        return fragments;
     }
 
     private static String orderedCharactersPattern(String value) {
+        return String.join("%", orderedCharacterFragments(value));
+    }
+
+    private static List<String> orderedCharacterFragments(String value) {
         List<String> fragments = new ArrayList<>();
         appendOrderedFragments(fragments, value);
-        return String.join("%", fragments);
+        return fragments;
     }
 
     private static void appendOrderedFragments(List<String> fragments, String value) {

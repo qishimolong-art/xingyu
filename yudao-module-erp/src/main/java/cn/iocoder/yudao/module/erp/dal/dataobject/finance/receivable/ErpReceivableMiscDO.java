@@ -35,6 +35,8 @@ public class ErpReceivableMiscDO extends BaseDO {
 
     private LocalDateTime bizTime;
 
+    private LocalDateTime approveTime;
+
     private Long customerId;
 
     private Long accountId;

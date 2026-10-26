@@ -14,7 +14,7 @@ import java.util.*;
 public class AssistantStore {
     private static final String ADMIN_OWNER = "ADMIN";
     private static final Set<String> VISIBLE_HISTORY_STATUSES = new HashSet<>(Arrays.asList(
-            "SUCCESS", "EMPTY", "PARTIAL_SUCCESS", "KNOWLEDGE_NOT_FOUND", "UNVERIFIED_KNOWLEDGE", "CLARIFY"));
+            "SUCCESS", "EMPTY", "PARTIAL_SUCCESS", "KNOWLEDGE_NOT_FOUND", "UNVERIFIED_KNOWLEDGE", "CLARIFY", "TASKS_INCOMPLETE"));
     @Resource private JdbcTemplate jdbc;
     @Resource private AssistantProperties properties;
     @Resource private AssistantOrchestrator orchestrator;
@@ -131,6 +131,12 @@ public class AssistantStore {
         Object rawPlan=latest.get("plan_json");String plan=rawPlan==null?null:String.valueOf(rawPlan);
         if(plan==null || plan.trim().isEmpty()) return null;
         if("SUCCESS".equals(status) || "EMPTY".equals(status)) return plan;
+          if (Arrays.asList("PARTIAL_SUCCESS","TASKS_INCOMPLETE","UNVERIFIED_KNOWLEDGE","KNOWLEDGE_NOT_FOUND").contains(status)) {
+              try {
+                  com.fasterxml.jackson.databind.JsonNode root=json.readTree(plan);
+                  if (root.path("understanding").isObject() && ("PARTIAL_SUCCESS".equals(status) || usefulClarification(plan))) return plan;
+              } catch (Exception ignored) { return null; }
+          }
         return "CLARIFY".equals(status) && usefulClarification(plan)?plan:null;
     }
 
@@ -138,6 +144,10 @@ public class AssistantStore {
         try {
             com.fasterxml.jackson.databind.JsonNode root=json.readTree(plan);
             com.fasterxml.jackson.databind.JsonNode arguments=root.path("arguments");
+              for (com.fasterxml.jackson.databind.JsonNode child : root.path("subtasks")) {
+                  com.fasterxml.jackson.databind.JsonNode childArguments=child.path("arguments");
+                  if (childArguments.path("pendingEntities").size()>0) return true;
+              }
             if(arguments.path("resolvedEntity").isObject() || arguments.path("pendingEntities").size()>0) return true;
             com.fasterxml.jackson.databind.JsonNode legacy=root.has("legacyPlan")?root.path("legacyPlan"):root;
             return legacy.path("pendingField").isTextual() && legacy.path("pendingIds").size()>0;

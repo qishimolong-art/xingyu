@@ -7,7 +7,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
+
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
@@ -18,6 +18,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTransferOutReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnOrderImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
@@ -36,6 +38,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherI
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
@@ -106,6 +109,7 @@ import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 
@@ -125,6 +129,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     private ErpSaleReturnMapper saleReturnMapper;
     @Resource
     private ErpSaleReturnItemMapper saleReturnItemMapper;
+    @Resource
+    private ErpSalePickDeliveryService salePickDeliveryService;
     @Resource
     private ErpStockMoveItemMapper stockMoveItemMapper;
     @Resource
@@ -189,6 +195,21 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleReturn(ErpSaleReturnSaveReqVO createReqVO) {
+        ErpSaleDecimalUtils.requireScale(createReqVO.getDiscountPercent(), "优惠率，百分比");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getFeeAmount(), "费用金额，单位：元");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getOtherPrice(), "其它金额，单位：元");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getReductionAmount(), "减收金额");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getFreightAmount(), "运费金额");
+        if (createReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < createReqVO.getItems().size(); decimalRow++) {
+                ErpSaleReturnSaveReqVO.Item decimalItem = createReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getWeight(), "第" + (decimalRow + 1) + "行重量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getProductPrice(), "第" + (decimalRow + 1) + "行产品单价");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getCount(), "第" + (decimalRow + 1) + "行产品数量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getTaxPercent(), "第" + (decimalRow + 1) + "行税率，百分比");
+            }
+        }
         fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO, createReqVO.getItems());
         Integer returnMode = normalizeReturnMode(createReqVO);
@@ -285,7 +306,25 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleReturn(ErpSaleReturnSaveReqVO updateReqVO) {
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getDiscountPercent(), "优惠率，百分比");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getFeeAmount(), "费用金额，单位：元");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getOtherPrice(), "其它金额，单位：元");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getReductionAmount(), "减收金额");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getFreightAmount(), "运费金额");
+        if (updateReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < updateReqVO.getItems().size(); decimalRow++) {
+                ErpSaleReturnSaveReqVO.Item decimalItem = updateReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getWeight(), "第" + (decimalRow + 1) + "行重量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getProductPrice(), "第" + (decimalRow + 1) + "行产品单价");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getCount(), "第" + (decimalRow + 1) + "行产品数量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getTaxPercent(), "第" + (decimalRow + 1) + "行税率，百分比");
+            }
+        }
         ErpSaleReturnDO oldSaleReturn = lockSaleReturn(updateReqVO.getId());
+        if (ErpSaleReturnStatusEnum.PICKING.getStatus().equals(oldSaleReturn.getStatus())) {
+            throw exception(SALE_RETURN_UPDATE_FAIL_CONFIRMED, oldSaleReturn.getNo());
+        }
         if (ErpAuditStatus.APPROVE.getStatus().equals(oldSaleReturn.getStatus())) {
             throw exception(SALE_RETURN_UPDATE_FAIL_APPROVE, oldSaleReturn.getNo());
         }
@@ -313,7 +352,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         if (ErpSaleReturnModeEnum.LEGACY_ORDER.getMode().equals(returnMode)) {
             saleOrder = saleOrderService.validateSaleOrder(updateReqVO.getOrderId());
         } else if (ErpSaleReturnModeEnum.isBySaleOut(returnMode)) {
-            saleOut = validateSaleOutReturnable(updateReqVO, updateReqVO.getId());
+            saleOut = validateSaleOutReturnable(copyWithItems(updateReqVO, itemReqs), updateReqVO.getId());
         } else if (ErpSaleReturnModeEnum.isByStock(returnMode)) {
             validateByStockCustomer(updateReqVO.getCustomerId());
         } else {
@@ -431,11 +470,16 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
                 updateReqVO.getWarehouseId() != null, updateReqVO.getDeptId() != null,
                 SALE_RETURN_ITEM_BATCH_UPDATE_FIELD_DENIED);
         ErpSaleReturnDO saleReturn = lockSaleReturn(updateReqVO.getReturnId());
+        if (ErpSaleReturnStatusEnum.PICKING.getStatus().equals(saleReturn.getStatus())) {
+            throw exception(SALE_RETURN_UPDATE_FAIL_CONFIRMED, saleReturn.getNo());
+        }
         if (ErpSaleReturnStatusEnum.APPROVE.getStatus().equals(saleReturn.getStatus())) {
             throw exception(SALE_RETURN_UPDATE_FAIL_APPROVE, saleReturn.getNo());
         }
         boolean byStock = ErpSaleReturnModeEnum.isByStock(saleReturn.getReturnMode());
-        if (!byStock && updateReqVO.getWarehouseId() != null) {
+        boolean bySaleOut = ErpSaleReturnModeEnum.isBySaleOut(saleReturn.getReturnMode());
+        if ((!byStock && updateReqVO.getWarehouseId() != null)
+                || (bySaleOut && updateReqVO.getDeptId() != null)) {
             throw exception(SALE_RETURN_ITEM_BATCH_UPDATE_WAREHOUSE_READONLY);
         }
 
@@ -492,6 +536,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         ErpSaleReturnSaveReqVO submitReqVO = BeanUtils.toBean(saleReturn, ErpSaleReturnSaveReqVO.class);
         submitReqVO.setItems(BeanUtils.toBean(persistedItems, ErpSaleReturnSaveReqVO.Item.class));
         validateFormalSaleReturn(submitReqVO, id);
+        syncPersistedSaleOutReturnLocations(id, submitReqVO.getItems(), persistedItems);
         saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleReturn.getDeptId());
 
         int updateCount = saleReturnMapper.updateByIdAndStatus(id, ErpSaleReturnStatusEnum.DRAFT.getStatus(),
@@ -500,6 +545,91 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             throw exception(SALE_RETURN_SUBMIT_FAIL);
         }
         operateLogService.recordUpdate(ERP_SALE_RETURN_TYPE, id, saleReturn.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void confirmSaleReturn(Long id, String expectedCostBasisSignature) {
+        ErpSaleReturnDO saleReturn = lockSaleReturn(id);
+        if (!ErpSaleReturnStatusEnum.PROCESS.getStatus().equals(saleReturn.getStatus())) {
+            throw exception(SALE_RETURN_CONFIRM_FAIL);
+        }
+        // 与同来源退货确认串行，确认后的数量才占用可退额度。
+        if (ErpSaleReturnModeEnum.isBySaleOut(saleReturn.getReturnMode()) && saleReturn.getSourceOutId() != null) {
+            saleOutMapper.selectByIdForUpdate(saleReturn.getSourceOutId());
+        }
+        List<ErpSaleReturnItemDO> items = saleReturnItemMapper.selectListByReturnIdForUpdate(id);
+        if (CollUtil.isEmpty(items)) {
+            throw exception(SALE_RETURN_SUBMIT_ITEMS_REQUIRED);
+        }
+        ErpSaleReturnSaveReqVO reqVO = BeanUtils.toBean(saleReturn, ErpSaleReturnSaveReqVO.class);
+        reqVO.setItems(BeanUtils.toBean(items, ErpSaleReturnSaveReqVO.Item.class));
+        validateFormalSaleReturn(reqVO, id);
+        syncPersistedSaleOutReturnLocations(id, reqVO.getItems(), items);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleReturn.getDeptId());
+        warehouseService.validSaleWarehouseList(convertList(items, ErpSaleReturnItemDO::getWarehouseId));
+
+        String frozenBasis = null;
+        if (currentCostService.isEnabled() && ErpSaleReturnModeEnum.isByStock(saleReturn.getReturnMode())) {
+            frozenBasis = currentCostService.freezeForOrderConfirm(id, expectedCostBasisSignature);
+        }
+        LocalDateTime now = LocalDateTime.now();
+        int changed = saleReturnMapper.updateByIdAndStatus(id, ErpSaleReturnStatusEnum.PROCESS.getStatus(),
+                new ErpSaleReturnDO().setStatus(ErpSaleReturnStatusEnum.PICKING.getStatus())
+                        .setConfirmUserId(getLoginUserId()).setConfirmTime(now)
+                        .setFrozenCostBasisSignature(frozenBasis));
+        if (changed != 1) {
+            throw exception(SALE_RETURN_CONFIRM_FAIL);
+        }
+        salePickDeliveryService.generateForSaleReturn(id);
+        operateLogService.recordUpdate(ERP_SALE_RETURN_TYPE, id, saleReturn.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelConfirmSaleReturn(Long id) {
+        ErpSaleReturnDO observed = saleReturnMapper.selectById(id);
+        if (observed == null) {
+            throw exception(SALE_RETURN_NOT_EXISTS);
+        }
+        if (!ErpSaleReturnStatusEnum.PICKING.getStatus().equals(observed.getStatus())) {
+            throw exception(SALE_RETURN_CANCEL_CONFIRM_FAIL);
+        }
+        // 统一按作业主单 -> 业务单加锁，避免与最后一次拣货的主单 -> 业务单锁序相反。
+        salePickDeliveryService.rollbackUnstartedSaleReturnFulfillment(id);
+        ErpSaleReturnDO saleReturn = lockSaleReturn(id);
+        int changed = saleReturnMapper.updateByIdAndStatus(id, ErpSaleReturnStatusEnum.PICKING.getStatus(),
+                new ErpSaleReturnDO().setStatus(ErpSaleReturnStatusEnum.PROCESS.getStatus())
+                        .setConfirmUserId(null).setConfirmTime(null).setFrozenCostBasisSignature(null));
+        if (changed != 1) {
+            throw exception(SALE_RETURN_CANCEL_CONFIRM_FAIL);
+        }
+        if (currentCostService.isEnabled() && ErpSaleReturnModeEnum.isByStock(saleReturn.getReturnMode())) {
+            currentCostService.invalidateFrozenOrderConfirm(id);
+        }
+        operateLogService.recordUpdate(ERP_SALE_RETURN_TYPE, id, saleReturn.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void autoApproveAfterPick(Long id, Long pickUserId) {
+        ErpSaleReturnDO saleReturn = lockSaleReturn(id);
+        if (ErpSaleReturnStatusEnum.APPROVE.getStatus().equals(saleReturn.getStatus())) {
+            return;
+        }
+        if (!ErpSaleReturnStatusEnum.PICKING.getStatus().equals(saleReturn.getStatus())) {
+            throw exception(SALE_RETURN_AUTO_APPROVE_FAIL);
+        }
+        cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO summary =
+                salePickDeliveryService.getSummaryMapBySaleReturnIds(Collections.singleton(id)).get(id);
+        if (summary == null || !cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum.DONE
+                .getStatus().equals(summary.getPickStatus())) {
+            throw exception(SALE_RETURN_AUTO_APPROVE_FAIL);
+        }
+        if (currentCostService.isEnabled() && ErpSaleReturnModeEnum.isByStock(saleReturn.getReturnMode())) {
+            currentCostService.authorizeFrozenApproval(id, saleReturn.getFrozenCostBasisSignature());
+        }
+        updateSaleReturnStatus(id, ErpSaleReturnStatusEnum.APPROVE.getStatus());
     }
 
     @Override
@@ -550,6 +680,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         ErpSaleOutDO saleOut = saleOutService.validateSaleOut(reqVO.getSourceOutId());
         Map<Long, ErpSaleOutItemDO> sourceItemMap = convertMap(
                 saleOutService.getSaleOutItemListByOutId(reqVO.getSourceOutId()), ErpSaleOutItemDO::getId);
+        normalizeSaleOutReturnLocations(reqVO.getItems(), sourceItemMap, true);
         Map<Long, BigDecimal> pickedCountMap = getPickedCountMapBySaleOut(reqVO.getSourceOutId());
         Map<Long, BigDecimal> currentCountMap = new HashMap<>();
         reqVO.getItems().forEach(item -> {
@@ -566,7 +697,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         if (excludeReturnId != null) {
             saleReturns.removeIf(saleReturn -> excludeReturnId.equals(saleReturn.getId()));
         }
-        saleReturns.removeIf(saleReturn -> !ErpAuditStatus.APPROVE.getStatus().equals(saleReturn.getStatus()));
+        saleReturns.removeIf(saleReturn -> !ErpSaleReturnStatusEnum.PICKING.getStatus().equals(saleReturn.getStatus())
+                && !ErpAuditStatus.APPROVE.getStatus().equals(saleReturn.getStatus()));
         Map<Long, BigDecimal> returnedCountMap = saleReturnItemMapper.selectSourceOutItemCountSumMapByReturnIds(
                 convertList(saleReturns, ErpSaleReturnDO::getId));
         currentCountMap.forEach((sourceOutItemId, count) -> {
@@ -579,10 +711,87 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
                     ? sourceItem.getCount() : pickedCountMap.getOrDefault(sourceOutItemId, BigDecimal.ZERO);
             BigDecimal returnableCount = sourceCount.subtract(returnedCount);
             if (count.compareTo(returnableCount) > 0) {
-                throw exception(SALE_RETURN_EXCEED_RETURNABLE, sourceOutItemId, count, returnableCount);
+                throw exception(SALE_RETURN_EXCEED_RETURNABLE,
+                        getProductDisplayForMessage(sourceItem.getProductId()),
+                        formatCountForMessage(count), formatCountForMessage(returnableCount));
             }
         });
         return saleOut;
+    }
+
+    /**
+     * 按销售单退货的入库位置只能来自来源销售明细。跨部门销售使用调拨前原仓，
+     * 同部门销售和历史无来源快照数据使用销售出库仓。
+     */
+    private void normalizeSaleOutReturnLocations(List<ErpSaleReturnSaveReqVO.Item> items,
+                                                  Map<Long, ErpSaleOutItemDO> sourceItemMap,
+                                                  boolean validateStockDimension) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        Set<Long> warehouseIdsMissingDept = sourceItemMap.values().stream()
+                .filter(sourceItem -> sourceItem.getSourceWarehouseId() != null && sourceItem.getSourceDeptId() == null)
+                .map(ErpSaleOutItemDO::getSourceWarehouseId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(warehouseIdsMissingDept)
+                ? Collections.emptyMap() : DataPermissionUtils.executeIgnore(
+                        () -> warehouseService.getWarehouseMap(warehouseIdsMissingDept));
+        items.forEach(item -> {
+            ErpSaleOutItemDO sourceItem = sourceItemMap.get(item.getSourceOutItemId());
+            if (sourceItem == null) {
+                throw exception(SALE_RETURN_SOURCE_OUT_ITEM_NOT_EXISTS, item.getSourceOutItemId());
+            }
+            if (!Objects.equals(sourceItem.getProductId(), item.getProductId())) {
+                throw exception(SALE_RETURN_SOURCE_OUT_ITEM_PRODUCT_MISMATCH, item.getSourceOutItemId());
+            }
+            Long returnWarehouseId = resolveSaleReturnWarehouseId(sourceItem);
+            item.setWarehouseId(returnWarehouseId);
+            Long returnDeptId = resolveSaleReturnDeptId(sourceItem);
+            if (returnDeptId == null) {
+                ErpWarehouseDO warehouse = warehouseMap.get(returnWarehouseId);
+                returnDeptId = warehouse == null ? null : warehouse.getDeptId();
+            }
+            item.setDeptId(returnDeptId);
+            if (validateStockDimension && getStockIgnoreDataPermission(item.getProductId(), returnWarehouseId) == null) {
+                throw exception(SALE_RETURN_SOURCE_WAREHOUSE_STOCK_NOT_EXISTS, item.getSourceOutItemId());
+            }
+        });
+    }
+
+    private Long resolveSaleReturnWarehouseId(ErpSaleOutItemDO sourceItem) {
+        return sourceItem.getSourceWarehouseId() != null
+                ? sourceItem.getSourceWarehouseId() : sourceItem.getWarehouseId();
+    }
+
+    private Long resolveSaleReturnDeptId(ErpSaleOutItemDO sourceItem) {
+        if (sourceItem.getSourceWarehouseId() != null) {
+            return sourceItem.getSourceDeptId();
+        }
+        return sourceItem.getDeptId();
+    }
+
+    private void syncPersistedSaleOutReturnLocations(Long returnId,
+                                                     List<ErpSaleReturnSaveReqVO.Item> normalizedItems,
+                                                     List<ErpSaleReturnItemDO> persistedItems) {
+        if (CollUtil.isEmpty(normalizedItems) || CollUtil.isEmpty(persistedItems)) {
+            return;
+        }
+        Map<Long, ErpSaleReturnItemDO> persistedItemMap = convertMap(persistedItems, ErpSaleReturnItemDO::getId);
+        List<ErpSaleReturnItemDO> updates = new ArrayList<>();
+        for (ErpSaleReturnSaveReqVO.Item normalizedItem : normalizedItems) {
+            ErpSaleReturnItemDO persistedItem = persistedItemMap.get(normalizedItem.getId());
+            if (persistedItem == null || (Objects.equals(persistedItem.getWarehouseId(), normalizedItem.getWarehouseId())
+                    && Objects.equals(persistedItem.getDeptId(), normalizedItem.getDeptId()))) {
+                continue;
+            }
+            persistedItem.setWarehouseId(normalizedItem.getWarehouseId());
+            persistedItem.setDeptId(normalizedItem.getDeptId());
+            updates.add(new ErpSaleReturnItemDO().setId(persistedItem.getId()).setReturnId(returnId)
+                    .setWarehouseId(normalizedItem.getWarehouseId()).setDeptId(normalizedItem.getDeptId()));
+        }
+        if (CollUtil.isNotEmpty(updates)) {
+            saleReturnItemMapper.updateBatch(updates);
+        }
     }
 
     private void validateOptionalReferences(ErpSaleReturnSaveReqVO reqVO) {
@@ -675,7 +884,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         BigDecimal feeAmount = resolveFeeAmount(saleReturn.getFeeAmount(), saleReturn.getOtherPrice());
         saleReturn.setFeeAmount(feeAmount);
         saleReturn.setOtherPrice(feeAmount);
-        saleReturn.setDiscountPrice(MoneyUtils.priceMultiplyPercent(saleReturn.getTotalPrice(), saleReturn.getDiscountPercent()));
+        saleReturn.setDiscountPrice(ErpSaleDecimalUtils.multiplyPercent(saleReturn.getTotalPrice(), saleReturn.getDiscountPercent()));
         saleReturn.setTotalPrice(saleReturn.getTotalPrice().subtract(saleReturn.getDiscountPrice()).add(feeAmount));
         if (saleReturn.getRefundPrice() == null) {
             saleReturn.setRefundPrice(BigDecimal.ZERO);
@@ -700,10 +909,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleReturnStatusWithCostBasis(Long id, Integer status, String expectedCostBasisSignature) {
-        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) { throw exception(SALE_RETURN_PROCESS_FAIL); }
-        currentCostService.authorizeApproval(id, expectedCostBasisSignature);
-        if (currentCostService.isApprovedRetry(id)) { return; }
-        updateSaleReturnStatus(id, status);
+        throw exception(SALE_RETURN_MANUAL_APPROVE_FORBIDDEN);
     }
 
     private void validateCurrentStockReturnSources(ErpSaleReturnDO header, List<ErpSaleReturnItemDO> items) {
@@ -727,12 +933,24 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             throw exception(SALE_RETURN_PROCESS_FAIL);
         }
         ErpSaleReturnDO saleReturn = lockSaleReturn(id);
-        if (!ErpAuditStatus.PROCESS.getStatus().equals(saleReturn.getStatus())) {
+        if (!ErpSaleReturnStatusEnum.PICKING.getStatus().equals(saleReturn.getStatus())) {
             throw exception(SALE_RETURN_APPROVE_FAIL);
+        }
+        cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO summary =
+                salePickDeliveryService.getSummaryMapBySaleReturnIds(Collections.singleton(id)).get(id);
+        if (summary == null || !cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum.DONE
+                .getStatus().equals(summary.getPickStatus())) {
+            throw exception(SALE_RETURN_AUTO_APPROVE_FAIL);
         }
         saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleReturn.getDeptId());
 
         List<ErpSaleReturnItemDO> lockedItems = saleReturnItemMapper.selectListByReturnIdForUpdate(id);
+        if (ErpSaleReturnModeEnum.isBySaleOut(saleReturn.getReturnMode())) {
+            ErpSaleReturnSaveReqVO normalizeReqVO = BeanUtils.toBean(saleReturn, ErpSaleReturnSaveReqVO.class);
+            normalizeReqVO.setItems(BeanUtils.toBean(lockedItems, ErpSaleReturnSaveReqVO.Item.class));
+            validateSaleOutReturnable(normalizeReqVO, id);
+            syncPersistedSaleOutReturnLocations(id, normalizeReqVO.getItems(), lockedItems);
+        }
         validateCurrentStockReturnSources(saleReturn, lockedItems);
 
         int updateCount = currentCostService.isEnabled() && ErpSaleReturnModeEnum.isByStock(saleReturn.getReturnMode())
@@ -833,7 +1051,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             fillDeptIdFromWarehouse(item, warehouseMap);
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
-            item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+            item.setTotalPrice(ErpSaleDecimalUtils.multiply(item.getProductPrice(), item.getCount()));
         }));
     }
 
@@ -950,6 +1168,9 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             if (ErpAuditStatus.APPROVE.getStatus().equals(saleReturn.getStatus())) {
                 throw exception(SALE_RETURN_DELETE_FAIL_APPROVE, saleReturn.getNo());
             }
+            if (ErpSaleReturnStatusEnum.PICKING.getStatus().equals(saleReturn.getStatus())) {
+                throw exception(SALE_RETURN_DELETE_FAIL_CONFIRMED, saleReturn.getNo());
+            }
         });
 
         saleReturns.forEach(saleReturn -> {
@@ -1007,19 +1228,61 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
 
     @Override
     public List<ErpSaleReturnItemDO> getSaleReturnItemListByReturnId(Long returnId) {
-        return saleReturnItemMapper.selectListByReturnId(returnId);
+        ErpSaleReturnDO saleReturn = saleReturnMapper.selectById(returnId);
+        return normalizeSaleOutReturnLocationsForRead(saleReturn,
+                saleReturnItemMapper.selectListByReturnId(returnId));
     }
 
     @Override
     public List<ErpSaleReturnItemDO> getSaleReturnItemListByReturnId(Long returnId, String orderField,
                                                                     String orderDirection) {
-        return saleReturnItemMapper.selectListByReturnId(returnId, orderField, orderDirection);
+        ErpSaleReturnDO saleReturn = saleReturnMapper.selectById(returnId);
+        return normalizeSaleOutReturnLocationsForRead(saleReturn,
+                saleReturnItemMapper.selectListByReturnId(returnId, orderField, orderDirection));
     }
 
     @Override
     public PageResult<ErpSaleReturnItemDO> getSaleReturnItemPage(ErpSaleReturnItemPageReqVO pageReqVO) {
-        validateSaleReturnExists(pageReqVO.getReturnId());
-        return saleReturnItemMapper.selectPageByReturnId(pageReqVO);
+        ErpSaleReturnDO saleReturn = validateSaleReturnExists(pageReqVO.getReturnId());
+        PageResult<ErpSaleReturnItemDO> pageResult = saleReturnItemMapper.selectPageByReturnId(pageReqVO);
+        pageResult.setList(normalizeSaleOutReturnLocationsForRead(saleReturn, pageResult.getList()));
+        return pageResult;
+    }
+
+    /** 未审核历史草稿读取时投影为原仓；只改返回对象，保存、提交或审核时才持久化。 */
+    private List<ErpSaleReturnItemDO> normalizeSaleOutReturnLocationsForRead(
+            ErpSaleReturnDO saleReturn, List<ErpSaleReturnItemDO> items) {
+        if (saleReturn == null || CollUtil.isEmpty(items)
+                || ErpAuditStatus.APPROVE.getStatus().equals(saleReturn.getStatus())
+                || !ErpSaleReturnModeEnum.isBySaleOut(saleReturn.getReturnMode())
+                || saleReturn.getSourceOutId() == null) {
+            return items;
+        }
+        Map<Long, ErpSaleOutItemDO> sourceItemMap = convertMap(
+                saleOutService.getSaleOutItemListByOutId(saleReturn.getSourceOutId()), ErpSaleOutItemDO::getId);
+        Set<Long> warehouseIdsMissingDept = new LinkedHashSet<>();
+        for (ErpSaleReturnItemDO item : items) {
+            ErpSaleOutItemDO sourceItem = sourceItemMap.get(item.getSourceOutItemId());
+            if (sourceItem == null || !Objects.equals(sourceItem.getProductId(), item.getProductId())) {
+                continue;
+            }
+            item.setWarehouseId(resolveSaleReturnWarehouseId(sourceItem));
+            item.setDeptId(resolveSaleReturnDeptId(sourceItem));
+            if (item.getDeptId() == null && item.getWarehouseId() != null) {
+                warehouseIdsMissingDept.add(item.getWarehouseId());
+            }
+        }
+        if (CollUtil.isNotEmpty(warehouseIdsMissingDept)) {
+            Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(
+                    () -> warehouseService.getWarehouseMap(warehouseIdsMissingDept));
+            items.forEach(item -> {
+                if (item.getDeptId() == null) {
+                    ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+                    item.setDeptId(warehouse == null ? null : warehouse.getDeptId());
+                }
+            });
+        }
+        return items;
     }
 
     @Override
@@ -1350,6 +1613,9 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
                 throw exception(SALE_RETURN_TRANSFER_COUNT_POSITIVE);
             }
+            // 调拨只能从销售退货实际入库仓发出，不接受客户端改成直发仓或其他仓库。
+            item.setFromWarehouseId(sourceItem.getWarehouseId());
+            item.setFromDeptId(sourceItem.getDeptId());
             if (Objects.equals(item.getFromWarehouseId(), item.getToWarehouseId())) {
                 throw exception(SALE_RETURN_TRANSFER_WAREHOUSE_SAME);
             }
@@ -1388,9 +1654,40 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
                     usedCountMap.getOrDefault(entry.getKey(), BigDecimal.ZERO));
             if (entry.getValue().compareTo(available) > 0) {
                 throw exception(SALE_RETURN_TRANSFER_EXCEED_AVAILABLE,
-                        entry.getKey(), entry.getValue(), available);
+                        getProductDisplayForMessage(sourceItem.getProductId()),
+                        formatCountForMessage(entry.getValue()), formatCountForMessage(available));
             }
         }
+    }
+
+    private String getProductDisplayForMessage(Long productId) {
+        if (productId == null) {
+            return "所选商品";
+        }
+        ErpProductDO product = DataPermissionUtils.executeIgnore(() -> productService.getProduct(productId));
+        if (product == null) {
+            return "所选商品";
+        }
+        return formatProductForMessage(product.getName(), product.getCode());
+    }
+
+    static String formatProductForMessage(String productName, String productCode) {
+        String name = StrUtil.trim(productName);
+        String code = StrUtil.trim(productCode);
+        if (StrUtil.isNotBlank(name) && StrUtil.isNotBlank(code)) {
+            return name + "（配件编码：" + code + "）";
+        }
+        if (StrUtil.isNotBlank(name)) {
+            return name;
+        }
+        if (StrUtil.isNotBlank(code)) {
+            return "配件编码：" + code;
+        }
+        return "所选商品";
+    }
+
+    static String formatCountForMessage(BigDecimal value) {
+        return value.stripTrailingZeros().toPlainString();
     }
 
     private Set<Long> collectTransferWarehouseIds(ErpSaleReturnCreateTransferOutReqVO reqVO) {
@@ -1431,6 +1728,12 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         for (int i = 0; i < list.size(); i++) {
             ErpSaleReturnImportExcelVO row = list.get(i);
             int rowNo = i + 2;
+            String decimalError = ErpSaleDecimalUtils.importScaleError(row);
+            if (decimalError != null) {
+                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(rowNo, row.getProductCode(), decimalError));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
             ErpImportProductResolver.ResolveResult productResult =
                     productResolver.resolve(row.getProductCode(), row.getProductName(), row.getFactoryCode());
             if (productResult.isFailure()) {
@@ -1475,6 +1778,149 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             respVO.setSuccessCount(respVO.getSuccessCount() + 1);
         }
         return respVO;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpSaleImportResultRespVO importSaleReturnOrderList(
+            List<ErpSaleReturnOrderImportExcelVO> list) {
+        ErpSaleImportResultRespVO result = new ErpSaleImportResultRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return result;
+        }
+        Map<String, List<ErpSaleReturnOrderImportExcelVO>> groups = new LinkedHashMap<>();
+        String currentImportNo = null;
+        for (int i = 0; i < list.size(); i++) {
+            ErpSaleReturnOrderImportExcelVO row = list.get(i);
+            if (row == null) continue;
+            String decimalError = ErpSaleDecimalUtils.importScaleError(row);
+            if (decimalError != null) {
+                result.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(i + 2, null, row.getProductCode(), decimalError));
+                result.setFailureCount(result.getFailureCount() + 1);
+                continue;
+            }
+            String rowImportNo = StrUtil.trimToNull(row.getImportNo());
+            if (rowImportNo != null) currentImportNo = rowImportNo;
+            if (currentImportNo == null) {
+                result.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(
+                        i + 2, null, row.getProductCode(), "首行必须填写导入单号"));
+                result.setFailureCount(result.getFailureCount() + 1);
+                continue;
+            }
+            groups.computeIfAbsent(currentImportNo, key -> new ArrayList<>()).add(row);
+        }
+
+        List<ErpSaleReturnSaveReqVO> requests = new ArrayList<>();
+        for (Map.Entry<String, List<ErpSaleReturnOrderImportExcelVO>> entry : groups.entrySet()) {
+            ErpSaleReturnOrderImportExcelVO main = entry.getValue().get(0);
+            Integer returnMode = main.getReturnMode();
+            if (!ErpSaleReturnModeEnum.isBySaleOut(returnMode)
+                    && !ErpSaleReturnModeEnum.isByStock(returnMode)) {
+                result.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(
+                        2, entry.getKey(), null, "退货模式只能填写 10（按销售单）或 20（按库存）"));
+                result.setFailureCount(result.getFailureCount() + 1);
+                continue;
+            }
+            ErpCustomerDO customer = resolveImportCustomer(main.getCustomerName());
+            if (customer == null) {
+                result.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(
+                        2, entry.getKey(), null, "客户不存在或名称不唯一"));
+                result.setFailureCount(result.getFailureCount() + 1);
+                continue;
+            }
+            List<ErpSaleReturnImportExcelVO> detailRows = entry.getValue().stream().map(row -> {
+                ErpSaleReturnImportExcelVO detail = new ErpSaleReturnImportExcelVO();
+                detail.setProductCode(row.getProductCode());
+                detail.setProductName(row.getProductName());
+                detail.setFactoryCode(row.getFactoryCode());
+                detail.setWarehouseName(row.getWarehouseName());
+                detail.setCount(row.getItemCount());
+                detail.setProductPrice(row.getProductPrice());
+                detail.setReturnReason(row.getReturnReason());
+                detail.setRemark(row.getItemRemark());
+                return detail;
+            }).collect(Collectors.toList());
+            ErpSaleReturnImportRespVO parsed = parseImportData(detailRows);
+            if (parsed.getFailureCount() > 0) {
+                parsed.getFailureDetails().forEach(failure -> result.getFailureDetails().add(
+                        new ErpSaleImportResultRespVO.FailureItem(
+                                failure.getRowNo(), entry.getKey(), failure.getProductCode(), failure.getReason())));
+                result.setFailureCount(result.getFailureCount() + parsed.getFailureCount());
+                continue;
+            }
+
+            ErpSaleOutDO sourceOut = null;
+            if (ErpSaleReturnModeEnum.isBySaleOut(returnMode)) {
+                sourceOut = saleOutMapper.selectByNo(StrUtil.trimToEmpty(main.getSourceOutNo()));
+                if (sourceOut == null || !Objects.equals(sourceOut.getCustomerId(), customer.getId())) {
+                    result.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(
+                            2, entry.getKey(), null, "来源销售单不存在或与客户不匹配"));
+                    result.setFailureCount(result.getFailureCount() + 1);
+                    continue;
+                }
+            } else if (StrUtil.isNotBlank(main.getSourceOutNo())) {
+                result.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(
+                        2, entry.getKey(), null, "按库存退货不得填写来源销售单号"));
+                result.setFailureCount(result.getFailureCount() + 1);
+                continue;
+            }
+
+            List<ErpSaleReturnSaveReqVO.Item> items = new ArrayList<>();
+            for (ErpSaleReturnRespVO.Item parsedItem : parsed.getItems()) {
+                ErpSaleReturnSaveReqVO.Item item = BeanUtils.toBean(parsedItem, ErpSaleReturnSaveReqVO.Item.class);
+                ErpWarehouseDO warehouse = warehouseService.getWarehouse(item.getWarehouseId());
+                if (warehouse != null) item.setDeptId(warehouse.getDeptId());
+                if (sourceOut != null) {
+                    List<ErpSaleOutItemDO> matches = saleOutItemMapper.selectListByOutId(sourceOut.getId()).stream()
+                            .filter(source -> Objects.equals(source.getProductId(), item.getProductId()))
+                            .filter(source -> Objects.equals(source.getWarehouseId(), item.getWarehouseId()))
+                            .collect(Collectors.toList());
+                    if (matches.size() != 1) {
+                        result.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(
+                                2, entry.getKey(), parsedItem.getProductCode(),
+                                "来源销售单中商品与仓库必须唯一匹配"));
+                        result.setFailureCount(result.getFailureCount() + 1);
+                        continue;
+                    }
+                    ErpSaleOutItemDO sourceItem = matches.get(0);
+                    item.setSourceOutItemId(sourceItem.getId());
+                    item.setOrderItemId(sourceItem.getOrderItemId());
+                    item.setProductUnitId(sourceItem.getProductUnitId());
+                    item.setDeptId(sourceItem.getDeptId());
+                    item.setBatchNo(sourceItem.getBatchNo());
+                    item.setProductPrice(sourceItem.getProductPrice());
+                }
+                items.add(item);
+            }
+            if (result.getFailureCount() > 0) continue;
+            ErpSaleReturnSaveReqVO request = new ErpSaleReturnSaveReqVO();
+            request.setReturnMode(returnMode);
+            request.setCustomerId(customer.getId());
+            request.setReturnTime(LocalDateTime.now());
+            request.setRemark(StrUtil.trimToNull(main.getRemark()));
+            request.setSourceOutId(sourceOut != null ? sourceOut.getId() : null);
+            request.setSourceOutNo(sourceOut != null ? sourceOut.getNo() : null);
+            request.setDeptId(sourceOut != null ? sourceOut.getDeptId() : null);
+            request.setItems(items);
+            requests.add(request);
+        }
+        if (result.getFailureCount() > 0) {
+            return result;
+        }
+        for (ErpSaleReturnSaveReqVO request : requests) {
+            result.getDocumentIds().add(createSaleReturn(request));
+        }
+        result.setSuccessCount(result.getDocumentIds().size());
+        return result;
+    }
+
+    private ErpCustomerDO resolveImportCustomer(String customerName) {
+        String normalizedName = StrUtil.trimToNull(customerName);
+        if (normalizedName == null) return null;
+        List<ErpCustomerDO> matches = customerService.getCustomerListByNameLike(normalizedName).stream()
+                .filter(customer -> normalizedName.equals(StrUtil.trim(customer.getName())))
+                .collect(Collectors.toList());
+        return matches.size() == 1 ? matches.get(0) : null;
     }
 
     private void updateSaleOutReturnStatus(Long saleOutId) {

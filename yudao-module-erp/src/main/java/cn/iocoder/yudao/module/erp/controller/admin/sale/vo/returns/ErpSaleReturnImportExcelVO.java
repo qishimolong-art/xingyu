@@ -26,9 +26,11 @@ public class ErpSaleReturnImportExcelVO {
 
     @ExcelRequired
     @ExcelProperty("退货数量")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "count最多支持 6 位小数")
     private BigDecimal count;
 
     @ExcelProperty("退货单价")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "productPrice最多支持 6 位小数")
     private BigDecimal productPrice;
 
     @ExcelRequired

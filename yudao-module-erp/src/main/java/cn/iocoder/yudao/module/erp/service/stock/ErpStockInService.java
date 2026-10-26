@@ -30,6 +30,8 @@ public interface ErpStockInService {
      */
     Long createStockIn(@Valid ErpStockInSaveReqVO createReqVO);
 
+    Long createStockInDraft(@Valid ErpStockInSaveReqVO createReqVO);
+
     /**
      * 更新其它入库单
      *
@@ -50,6 +52,12 @@ public interface ErpStockInService {
      * @param status 状态
      */
     void updateStockInStatus(Long id, Integer status);
+
+    void confirmStockIn(Long id);
+
+    void cancelConfirmStockIn(Long id);
+
+    void autoApproveAfterPick(Long id, Long pickUserId);
 
     /**
      * 删除其它入库单

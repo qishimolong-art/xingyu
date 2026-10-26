@@ -12,6 +12,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleOutItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustOrderImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
@@ -60,6 +62,7 @@ import java.util.stream.Collectors;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_SALE_PRICE_ADJUST_TYPE;
 
@@ -113,6 +116,16 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSalePriceAdjust(ErpSalePriceAdjustSaveReqVO createReqVO) {
+        if (createReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < createReqVO.getItems().size(); decimalRow++) {
+                ErpSalePriceAdjustSaveReqVO.Item decimalItem = createReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getWeight(), "第" + (decimalRow + 1) + "行重量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getOutCount(), "第" + (decimalRow + 1) + "行出库数");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getOldPrice(), "第" + (decimalRow + 1) + "行原售价");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getNewPrice(), "第" + (decimalRow + 1) + "行调后价");
+            }
+        }
         fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO, createReqVO.getItems());
         // 1. 生成调价单号
@@ -149,6 +162,16 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSalePriceAdjustDraft(ErpSalePriceAdjustDraftSaveReqVO createReqVO) {
+        if (createReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < createReqVO.getItems().size(); decimalRow++) {
+                ErpSalePriceAdjustSaveReqVO.Item decimalItem = createReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getWeight(), "第" + (decimalRow + 1) + "行重量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getOutCount(), "第" + (decimalRow + 1) + "行出库数");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getOldPrice(), "第" + (decimalRow + 1) + "行原售价");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getNewPrice(), "第" + (decimalRow + 1) + "行调后价");
+            }
+        }
         fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO, createReqVO.getItems());
         ErpSalePriceAdjustDO adjustDO = BeanUtils.toBean(createReqVO, ErpSalePriceAdjustDO.class);
@@ -171,6 +194,16 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSalePriceAdjust(ErpSalePriceAdjustSaveReqVO updateReqVO) {
+        if (updateReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < updateReqVO.getItems().size(); decimalRow++) {
+                ErpSalePriceAdjustSaveReqVO.Item decimalItem = updateReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getWeight(), "第" + (decimalRow + 1) + "行重量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getOutCount(), "第" + (decimalRow + 1) + "行出库数");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getOldPrice(), "第" + (decimalRow + 1) + "行原售价");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getNewPrice(), "第" + (decimalRow + 1) + "行调后价");
+            }
+        }
         // 1. 校验存在
         ErpSalePriceAdjustDO existDO = validateSalePriceAdjustExists(updateReqVO.getId());
         if (ErpSalePriceAdjustStatusEnum.DRAFT.getStatus().equals(existDO.getStatus())) {
@@ -229,6 +262,16 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSalePriceAdjustDraft(ErpSalePriceAdjustDraftSaveReqVO updateReqVO) {
+        if (updateReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < updateReqVO.getItems().size(); decimalRow++) {
+                ErpSalePriceAdjustSaveReqVO.Item decimalItem = updateReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getWeight(), "第" + (decimalRow + 1) + "行重量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getOutCount(), "第" + (decimalRow + 1) + "行出库数");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getOldPrice(), "第" + (decimalRow + 1) + "行原售价");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getNewPrice(), "第" + (decimalRow + 1) + "行调后价");
+            }
+        }
         ErpSalePriceAdjustDO existDO = validateSalePriceAdjustExists(updateReqVO.getId());
         if (!ErpSalePriceAdjustStatusEnum.DRAFT.getStatus().equals(existDO.getStatus())) {
             throw exception(SALE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, existDO.getNo());
@@ -514,6 +557,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                 if (row == null || isEmptyImportRow(row)) {
                     continue;
                 }
+                String decimalError = ErpSaleDecimalUtils.importScaleError(row);
+                if (decimalError != null) throw new IllegalArgumentException(decimalError);
                 String saleOutNo = trimToNull(row.getSaleOutNo());
                 if (saleOutNo == null) {
                     throw new IllegalArgumentException("销售单号不能为空");
@@ -610,6 +655,77 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             }
         }
         return respVO;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpSaleImportResultRespVO importSalePriceAdjustOrderList(
+            List<ErpSalePriceAdjustOrderImportExcelVO> list) {
+        ErpSaleImportResultRespVO result = new ErpSaleImportResultRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return result;
+        }
+        Map<String, List<ErpSalePriceAdjustOrderImportExcelVO>> groups = new LinkedHashMap<>();
+        String currentImportNo = null;
+        for (int i = 0; i < list.size(); i++) {
+            ErpSalePriceAdjustOrderImportExcelVO row = list.get(i);
+            if (row == null) continue;
+            String decimalError = ErpSaleDecimalUtils.importScaleError(row);
+            if (decimalError != null) {
+                result.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(i + 2, null, row.getProductCode(), decimalError));
+                result.setFailureCount(result.getFailureCount() + 1);
+                continue;
+            }
+            String rowImportNo = trimToNull(row.getImportNo());
+            if (rowImportNo != null) currentImportNo = rowImportNo;
+            if (currentImportNo == null) {
+                result.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(
+                        i + 2, null, row.getProductCode(), "首行必须填写导入单号"));
+                result.setFailureCount(result.getFailureCount() + 1);
+                continue;
+            }
+            groups.computeIfAbsent(currentImportNo, key -> new ArrayList<>()).add(row);
+        }
+
+        List<ErpSalePriceAdjustSaveReqVO> requests = new ArrayList<>();
+        Set<Long> sourceItemIds = new HashSet<>();
+        for (Map.Entry<String, List<ErpSalePriceAdjustOrderImportExcelVO>> entry : groups.entrySet()) {
+            ErpSalePriceAdjustOrderImportExcelVO main = entry.getValue().get(0);
+            List<ErpSalePriceAdjustImportExcelVO> detailRows = BeanUtils.toBean(
+                    entry.getValue(), ErpSalePriceAdjustImportExcelVO.class);
+            ErpSalePriceAdjustImportRespVO parsed = importSalePriceAdjustItems(detailRows);
+            if (parsed.getFailureCount() > 0) {
+                parsed.getFailureDetails().forEach(failure -> result.getFailureDetails().add(
+                        new ErpSaleImportResultRespVO.FailureItem(
+                                failure.getRowNo(), entry.getKey(), failure.getProductCode(), failure.getReason())));
+                result.setFailureCount(result.getFailureCount() + parsed.getFailureCount());
+                continue;
+            }
+            for (ErpSalePriceAdjustSaveReqVO.Item item : parsed.getItems()) {
+                if (!sourceItemIds.add(item.getSaleOutItemId())) {
+                    result.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(
+                            2, entry.getKey(), item.getPartCode(), "同一来源销售明细不能重复导入"));
+                    result.setFailureCount(result.getFailureCount() + 1);
+                }
+            }
+            ErpSalePriceAdjustSaveReqVO request = new ErpSalePriceAdjustSaveReqVO();
+            request.setCustomerId(parsed.getCustomerId());
+            request.setAdjustUserId(getLoginUserId());
+            request.setAdjustType(main.getAdjustType() != null ? main.getAdjustType() : 10);
+            request.setSettleMethod(trimToNull(main.getSettleMethod()));
+            request.setDeliveryMethod(trimToNull(main.getDeliveryMethod()));
+            request.setRemark(trimToNull(main.getRemark()));
+            request.setItems(parsed.getItems());
+            requests.add(request);
+        }
+        if (result.getFailureCount() > 0) {
+            return result;
+        }
+        for (ErpSalePriceAdjustSaveReqVO request : requests) {
+            result.getDocumentIds().add(createSalePriceAdjust(request));
+        }
+        result.setSuccessCount(result.getDocumentIds().size());
+        return result;
     }
 
     private void approveAndModifySaleOut(ErpSalePriceAdjustDO adjustDO) {
@@ -892,7 +1008,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         if (item.getNewPrice() == null || item.getOldPrice() == null || item.getOutCount() == null) {
             return BigDecimal.ZERO;
         }
-        return item.getNewPrice().subtract(item.getOldPrice()).multiply(item.getOutCount());
+        return ErpSaleDecimalUtils.multiply(item.getNewPrice().subtract(item.getOldPrice()), item.getOutCount());
     }
 
     private void createSalePriceAdjustStockRecord(ErpSalePriceAdjustDO adjustDO,
@@ -949,7 +1065,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     private void recalculateSaleOutItem(ErpSaleOutItemDO item) {
         BigDecimal count = item.getCount() == null ? BigDecimal.ZERO : item.getCount();
         BigDecimal price = item.getProductPrice() == null ? BigDecimal.ZERO : item.getProductPrice();
-        BigDecimal totalPrice = price.multiply(count);
+        BigDecimal totalPrice = ErpSaleDecimalUtils.multiply(price, count);
         item.setTotalPrice(totalPrice);
         item.setTaxPercent(null); item.setTaxPrice(BigDecimal.ZERO);
     }
@@ -963,7 +1079,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             totalProductPrice = totalProductPrice.add(item.getTotalPrice() == null ? BigDecimal.ZERO : item.getTotalPrice());
         }
         BigDecimal discountPercent = saleOut.getDiscountPercent() == null ? BigDecimal.ZERO : saleOut.getDiscountPercent();
-        BigDecimal discountPrice = totalProductPrice.multiply(discountPercent).divide(new BigDecimal("100"));
+        BigDecimal discountPrice = ErpSaleDecimalUtils.multiplyPercent(totalProductPrice, discountPercent);
         BigDecimal feeAmount = saleOut.getFeeAmount() != null ? saleOut.getFeeAmount()
                 : (saleOut.getOtherPrice() != null ? saleOut.getOtherPrice() : BigDecimal.ZERO);
         saleOut.setTotalCount(totalCount);

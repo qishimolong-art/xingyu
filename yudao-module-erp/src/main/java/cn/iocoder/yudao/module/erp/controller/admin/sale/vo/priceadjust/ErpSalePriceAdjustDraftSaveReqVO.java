@@ -41,6 +41,7 @@ public class ErpSalePriceAdjustDraftSaveReqVO {
     private String logisticsCompany;
 
     @Schema(description = "调价明细列表")
+    @javax.validation.Valid
     private List<ErpSalePriceAdjustSaveReqVO.Item> items;
 
 }

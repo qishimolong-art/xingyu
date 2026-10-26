@@ -31,6 +31,12 @@ public class ErpCustomerTaskServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpCustomerService customerService;
 
+    @org.junit.jupiter.api.BeforeEach
+    void visibleCustomerFixture() {
+        org.mockito.Mockito.lenient().when(customerService.getCustomer(org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> new cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO().setId(invocation.getArgument(0)).setName("可见客户"));
+    }
+
     // ==================== createTask ====================
 
     @Test
@@ -93,7 +99,7 @@ public class ErpCustomerTaskServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setTaskAmount(new BigDecimal("200000"));
 
         // mock：存在校验通过
-        when(taskMapper.selectById(eq(10L))).thenReturn(new ErpCustomerTaskDO().setId(10L));
+        when(taskMapper.selectById(eq(10L))).thenReturn(new ErpCustomerTaskDO().setId(10L).setCustomerId(1L));
 
         // 执行
         customerTaskService.updateTask(reqVO);
@@ -127,7 +133,7 @@ public class ErpCustomerTaskServiceImplTest extends BaseMockitoUnitTest {
     @Test
     public void testDeleteTask_success() {
         // mock：存在
-        when(taskMapper.selectById(eq(20L))).thenReturn(new ErpCustomerTaskDO().setId(20L));
+        when(taskMapper.selectById(eq(20L))).thenReturn(new ErpCustomerTaskDO().setId(20L).setCustomerId(1L));
 
         // 执行
         customerTaskService.deleteTask(20L);
@@ -161,8 +167,25 @@ public class ErpCustomerTaskServiceImplTest extends BaseMockitoUnitTest {
 
         // 断言
         assertEquals(2, result.size());
-        verify(customerService).validateCustomer(eq(customerId));
+        verify(customerService).getCustomer(eq(customerId));
         verify(taskMapper).selectListByCustomerId(eq(customerId));
     }
 
+
+    @Test
+    void cannotMoveChildToAnotherCustomer() {
+        when(taskMapper.selectById(1L)).thenReturn(new ErpCustomerTaskDO().setId(1L).setCustomerId(10L));
+        ErpCustomerTaskSaveReqVO req = new ErpCustomerTaskSaveReqVO(); req.setId(1L); req.setCustomerId(20L);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> customerTaskService.updateTask(req));
+        org.mockito.Mockito.verify(taskMapper, org.mockito.Mockito.never()).updateById(org.mockito.ArgumentMatchers.<ErpCustomerTaskDO>any());
+    }
+
+    @Test
+    void hiddenParentPreventsReadAndDelete() {
+        when(taskMapper.selectById(1L)).thenReturn(new ErpCustomerTaskDO().setId(1L).setCustomerId(99L));
+        when(customerService.getCustomer(99L)).thenReturn(null);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> customerTaskService.getTask(1L));
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> customerTaskService.deleteTask(1L));
+        org.mockito.Mockito.verify(taskMapper, org.mockito.Mockito.never()).deleteById(1L);
+    }
 }

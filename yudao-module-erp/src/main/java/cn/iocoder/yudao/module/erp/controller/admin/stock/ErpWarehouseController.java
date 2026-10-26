@@ -9,11 +9,20 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseExportRespVO;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseBatchDisableReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportTaskStartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseExportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseExportTaskStartReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseExportTaskStartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePickerRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePickerSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseRespVO;
@@ -29,6 +38,9 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMapper;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseQueryService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseExportTaskService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseImportTaskService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -87,6 +99,12 @@ public class ErpWarehouseController {
     @Resource
     private ErpWarehouseService warehouseService;
     @Resource
+    private ErpWarehouseQueryService warehouseQueryService;
+    @Resource
+    private ErpWarehouseExportTaskService warehouseExportTaskService;
+    @Resource
+    private ErpWarehouseImportTaskService warehouseImportTaskService;
+    @Resource
     private ErpImportExportRecordService importExportRecordService;
     @Resource
     private ErpWarehouseMapper warehouseMapper;
@@ -98,6 +116,8 @@ public class ErpWarehouseController {
     private DeptApi deptApi;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private PermissionApi permissionApi;
 
     @PostMapping("/create")
     @Operation(summary = "Create warehouse")
@@ -177,7 +197,8 @@ public class ErpWarehouseController {
         if (warehouse == null) {
             return success(null);
         }
-        ErpWarehouseRespVO respVO = buildWarehouseVOList(Collections.singletonList(warehouse), true).get(0);
+        ErpWarehouseRespVO respVO = warehouseQueryService
+                .buildWarehouseVOList(Collections.singletonList(warehouse), true).get(0);
         respVO.setBranchTenantIds(warehouseService.getWarehouseBranchTenantIds(id));
         fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
@@ -188,7 +209,7 @@ public class ErpWarehouseController {
     @PreAuthorize("@ss.hasPermission('erp:warehouse:query')")
     public CommonResult<PageResult<ErpWarehouseRespVO>> getWarehousePage(@Valid ErpWarehousePageReqVO pageReqVO) {
         PageResult<ErpWarehouseDO> pageResult = warehouseService.getWarehousePage(pageReqVO);
-        List<ErpWarehouseRespVO> list = buildWarehouseVOList(pageResult.getList(), true);
+        List<ErpWarehouseRespVO> list = warehouseQueryService.buildWarehouseVOList(pageResult.getList(), true);
         fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, list);
         return success(new PageResult<>(list, pageResult.getTotal()));
     }
@@ -205,6 +226,16 @@ public class ErpWarehouseController {
     @PreAuthorize("@ss.hasPermission('erp:warehouse:query')")
     public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
         return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/form-dept-simple-page")
+    @Operation(summary = "分页查询仓库表单所属部门，保留原启用部门候选范围")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:create') or @ss.hasPermission('erp:warehouse:update') or @ss.hasPermission('erp:warehouse:query')")
+    public CommonResult<PageResult<DeptRespDTO>> getFormDeptSimplePage(@Valid PageParam pageReqVO,
+            @RequestParam(value = "selectedId", required = false) Long selectedId) {
+        boundSelectorPageSize(pageReqVO);
+        return success(deptApi.getDeptSimplePage(CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(),
+                selectedId == null ? null : Collections.singleton(selectedId), pageReqVO));
     }
 
     @GetMapping("/simple-list")
@@ -444,6 +475,7 @@ public class ErpWarehouseController {
         ErpWarehouseUserPermissionRespVO respVO = new ErpWarehouseUserPermissionRespVO()
                 .setWarehouseId(warehouseId)
                 .setUserIds(warehouseService.getWarehouseUserIds(warehouseId));
+        respVO.setSelectedUsers(adminUserApi.getUserList(respVO.getUserIds()));
         return success(respVO);
     }
 
@@ -470,6 +502,7 @@ public class ErpWarehouseController {
         ErpWarehousePickerRespVO respVO = new ErpWarehousePickerRespVO()
                 .setWarehouseId(warehouseId)
                 .setUserIds(warehouseService.getWarehousePickerUserIds(warehouseId));
+        respVO.setSelectedUsers(adminUserApi.getUserList(respVO.getUserIds()));
         return success(respVO);
     }
 
@@ -528,16 +561,110 @@ public class ErpWarehouseController {
         return success(adminUserApi.getUserListByStatus(CommonStatusEnum.ENABLE.getStatus()));
     }
 
+    @GetMapping("/assignable-users-page")
+    @Operation(summary = "分页查询仓库可分配人员")
+    @DataPermission(enable = false)
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:query') or @ss.hasPermission('erp:warehouse-permission:update')"
+            + " or @ss.hasPermission('erp:warehouse-picker:query') or @ss.hasPermission('erp:warehouse-picker:update')")
+    public CommonResult<PageResult<AdminUserRespDTO>> getWarehouseAssignableUsersPage(@Valid PageParam pageReqVO) {
+        boundSelectorPageSize(pageReqVO);
+        return success(adminUserApi.getUserSimplePage(CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO));
+    }
+
+    private void boundSelectorPageSize(PageParam pageReqVO) {
+        if (pageReqVO.getPageSize() <= 0 || pageReqVO.getPageSize() > 100) {
+            pageReqVO.setPageSize(100);
+        }
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得仓库可导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getWarehouseExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpWarehouseExportRespVO.class,
+                ErpWarehouseExportSupport.GROUPS, permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE),
+                ErpWarehouseExportSupport.PERMISSIONS));
+    }
+
+    @PostMapping("/export-task/start")
+    @Operation(summary = "创建仓库异步导出任务")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:export')")
+    public CommonResult<ErpWarehouseExportTaskStartRespVO> startExportTask(
+            @Valid @RequestBody ErpWarehouseExportTaskStartReqVO reqVO) {
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpWarehouseExportRespVO.class,
+                reqVO.getFields(), permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE),
+                ErpWarehouseExportSupport.PERMISSIONS);
+        ErpWarehousePageReqVO query = BeanUtils.toBean(reqVO, ErpWarehousePageReqVO.class);
+        if (query.getIds() != null && !query.getIds().isEmpty()) {
+            ErpWarehousePageReqVO selectedQuery = new ErpWarehousePageReqVO();
+            selectedQuery.setIds(query.getIds().stream().distinct().collect(Collectors.toList()));
+            selectedQuery.setOrderField(query.getOrderField());
+            selectedQuery.setOrderDirection(query.getOrderDirection());
+            query = selectedQuery;
+        }
+        query.setPageNo(1);
+        query.setPageSize(500);
+        return success(warehouseExportTaskService.startTask(query, includeFields));
+    }
+
+    @GetMapping("/export-task/active")
+    @Operation(summary = "获得当前用户正在执行的仓库导出任务")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:export')")
+    public CommonResult<ErpWarehouseExportTaskRespVO> getActiveExportTask() {
+        return success(warehouseExportTaskService.getActiveTask());
+    }
+
+    @GetMapping("/export-task/get")
+    @Operation(summary = "获得仓库导出任务进度")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:export')")
+    public CommonResult<ErpWarehouseExportTaskRespVO> getExportTask(@RequestParam("id") Long id) {
+        return success(warehouseExportTaskService.getTask(id));
+    }
+
+    @GetMapping("/export-task/history")
+    @Operation(summary = "获得当前用户的仓库导出记录")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:export')")
+    public CommonResult<PageResult<ErpWarehouseExportTaskRespVO>> getExportTaskHistory(
+            @RequestParam(value = "pageNo", defaultValue = "1") Integer pageNo,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
+        return success(warehouseExportTaskService.getHistory(pageNo, pageSize));
+    }
+
+    @GetMapping("/export-task/download")
+    @Operation(summary = "下载仓库异步导出文件")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:export')")
+    public void downloadExportTask(@RequestParam("id") Long id, HttpServletResponse response) throws IOException {
+        warehouseExportTaskService.downloadTask(id, response);
+    }
+
     @GetMapping("/export-excel")
     @Operation(summary = "Export warehouse")
     @PreAuthorize("@ss.hasPermission('erp:warehouse:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportWarehouseExcel(@Valid ErpWarehousePageReqVO pageReqVO,
+                                     @RequestParam(value = "fields", required = false) String fields,
                                      HttpServletResponse response) throws IOException {
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpWarehouseRespVO> list = buildWarehouseVOList(warehouseService.getWarehousePage(pageReqVO).getList());
-        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, list);
-        ExcelUtils.write(response, "warehouse.xls", "data", ErpWarehouseRespVO.class, list);
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpWarehouseExportRespVO.class,
+                fields == null || fields.trim().isEmpty() ? ErpWarehouseExportSupport.LEGACY_FIELDS
+                        : ErpExportFieldUtils.parseFieldParam(fields),
+                permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE), ErpWarehouseExportSupport.PERMISSIONS);
+        // Selected warehouses take priority over filters, but never bypass the service's visibility checks.
+        ErpWarehousePageReqVO exportQuery = pageReqVO;
+        if (pageReqVO.getIds() != null && !pageReqVO.getIds().isEmpty()) {
+            exportQuery = new ErpWarehousePageReqVO();
+            exportQuery.setIds(pageReqVO.getIds());
+            exportQuery.setOrderField(pageReqVO.getOrderField());
+            exportQuery.setOrderDirection(pageReqVO.getOrderDirection());
+        }
+        ErpWarehousePageReqVO query = exportQuery;
+        ErpWarehouseExportSupport.write(response, includeFields, pageNo -> {
+            query.setPageNo(pageNo);
+            query.setPageSize(500);
+            List<ErpWarehouseRespVO> rows = warehouseQueryService
+                    .buildWarehouseVOList(warehouseService.getWarehousePage(query).getList());
+            fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, rows);
+            return convertList(rows, ErpWarehouseExportSupport::toExportRow);
+        });
     }
 
     @GetMapping("/get-import-template")
@@ -556,16 +683,34 @@ public class ErpWarehouseController {
         return success(warehouseService.importWarehouseList(list));
     }
 
+    @PostMapping("/import-task/start")
+    @Operation(summary = "创建仓库异步导入任务")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:import')")
+    public CommonResult<ErpWarehouseImportTaskStartRespVO> startImportTask(
+            @RequestParam("file") MultipartFile file) throws IOException {
+        return success(warehouseImportTaskService.startTask(file));
+    }
+
+    @GetMapping("/import-task/active")
+    @Operation(summary = "获得当前用户正在执行的仓库导入任务")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:import')")
+    public CommonResult<ErpWarehouseImportTaskRespVO> getActiveImportTask() {
+        return success(warehouseImportTaskService.getActiveTask());
+    }
+
+    @GetMapping("/import-task/get")
+    @Operation(summary = "获得仓库导入任务进度")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:import')")
+    public CommonResult<ErpWarehouseImportTaskRespVO> getImportTask(@RequestParam("id") Long id) {
+        return success(warehouseImportTaskService.getTask(id));
+    }
+
     @GetMapping("/import-failure-details/download")
     @Operation(summary = "Download warehouse import failure details")
     @PreAuthorize("@ss.hasPermission('erp:warehouse:import')")
     public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
                                              HttpServletResponse response) throws IOException {
         importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
-    }
-
-    private List<ErpWarehouseRespVO> buildWarehouseVOList(List<ErpWarehouseDO> list) {
-        return buildWarehouseVOList(list, false);
     }
 
     private List<ErpWarehouseRespVO> buildSimpleWarehouseVOList(List<ErpWarehouseDO> list) {
@@ -580,60 +725,6 @@ public class ErpWarehouseController {
             MapUtils.findAndThen(deptMap, warehouse.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             return vo;
         });
-    }
-
-    private List<ErpWarehouseRespVO> buildWarehouseVOList(List<ErpWarehouseDO> list, boolean markReadonlyBySaleDistribution) {
-        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(list, ErpWarehouseDO::getDeptId));
-        Set<Long> storageWarehouseIds = list.stream()
-                .map(ErpWarehouseDO::getStorageWarehouseId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<Long, ErpWarehouseDO> storageWarehouseMap = convertMap(
-                warehouseService.getWarehouseList(storageWarehouseIds), ErpWarehouseDO::getId);
-        Set<Long> userIds = new HashSet<>();
-        list.forEach(warehouse -> {
-            addUserId(userIds, warehouse.getCreator());
-            addUserId(userIds, warehouse.getUpdater());
-        });
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
-        Set<Long> readonlyWarehouseIds = markReadonlyBySaleDistribution
-                ? warehouseService.getCurrentUserSaleDistributedVisibleWarehouseIds() : Collections.emptySet();
-        return BeanUtils.toBean(list, ErpWarehouseRespVO.class, vo -> {
-            MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
-            MapUtils.findAndThen(storageWarehouseMap, vo.getStorageWarehouseId(),
-                    warehouse -> vo.setStorageWarehouseName(warehouse.getName()));
-            fillUserNames(vo, userMap);
-            vo.setReadonlyBySaleDistribution(readonlyWarehouseIds.contains(vo.getId()));
-        });
-    }
-
-    private void fillUserNames(ErpWarehouseRespVO warehouse, Map<Long, AdminUserRespDTO> userMap) {
-        Long creatorId = parseUserId(warehouse.getCreator());
-        if (creatorId != null) {
-            MapUtils.findAndThen(userMap, creatorId, user -> warehouse.setCreatorName(user.getNickname()));
-        }
-        Long updaterId = parseUserId(warehouse.getUpdater());
-        if (updaterId != null) {
-            MapUtils.findAndThen(userMap, updaterId, user -> warehouse.setUpdaterName(user.getNickname()));
-        }
-    }
-
-    private void addUserId(Set<Long> userIds, String userId) {
-        Long parsed = parseUserId(userId);
-        if (parsed != null) {
-            userIds.add(parsed);
-        }
-    }
-
-    private Long parseUserId(String userId) {
-        if (userId == null || userId.trim().isEmpty()) {
-            return null;
-        }
-        try {
-            return Long.parseLong(userId);
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
     }
 
 }

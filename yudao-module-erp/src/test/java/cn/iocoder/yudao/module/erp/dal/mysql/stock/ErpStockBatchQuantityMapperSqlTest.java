@@ -24,6 +24,8 @@ class ErpStockBatchQuantityMapperSqlTest {
                 "wmi.batch_no", "sci2.batch_no", "sobi.batch_no"
         };
         assertNormalized(sql, batchNoColumns);
+        assertTrue(sql.contains("wm.status IN (#{processStatus}, 15)"));
+        assertTrue(sql.contains("so2.status IN (10, 15)"));
     }
 
     @Test
@@ -35,6 +37,8 @@ class ErpStockBatchQuantityMapperSqlTest {
                 "pii.batch_no", "smi.batch_no", "wmi.batch_no", "sci.batch_no", "sibi.batch_no"
         };
         assertNormalized(sql, batchNoColumns);
+        assertTrue(sql.contains("wm.status IN (#{processStatus}, 15)"));
+        assertTrue(sql.contains("si.status IN (10, 15)"));
     }
 
     private static String getSql(String methodName, Class<?>... parameterTypes) throws Exception {

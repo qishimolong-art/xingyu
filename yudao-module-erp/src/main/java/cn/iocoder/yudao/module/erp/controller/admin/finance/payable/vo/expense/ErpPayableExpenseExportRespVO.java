@@ -36,7 +36,7 @@ public class ErpPayableExpenseExportRespVO {
     @ExcelProperty("支出类型")
     private String expenseType;
 
-    @ExcelProperty("总金额")
+    @ExcelProperty(value = "总金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal totalAmount;
 
     @ExcelProperty("开单部门")
@@ -57,16 +57,37 @@ public class ErpPayableExpenseExportRespVO {
     @ExcelProperty("备注")
     private String remark;
 
+    @ExcelProperty("主表附件")
+    private String fileUrl;
+
+    @ExcelProperty("自动来源类型")
+    private String sourceType;
+
+    @ExcelProperty("来源单号")
+    private String sourceNo;
+
     @ExcelProperty("创建人")
     private String creatorName;
 
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
 
+    @ExcelProperty("审核人")
+    private String auditorName;
+
+    @ExcelProperty("审核时间")
+    private LocalDateTime auditTime;
+
+    @ExcelProperty("修改人")
+    private String updaterName;
+
+    @ExcelProperty("修改时间")
+    private LocalDateTime updateTime;
+
     @ExcelProperty("项目名称")
     private String itemName;
 
-    @ExcelProperty("金额")
+    @ExcelProperty(value = "金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal itemAmount;
 
     @ExcelProperty("发票号")
@@ -92,4 +113,7 @@ public class ErpPayableExpenseExportRespVO {
 
     @ExcelProperty("明细备注")
     private String itemRemark;
+
+    @ExcelProperty("明细附件")
+    private String itemFileUrl;
 }

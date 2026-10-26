@@ -13,12 +13,14 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirs
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -203,6 +205,17 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpProductBatchNoValidator productBatchNoValidator;
 
+    @Test
+    public void testGetLatestOnlineOrder_delegatesToMapper() {
+        ErpSaleCartDO expected = ErpSaleCartDO.builder().id(101L).no("SC101").build();
+        when(saleCartMapper.selectLatestOnlineOrder()).thenReturn(expected);
+
+        ErpSaleCartDO result = saleCartService.getLatestOnlineOrder();
+
+        assertEquals(expected, result);
+        verify(saleCartMapper).selectLatestOnlineOrder();
+    }
+
     @BeforeEach
     public void setUp() {
         // 旧用例的领域数据沿用原 fixture；新增当前读委托到同一 fixture。
@@ -351,6 +364,28 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(2, respVO.getFailureDetails().get(0).getRowNo());
         assertEquals("配件编码、配件名称和厂家编码为三选一字段，请至少填写其中一个",
                 respVO.getFailureDetails().get(0).getReason());
+    }
+
+    @Test
+    public void testImportSaleCartOrder_missingProductIdentity_doesNotCreatePartialDocument() {
+        ErpSaleCartOrderImportExcelVO row = new ErpSaleCartOrderImportExcelVO();
+        row.setCustomerName("测试客户");
+        row.setWarehouseName("默认仓库");
+        row.setItemCount(BigDecimal.ONE);
+        ErpCustomerDO customer = new ErpCustomerDO().setId(101L).setName("测试客户")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus());
+        when(customerService.getCustomerPage(any())).thenReturn(
+                new PageResult<>(Collections.singletonList(customer), 1L));
+        when(warehouseService.getCurrentUserVisibleSaleWarehouseList()).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(301L).setName("默认仓库")));
+
+        ErpSaleImportResultRespVO result = saleCartService.importSaleCartOrderList(
+                Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertTrue(result.getFailureCount() > 0);
+        assertTrue(result.getFailureDetails().stream().anyMatch(item -> item.getReason().contains("三选一")));
+        verify(saleCartMapper, never()).insert(ArgumentMatchers.<ErpSaleCartDO>any());
     }
 
     // ==================== ???????????????????????????====================

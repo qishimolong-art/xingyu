@@ -14,6 +14,8 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutExpressFilePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutExpressFileRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryDetailRespVO;
@@ -80,6 +82,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -254,6 +257,7 @@ public class ErpSaleOutController {
         }
         List<ErpSaleOutItemDO> saleOutItemList = Boolean.TRUE.equals(includeItems)
                 ? saleOutService.getSaleOutItemListByOutId(id) : Collections.emptyList();
+        fillSaleOutSettlement(saleOut, saleOutItemList, Boolean.TRUE.equals(includeItems));
         Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
                 convertSet(saleOutItemList, ErpSaleOutItemDO::getProductId));
         // 仓库信息
@@ -314,6 +318,8 @@ public class ErpSaleOutController {
         fillSaleOutRelationFields(respVO, saleOut);
         fillSaleOutStockOutBillInfo(respVO, id);
         fillSaleOutPickDeliverySummary(respVO, salePickDeliveryService.getSummaryMapBySaleOutIds(Collections.singleton(id)).get(id));
+        respVO.setHasExpressFile(StringUtils.hasText(saleOut.getExpressFileUrl())
+                || salePickDeliveryService.getSaleOutIdsWithDeliveryFiles(Collections.singleton(id)).contains(id));
         // 退货状态
         if (Boolean.TRUE.equals(includeItems)) {
             respVO.setReturnStatus(calculateReturnStatus(saleOutItemList, returnedCountMap));
@@ -340,13 +346,15 @@ public class ErpSaleOutController {
                 saleOut, saleOutService.getSaleOutItemListByOutId(id)));
         BigDecimal receivedAmount = zeroIfNull(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
                 id, ErpBizTypeEnum.SALE_OUT.getType()));
-        BigDecimal unreceivedAmount = receivableAmount.subtract(receivedAmount);
+        BigDecimal unreceivedAmount = ErpOriginalSettlementAmountUtils.calculateSaleOutUnreceivedAmount(
+                receivableAmount, receivedAmount);
         return success(new ErpSaleOutReceiptSummaryRespVO()
                 .setId(id)
                 .setReceivableAmount(receivableAmount)
                 .setReceivedAmount(receivedAmount)
                 .setUnreceivedAmount(unreceivedAmount)
-                .setReceiptStatus(calculateSaleOutReceiptStatus(receivableAmount, receivedAmount)));
+                .setReceiptStatus(ErpOriginalSettlementAmountUtils.calculateSaleOutSettlementStatus(
+                        receivableAmount, receivedAmount)));
     }
 
     @GetMapping("/pick-delivery-detail")
@@ -401,17 +409,34 @@ public class ErpSaleOutController {
                 pageReqVO.getOutId(), pageReqVO.getType(), pageReqVO));
     }
 
-    private Integer calculateSaleOutReceiptStatus(BigDecimal receivableAmount, BigDecimal receivedAmount) {
-        BigDecimal normalizedReceivableAmount = zeroIfNull(receivableAmount).abs();
-        BigDecimal normalizedReceivedAmount = zeroIfNull(receivedAmount).abs();
-        if (normalizedReceivedAmount.compareTo(BigDecimal.ZERO) == 0) {
-            return 0;
+    @GetMapping("/express-file-page")
+    @Operation(summary = "获得销售单快递单分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    public CommonResult<PageResult<ErpSaleOutExpressFileRespVO>> getSaleOutExpressFilePage(
+            @Valid ErpSaleOutExpressFilePageReqVO pageReqVO) {
+        ErpSaleOutDO saleOut = saleOutService.getSaleOut(pageReqVO.getOutId());
+        if (saleOut == null || fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "expressFileUrl")) {
+            return success(PageResult.empty());
         }
-        if (normalizedReceivableAmount.compareTo(BigDecimal.ZERO) == 0
-                || normalizedReceivedAmount.compareTo(normalizedReceivableAmount) < 0) {
-            return 1;
+        return success(salePickDeliveryService.getSaleOutExpressFilePage(pageReqVO.getOutId(), pageReqVO));
+    }
+
+    private void fillSaleOutSettlement(ErpSaleOutDO saleOut, List<ErpSaleOutItemDO> items,
+                                       boolean itemsLoaded) {
+        BigDecimal receivableAmount;
+        if (itemsLoaded) {
+            receivableAmount = ErpOriginalSettlementAmountUtils.calculateSaleOut(saleOut, items);
+        } else {
+            BigDecimal originalProductPrice = saleOutItemMapper
+                    .selectOriginalSettlementProductPriceMap(Collections.singleton(saleOut.getId()))
+                    .get(saleOut.getId());
+            receivableAmount = ErpOriginalSettlementAmountUtils.calculateSaleOut(saleOut, originalProductPrice);
         }
-        return 2;
+        BigDecimal receivedAmount = zeroIfNull(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                saleOut.getId(), ErpBizTypeEnum.SALE_OUT.getType()));
+        saleOut.setReceiptPrice(receivedAmount);
+        saleOut.setSettleStatus(ErpOriginalSettlementAmountUtils.calculateSaleOutSettlementStatus(
+                receivableAmount, receivedAmount));
     }
 
     private BigDecimal zeroIfNull(BigDecimal value) {
@@ -823,9 +848,11 @@ public class ErpSaleOutController {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
+        Set<Long> outIds = convertSet(pageResult.getList(), ErpSaleOutDO::getId);
+        Set<Long> deliveryExpressOutIds = salePickDeliveryService.getSaleOutIdsWithDeliveryFiles(outIds);
         // 1.1 出库项
         List<ErpSaleOutItemDO> saleOutItemList = saleOutService.getSaleOutItemListByOutIds(
-                convertSet(pageResult.getList(), ErpSaleOutDO::getId));
+                outIds);
         Map<Long, List<ErpSaleOutItemDO>> saleOutItemMap = convertMultiMap(saleOutItemList, ErpSaleOutItemDO::getOutId);
         Map<Long, ErpSaleOutDO> saleOutMap = convertMap(pageResult.getList(), ErpSaleOutDO::getId);
         // 1.2 产品信息
@@ -951,6 +978,8 @@ public class ErpSaleOutController {
             saleOut.setHasStockOutBill(CollUtil.isNotEmpty(saleOutBills));
             saleOut.setStockOutBills(toStockOutBillBriefs(saleOutBills));
             saleOut.setAdjustStatus(calculateAdjustStatus(saleOut, items));
+            saleOut.setHasExpressFile(StringUtils.hasText(saleOut.getExpressFileUrl())
+                    || deliveryExpressOutIds.contains(saleOut.getId()));
             // 退货状态计算
             saleOut.setReturnStatus(calculateReturnStatus(saleOutItemMap.get(saleOut.getId()), returnedCountMap));
             fillSaleOutPickDeliverySummary(saleOut, pickDeliverySummaryMap.get(saleOut.getId()));
@@ -962,6 +991,7 @@ public class ErpSaleOutController {
             return PageResult.empty(pageResult.getTotal());
         }
         Set<Long> outIds = convertSet(pageResult.getList(), ErpSaleOutDO::getId);
+        Set<Long> deliveryExpressOutIds = salePickDeliveryService.getSaleOutIdsWithDeliveryFiles(outIds);
         List<ErpSaleOutItemDO> saleOutItemList = saleOutItemMapper.selectLightListByOutIds(outIds);
         Map<Long, List<ErpSaleOutItemDO>> saleOutItemMap = convertMultiMap(saleOutItemList, ErpSaleOutItemDO::getOutId);
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
@@ -1026,6 +1056,8 @@ public class ErpSaleOutController {
             saleOut.setStockOutBills(toStockOutBillBriefs(saleOutBills));
             List<ErpSaleOutItemDO> items = saleOutItemMap.getOrDefault(saleOut.getId(), Collections.emptyList());
             saleOut.setAdjustStatus(calculateAdjustStatus(saleOut, items));
+            saleOut.setHasExpressFile(StringUtils.hasText(saleOut.getExpressFileUrl())
+                    || deliveryExpressOutIds.contains(saleOut.getId()));
             saleOut.setReturnStatus(calculateReturnStatus(items, returnedCountMap));
             fillSaleOutPickDeliverySummary(saleOut, pickDeliverySummaryMap.get(saleOut.getId()));
         });

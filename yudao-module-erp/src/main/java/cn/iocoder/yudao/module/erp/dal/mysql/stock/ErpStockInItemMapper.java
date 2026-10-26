@@ -26,6 +26,17 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Mapper
 public interface ErpStockInItemMapper extends BaseMapperX<ErpStockInItemDO> {
 
+    default PageResult<ErpStockInItemDO> selectExportPageByInIds(Collection<Long> ids, int pageNo) {
+        if (CollUtil.isEmpty(ids)) return PageResult.empty();
+        cn.iocoder.yudao.framework.common.pojo.PageParam page = new cn.iocoder.yudao.framework.common.pojo.PageParam();
+        page.setPageNo(pageNo); page.setPageSize(500);
+        StringBuilder order = new StringBuilder("CASE in_id ");
+        int position = 0;
+        for (Long id : ids) order.append("WHEN ").append(id.longValue()).append(" THEN ").append(position++).append(' ');
+        order.append("END");
+        return selectPage(page, new QueryWrapper<ErpStockInItemDO>().in("in_id", ids).orderByAsc(order.toString(), "id"));
+    }
+
     default List<ErpStockInItemDO> selectListByInId(Long inId) {
         return selectList(buildSortedQuery(inId, null, null, null));
     }

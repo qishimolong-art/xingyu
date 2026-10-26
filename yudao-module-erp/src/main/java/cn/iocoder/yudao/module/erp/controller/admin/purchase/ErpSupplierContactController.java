@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.suppliercontact.ErpSupplierContactRespVO;
@@ -67,4 +69,12 @@ public class ErpSupplierContactController {
         return success(BeanUtils.toBean(supplierContactService.getSupplierContactList(supplierId), ErpSupplierContactRespVO.class));
     }
 
+
+    @GetMapping("/page")
+    @Operation(summary = "分页查询供应商关联资料")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:query')")
+    public CommonResult<PageResult<ErpSupplierContactRespVO>> getSupplierContactPage(@Valid ErpSupplierItemPageReqVO reqVO) {
+        PageResult<ErpSupplierContactDO> page = supplierContactService.getSupplierContactPage(reqVO);
+        return success(BeanUtils.toBean(page, ErpSupplierContactRespVO.class));
+    }
 }

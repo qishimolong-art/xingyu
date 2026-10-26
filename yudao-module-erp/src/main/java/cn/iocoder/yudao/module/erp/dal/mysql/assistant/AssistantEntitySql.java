@@ -74,14 +74,17 @@ public final class AssistantEntitySql {
                 String compactKeyword=AssistantSemanticKnowledge.compactProductUnitSpacing(productKeyword);
                 ErpKeywordQuery.KeywordSearch parsed=ErpKeywordQuery.parseKeywordSearch(compactKeyword);
                 if(!ErpKeywordQuery.shouldAppendTokenProductItemCondition(parsed)) {
-                    Set<String> patterns=new LinkedHashSet<>();
+                    Set<String> aliasPatterns=new LinkedHashSet<>();
+                    Set<String> orderedPatterns=new LinkedHashSet<>();
                     for(String variant:AssistantSemanticKnowledge.productUnitVariants(compactKeyword)) {
-                        if(!variant.equals(productKeyword.trim())) patterns.add("%"+variant+"%");
-                        String ordered=AssistantSemanticKnowledge.productUnitAwareOrderedPattern(compactKeyword,variant);
-                        if(ordered!=null && !ordered.equals(variant)) patterns.add("%"+ordered+"%");
+                        if(!variant.equals(productKeyword.trim())) aliasPatterns.add("%"+variant+"%");
+                        String ordered=productNameSegmentRegex(compactKeyword,variant);
+                        if(ordered!=null) orderedPatterns.add(ordered);
                     }
-                    for(String pattern:patterns)
+                    for(String pattern:aliasPatterns)
                         terms.add(likeAny(productNameColumn(),pattern,parameters));
+                    for(String pattern:orderedPatterns)
+                        terms.add(regexAny(productNameColumn(),pattern,parameters));
                 }
             }
             if(flag(context,"searchShortName")) add(terms,parameters,"e.short_name LIKE CONCAT('%',?,'%')",keyword);
@@ -103,63 +106,92 @@ public final class AssistantEntitySql {
                 +"LOCATE(UPPER(?),UPPER(COALESCE(e.pinyin_code,''))),CHAR_LENGTH("+name+"),e.id";
     }
 
-    /** Product name-only search that keeps both character order and cross-token order. */
+    /** Product name-only search where each query token must match a later whitespace-delimited name segment. */
     private static String productTokenPredicate(Map<String,Object> context,List<Object> parameters) {
         String rawKeyword=String.valueOf(context.get("entityKeyword"));
         String keyword=AssistantSemanticKnowledge.compactProductUnitSpacing(rawKeyword);
-        ErpKeywordQuery.KeywordSearch parsed=ErpKeywordQuery.parseKeywordSearch(keyword);
-        if(!ErpKeywordQuery.shouldAppendTokenProductItemCondition(parsed)) {
-            if(keyword.equals(rawKeyword.trim()) || keyword.isEmpty()) return "1=0";
-        }
+        List<String> sourceTokens=productKeywordTokens(keyword);
+        if(sourceTokens.size()<2) return "1=0";
         List<String> columns=productNameColumn();
         if(columns.isEmpty()) return "1=0";
-        Set<String> orderedPatterns=new LinkedHashSet<>();
-        List<String> sourceTokens=productKeywordTokens(keyword);
+        Set<String> segmentPatterns=new LinkedHashSet<>();
         for(String variant:AssistantSemanticKnowledge.productUnitVariants(keyword)) {
             List<String> tokens=productKeywordTokens(variant);
-            if(tokens.isEmpty()) continue;
-            String compact=String.join("",tokens);
-            orderedPatterns.add("%"+String.join("%",tokens)+"%");
-            String ordered=orderedProductTokenPattern(sourceTokens,tokens);
-            if(ordered!=null && !ordered.equals(compact)) orderedPatterns.add("%"+ordered+"%");
+            if(tokens.size()!=sourceTokens.size()) continue;
+            String literal=productNameSegmentRegex(tokens,null);
+            if(literal!=null) segmentPatterns.add(literal);
+            String ordered=productNameSegmentRegex(tokens,orderedProductTokenFragments(sourceTokens,tokens));
+            if(ordered!=null) segmentPatterns.add(ordered);
         }
         List<String> alternatives=new ArrayList<>();
-        for(String pattern:orderedPatterns) alternatives.add(likeAny(columns,pattern,parameters));
+        for(String pattern:segmentPatterns) alternatives.add(regexAny(columns,pattern,parameters));
         return alternatives.isEmpty()?"1=0":"("+String.join(" OR ",alternatives)+")";
     }
 
-    private static String orderedProductTokenPattern(List<String> sourceTokens,List<String> candidateTokens) {
-        if(sourceTokens.size()!=candidateTokens.size())
-            return orderedCharacterPattern(String.join("",candidateTokens));
-        List<String> orderedTokens=new ArrayList<>();
+    private static List<List<String>> orderedProductTokenFragments(List<String> sourceTokens,List<String> candidateTokens) {
+        if(sourceTokens.size()!=candidateTokens.size()) return Collections.emptyList();
+        List<List<String>> orderedTokens=new ArrayList<>();
         for(int i=0;i<candidateTokens.size();i++) {
-            String ordered=AssistantSemanticKnowledge.productUnitAwareOrderedPattern(
+            List<String> ordered=AssistantSemanticKnowledge.productUnitAwareOrderedFragments(
                     sourceTokens.get(i),candidateTokens.get(i));
-            if(ordered!=null && !ordered.isEmpty()) orderedTokens.add(ordered);
+            if(ordered.isEmpty()) return Collections.emptyList();
+            orderedTokens.add(ordered);
         }
-        return String.join("%",orderedTokens);
+        return orderedTokens;
     }
 
     private static List<String> productKeywordTokens(String keyword) {
-        ErpKeywordQuery.KeywordSearch parsed=ErpKeywordQuery.parseKeywordSearch(keyword);
-        if(ErpKeywordQuery.shouldAppendTokenProductItemCondition(parsed)) return parsed.tokens();
-        String value=keyword==null?"":keyword.trim();
-        return value.isEmpty()?Collections.emptyList():Collections.singletonList(value);
+        return AssistantSemanticKnowledge.productNameQueryTokens(keyword);
     }
 
     private static List<String> productNameColumn() {
         return Collections.singletonList("e.name");
     }
 
-    /** Every product-name term keeps the shared ordered-character compatibility, including 530 -> 5%3%0. */
-    private static String orderedCharacterPattern(String value) {
-        return value==null?null:ErpKeywordQuery.orderedCharactersPattern(value);
+    private static String productNameSegmentRegex(String original,String variant) {
+        List<String> tokens=Collections.singletonList(variant);
+        List<List<String>> fragments=Collections.singletonList(
+                AssistantSemanticKnowledge.productUnitAwareOrderedFragments(original,variant));
+        return productNameSegmentRegex(tokens,fragments);
+    }
+
+    private static String productNameSegmentRegex(List<String> tokens,List<List<String>> orderedFragments) {
+        if(tokens.isEmpty() || (orderedFragments!=null && orderedFragments.size()!=tokens.size())) return null;
+        StringBuilder regex=new StringBuilder("(^|[[:space:]])");
+        for(int i=0;i<tokens.size();i++) {
+            if(i>0) regex.append("[[:space:]]+([^[:space:]]+[[:space:]]+)*");
+            List<String> fragments=orderedFragments==null
+                    ?Collections.singletonList(tokens.get(i)):orderedFragments.get(i);
+            if(fragments.isEmpty()) return null;
+            regex.append("[^[:space:]]*");
+            for(int j=0;j<fragments.size();j++) {
+                if(j>0) regex.append("[^[:space:]]*");
+                appendRegexLiteral(regex,fragments.get(j));
+            }
+            regex.append("[^[:space:]]*");
+        }
+        return regex.toString();
+    }
+
+    private static void appendRegexLiteral(StringBuilder target,String value) {
+        value.codePoints().forEach(codePoint -> {
+            if(codePoint<128 && "\\.^$|?*+()[]{}".indexOf(codePoint)>=0) target.append('\\');
+            target.appendCodePoint(codePoint);
+        });
     }
 
     private static String likeAny(List<String> columns,String value,List<Object> parameters) {
         List<String> terms=new ArrayList<>();
         for(String column:columns) {
             terms.add("UPPER(COALESCE("+column+",'')) LIKE UPPER(?)");parameters.add(value);
+        }
+        return String.join(" OR ",terms);
+    }
+
+    private static String regexAny(List<String> columns,String value,List<Object> parameters) {
+        List<String> terms=new ArrayList<>();
+        for(String column:columns) {
+            terms.add("UPPER(COALESCE("+column+",'')) REGEXP UPPER(?)");parameters.add(value);
         }
         return String.join(" OR ",terms);
     }

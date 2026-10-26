@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferDirectionEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpWarehouseMoveStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -234,6 +235,7 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                                                             String selfCreator,
                                                             Map<Long, Set<Long>> batchNoStockKeyMap) {
         QueryWrapperX<ErpStockDO> wrapper = new QueryWrapperX<ErpStockDO>()
+                .inIfPresent("id", reqVO.getIds())
                 .eqIfPresent("product_id", reqVO.getProductId())
                 .eqIfPresent("warehouse_id", reqVO.getWarehouseId())
                 .likeIfPresent("shelf", fuzzyKeyword(reqVO.getShelf()))
@@ -517,7 +519,7 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
     static void orderByIfPresent(QueryWrapperX<ErpStockDO> wrapper, ErpStockPageReqVO reqVO) {
         String orderExpression = getOrderExpression(reqVO.getOrderField(), reqVO.getPriceSystemId());
         if (orderExpression == null) {
-            defaultOrderBy(wrapper);
+            defaultOrderBy(wrapper, reqVO);
             return;
         }
         if ("asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
@@ -528,7 +530,7 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
             wrapper.orderByDesc(orderExpression).orderByDesc("id");
             return;
         }
-        defaultOrderBy(wrapper);
+        defaultOrderBy(wrapper, reqVO);
     }
 
     static boolean isAvailableCountSort(ErpStockPageReqVO reqVO) {
@@ -567,7 +569,7 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 + "    UNION ALL "
                 + pendingAuditOccupiedSql(candidateStockSql, "erp_stock_out_item", "soi2",
                 "erp_stock_out", "so2", "soi2.out_id", "soi2.warehouse_id",
-                "COALESCE(soi2.count, 0)")
+                "COALESCE(soi2.count, 0)", "IN (10, 15)")
                 + "    UNION ALL "
                 + stockTransferOutOccupiedSql(candidateStockSql)
                 + "    UNION ALL "
@@ -614,13 +616,20 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
     static String pendingAuditOccupiedSql(String candidateStockSql, String itemTable, String itemAlias,
                                           String mainTable, String mainAlias, String itemForeignKey,
                                           String warehouseColumn, String countExpression) {
+        return pendingAuditOccupiedSql(candidateStockSql, itemTable, itemAlias, mainTable, mainAlias,
+                itemForeignKey, warehouseColumn, countExpression, "= " + ErpAuditStatus.PROCESS.getStatus());
+    }
+
+    static String pendingAuditOccupiedSql(String candidateStockSql, String itemTable, String itemAlias,
+                                          String mainTable, String mainAlias, String itemForeignKey,
+                                          String warehouseColumn, String countExpression, String statusCondition) {
         return "    SELECT " + itemAlias + ".product_id, " + warehouseColumn
                 + " AS warehouse_id, SUM(" + countExpression + ") AS occupied_count_delta "
                 + "    FROM " + itemTable + " " + itemAlias + " "
                 + "    INNER JOIN " + mainTable + " " + mainAlias
                 + " ON " + mainAlias + ".id = " + itemForeignKey
                 + " AND " + mainAlias + ".deleted = 0"
-                + " AND " + mainAlias + ".status = " + ErpAuditStatus.PROCESS.getStatus()
+                + " AND " + mainAlias + ".status " + statusCondition
                 + "    INNER JOIN " + candidateStockSql + " candidate_stock "
                 + "    ON candidate_stock.product_id = " + itemAlias + ".product_id "
                 + "    AND candidate_stock.warehouse_id = " + warehouseColumn + " "
@@ -649,7 +658,8 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 + "    FROM erp_warehouse_move_item wmi "
                 + "    INNER JOIN erp_warehouse_move wm ON wm.id = wmi.move_id "
                 + "    AND wm.deleted = 0 "
-                + "    AND wm.status = " + ErpAuditStatus.PROCESS.getStatus() + " "
+                + "    AND wm.status IN (" + ErpWarehouseMoveStatusEnum.PROCESS.getStatus() + ","
+                + ErpWarehouseMoveStatusEnum.PICKING.getStatus() + ") "
                 + "    INNER JOIN " + candidateStockSql + " candidate_stock "
                 + "    ON candidate_stock.product_id = wmi.product_id "
                 + "    AND candidate_stock.warehouse_id = wmi.from_warehouse_id "
@@ -813,7 +823,7 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
         String purchaseReturn = pendingAuditSum("erp_purchase_return_items", "pri", "erp_purchase_return", "pr",
                 "pri.return_id", "pri.warehouse_id", "COALESCE(pri.count, 0)");
         String stockOut = pendingAuditSum("erp_stock_out_item", "soi2", "erp_stock_out", "so2",
-                "soi2.out_id", "soi2.warehouse_id", "COALESCE(soi2.count, 0)");
+                "soi2.out_id", "soi2.warehouse_id", "COALESCE(soi2.count, 0)", "IN (10, 15)");
         String transferOut = "(SELECT SUM(COALESCE(smi.count, 0)) FROM erp_stock_move_item smi "
                 + "INNER JOIN erp_stock_move sm ON sm.id = smi.move_id AND sm.deleted = b'0' "
                 + "AND sm.status = " + ErpAuditStatus.PROCESS.getStatus()
@@ -822,7 +832,8 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 + "AND smi.from_warehouse_id = erp_stock.warehouse_id)";
         String warehouseMove = "(SELECT SUM(COALESCE(wmi.count, 0)) FROM erp_warehouse_move_item wmi "
                 + "INNER JOIN erp_warehouse_move wm ON wm.id = wmi.move_id AND wm.deleted = b'0' "
-                + "AND wm.status = " + ErpAuditStatus.PROCESS.getStatus() + " "
+                + "AND wm.status IN (" + ErpWarehouseMoveStatusEnum.PROCESS.getStatus() + ","
+                + ErpWarehouseMoveStatusEnum.PICKING.getStatus() + ") "
                 + "WHERE wmi.deleted = b'0' AND wmi.product_id = erp_stock.product_id "
                 + "AND wmi.from_warehouse_id = erp_stock.warehouse_id)";
         String checkLess = "(SELECT SUM(ABS(COALESCE(sci2.count, 0))) FROM erp_stock_check_item sci2 "
@@ -849,7 +860,7 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
         String saleReturn = pendingAuditSum("erp_sale_return_items", "sri", "erp_sale_return", "sr",
                 "sri.return_id", "sri.warehouse_id", "COALESCE(sri.count, 0)");
         String stockIn = pendingAuditSum("erp_stock_in_item", "sii", "erp_stock_in", "si",
-                "sii.in_id", "sii.warehouse_id", "COALESCE(sii.count, 0)");
+                "sii.in_id", "sii.warehouse_id", "COALESCE(sii.count, 0)", "IN (10, 15)");
         String transferIn = "(SELECT SUM(COALESCE(smi.count, 0)) FROM erp_stock_move_item smi "
                 + "INNER JOIN erp_stock_move sm ON sm.id = smi.move_id AND sm.deleted = b'0' "
                 + "AND sm.status = " + ErpAuditStatus.PROCESS.getStatus()
@@ -858,7 +869,8 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 + "AND smi.to_warehouse_id = erp_stock.warehouse_id)";
         String warehouseMove = "(SELECT SUM(COALESCE(wmi.count, 0)) FROM erp_warehouse_move_item wmi "
                 + "INNER JOIN erp_warehouse_move wm ON wm.id = wmi.move_id AND wm.deleted = b'0' "
-                + "AND wm.status = " + ErpAuditStatus.PROCESS.getStatus() + " "
+                + "AND wm.status IN (" + ErpWarehouseMoveStatusEnum.PROCESS.getStatus() + ","
+                + ErpWarehouseMoveStatusEnum.PICKING.getStatus() + ") "
                 + "WHERE wmi.deleted = b'0' AND wmi.product_id = erp_stock.product_id "
                 + "AND wmi.to_warehouse_id = erp_stock.warehouse_id)";
         String checkMore = "(SELECT SUM(COALESCE(sci.count, 0)) FROM erp_stock_check_item sci "
@@ -877,10 +889,17 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
 
     static String pendingAuditSum(String itemTable, String itemAlias, String mainTable, String mainAlias,
                                   String itemForeignKey, String warehouseColumn, String countExpression) {
+        return pendingAuditSum(itemTable, itemAlias, mainTable, mainAlias, itemForeignKey,
+                warehouseColumn, countExpression, "= " + ErpAuditStatus.PROCESS.getStatus());
+    }
+
+    static String pendingAuditSum(String itemTable, String itemAlias, String mainTable, String mainAlias,
+                                  String itemForeignKey, String warehouseColumn, String countExpression,
+                                  String statusCondition) {
         return "(SELECT SUM(" + countExpression + ") FROM " + itemTable + " " + itemAlias
                 + " INNER JOIN " + mainTable + " " + mainAlias + " ON " + mainAlias + ".id = " + itemForeignKey
-                + " AND " + mainAlias + ".deleted = b'0' AND " + mainAlias + ".status = "
-                + ErpAuditStatus.PROCESS.getStatus() + " WHERE " + itemAlias + ".deleted = b'0' AND "
+                + " AND " + mainAlias + ".deleted = b'0' AND " + mainAlias + ".status "
+                + statusCondition + " WHERE " + itemAlias + ".deleted = b'0' AND "
                 + itemAlias + ".product_id = erp_stock.product_id AND " + warehouseColumn
                 + " = erp_stock.warehouse_id)";
     }
@@ -953,8 +972,33 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
     }
 
     static void defaultOrderBy(QueryWrapperX<ErpStockDO> wrapper) {
+        defaultOrderBy(wrapper, null);
+    }
+
+    static void defaultOrderBy(QueryWrapperX<ErpStockDO> wrapper, ErpStockPageReqVO reqVO) {
+        String exactPriorityExpression = exactProductPriorityExpression(reqVO);
+        if (exactPriorityExpression != null) {
+            wrapper.orderByAsc(exactPriorityExpression);
+        }
         wrapper.orderByAsc("warehouse_id")
                 .orderByDesc("id");
+    }
+
+    static String exactProductPriorityExpression(ErpStockPageReqVO reqVO) {
+        if (reqVO == null
+                || !ErpStockPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_STOCK_LIST.equals(reqVO.getKeywordSearchMode())
+                || isEmpty(reqVO.getExactKeywordProductIds())) {
+            return null;
+        }
+        String ids = reqVO.getExactKeywordProductIds().stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .map(String::valueOf)
+                .collect(java.util.stream.Collectors.joining(","));
+        if (ids.isEmpty()) {
+            return null;
+        }
+        return "CASE WHEN erp_stock.product_id IN (" + ids + ") THEN 0 ELSE 1 END";
     }
 
     static boolean isEmpty(Collection<?> collection) {

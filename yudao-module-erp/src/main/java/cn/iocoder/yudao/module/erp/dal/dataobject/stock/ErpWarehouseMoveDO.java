@@ -63,6 +63,16 @@ public class ErpWarehouseMoveDO extends BaseDO {
 
     private LocalDateTime approveTime;
 
+    private Long confirmUserId;
+
+    private LocalDateTime confirmTime;
+
+    private Long voidUserId;
+
+    private LocalDateTime voidTime;
+
+    private String voidReason;
+
     private String remark;
 
     private String fileUrl;

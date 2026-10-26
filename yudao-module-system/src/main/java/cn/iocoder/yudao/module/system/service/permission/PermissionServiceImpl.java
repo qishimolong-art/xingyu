@@ -14,6 +14,7 @@ import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionCreateOrUpdateReqDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptListReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.RoleFormDataScopeRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.TenantVisitScopeSaveReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.MenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
@@ -35,6 +36,7 @@ import cn.iocoder.yudao.module.system.enums.permission.MenuTypeEnum;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
 import cn.iocoder.yudao.module.system.service.user.UserPriceFieldService;
+import cn.iocoder.yudao.module.system.service.tenant.TenantVisitScopeService;
 import com.baomidou.dynamic.datasource.annotation.DSTransactional;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Suppliers;
@@ -45,6 +47,7 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
@@ -255,6 +258,10 @@ public class PermissionServiceImpl implements PermissionService {
     private UserPermissionDenyMapper userPermissionDenyMapper;
 
     @Resource
+    @Lazy
+    private TenantVisitScopeService tenantVisitScopeService;
+
+    @Resource
     private RoleService roleService;
     @Resource
     private MenuService menuService;
@@ -418,6 +425,7 @@ public class PermissionServiceImpl implements PermissionService {
         if (CollUtil.isNotEmpty(deleteMenuIds)) {
             roleMenuMapper.deleteListByRoleIdAndMenuIds(roleId, deleteMenuIds);
         }
+        tenantVisitScopeService.reconcileUserScopesByRoleId(roleId);
     }
 
     @Override
@@ -429,11 +437,14 @@ public class PermissionServiceImpl implements PermissionService {
                     allEntries = true) // allEntries 娓呯┖鎵€鏈夌紦瀛橈紝姝ゅ鏃犳硶鏂逛究鑾峰緱 roleId 瀵瑰簲鐨?user 缂撳瓨浠?
     })
     public void processRoleDeleted(Long roleId) {
+        Set<Long> affectedUserIds = convertSet(userRoleMapper.selectListByRoleIds(Collections.singleton(roleId)),
+                UserRoleDO::getUserId);
         // 鏍囪鍒犻櫎 UserRole
         userRoleMapper.deleteListByRoleId(roleId);
         // 鏍囪鍒犻櫎 RoleMenu
         roleMenuMapper.deleteListByRoleId(roleId);
         roleFieldPermissionMapper.deleteListByRoleId(roleId, TenantContextHolder.getRequiredTenantId());
+        tenantVisitScopeService.reconcileUserScopes(affectedUserIds);
     }
 
     @Override
@@ -840,7 +851,7 @@ public class PermissionServiceImpl implements PermissionService {
         Set<Long> dbRoleIds = convertSet(userRoleMapper.selectListByUserId(userId),
                 UserRoleDO::getRoleId);
         // 璁＄畻鏂板鍜屽垹闄ょ殑瑙掕壊缂栧彿
-        Set<Long> roleIdList = CollUtil.emptyIfNull(roleIds);
+        Set<Long> roleIdList = tenantVisitScopeService.preserveManagedTenantVisitRole(userId, roleIds);
         Collection<Long> createRoleIds = CollUtil.subtract(roleIdList, dbRoleIds);
         Collection<Long> deleteMenuIds = CollUtil.subtract(dbRoleIds, roleIdList);
         // 鎵ц鏂板鍜屽垹闄ゃ€傚浜庡凡缁忔巿鏉冪殑瑙掕壊锛屼笉鐢ㄥ仛浠讳綍澶勭悊
@@ -855,6 +866,7 @@ public class PermissionServiceImpl implements PermissionService {
         if (!CollectionUtil.isEmpty(deleteMenuIds)) {
             userRoleMapper.deleteListByUserIdAndRoleIdIds(userId, deleteMenuIds);
         }
+        tenantVisitScopeService.reconcileUserScope(userId);
     }
 
     @Override
@@ -867,6 +879,7 @@ public class PermissionServiceImpl implements PermissionService {
                 .map(StrUtil::trim)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         if (CollUtil.isEmpty(permissionSet)) {
+            tenantVisitScopeService.reconcileUserScope(userId);
             return;
         }
         List<UserPermissionDenyDO> entities = CollectionUtils.convertList(permissionSet, permission -> {
@@ -882,6 +895,7 @@ public class PermissionServiceImpl implements PermissionService {
                 // Full replacement normally removes old rows first; this keeps concurrent saves idempotent.
             }
         }
+        tenantVisitScopeService.reconcileUserScope(userId);
     }
 
     @Override
@@ -892,12 +906,37 @@ public class PermissionServiceImpl implements PermissionService {
     })
     public void assignUserRoleAndDeniedPermissions(Long userId, Set<Long> roleIds, Set<String> deniedPermissions) {
         assignUserRole(userId, roleIds);
-        if (roleService.hasAnySuperAdmin(CollUtil.emptyIfNull(roleIds))) {
-            assignUserDeniedPermissions(userId, Collections.emptySet());
-            return;
-        }
         Set<String> validDeniedPermissions = filterRoleGrantedButtonPermissions(roleIds, deniedPermissions);
+        if (roleService.hasAnySuperAdmin(CollUtil.emptyIfNull(roleIds))) {
+            validDeniedPermissions = validDeniedPermissions.stream()
+                    .filter(TenantVisitScopeService.PERMISSION_TENANT_VISIT::equals)
+                    .collect(Collectors.toSet());
+        }
         assignUserDeniedPermissions(userId, validDeniedPermissions);
+        tenantVisitScopeService.reconcileUserScope(userId);
+    }
+
+    @Override
+    @DSTransactional
+    @Caching(evict = {
+            @CacheEvict(value = RedisKeyConstants.USER_ROLE_ID_LIST, key = "#userId"),
+            @CacheEvict(value = RedisKeyConstants.USER_DENIED_PERMISSION_LIST, key = "#userId"),
+            @CacheEvict(value = RedisKeyConstants.USER_TENANT_VISIT_SCOPE, key = "#userId")
+    })
+    public void assignUserRoleDeniedPermissionsAndTenantScope(Long userId, Set<Long> roleIds,
+                                                               Set<String> deniedPermissions,
+                                                               TenantVisitScopeSaveReqVO tenantVisitScope) {
+        assignUserRoleAndDeniedPermissions(userId, roleIds, deniedPermissions);
+        if (tenantVisitScope != null) {
+            tenantVisitScopeService.saveUserTenantVisitScope(userId, tenantVisitScope);
+        } else {
+            tenantVisitScopeService.reconcileUserScope(userId);
+        }
+    }
+
+    @Override
+    public void reconcileTenantVisitScopesByRoleId(Long roleId) {
+        tenantVisitScopeService.reconcileUserScopesByRoleId(roleId);
     }
 
     private Set<String> filterRoleGrantedButtonPermissions(Set<Long> roleIds, Set<String> permissions) {
@@ -958,6 +997,7 @@ public class PermissionServiceImpl implements PermissionService {
     public void processUserDeleted(Long userId) {
         userRoleMapper.deleteListByUserId(userId);
         userPermissionDenyMapper.deleteListByUserId(userId, TenantContextHolder.getRequiredTenantId());
+        tenantVisitScopeService.clearUserScope(userId);
     }
 
     @Override

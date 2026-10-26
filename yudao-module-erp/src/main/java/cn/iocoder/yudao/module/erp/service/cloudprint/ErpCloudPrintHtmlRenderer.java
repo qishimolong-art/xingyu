@@ -368,7 +368,8 @@ public class ErpCloudPrintHtmlRenderer {
         try {
             BigDecimal decimal = value instanceof BigDecimal
                     ? (BigDecimal) value : new BigDecimal(String.valueOf(value).trim());
-            return decimal.setScale(2, RoundingMode.HALF_UP).toPlainString();
+            BigDecimal normalizedAmount = decimal.setScale(6, RoundingMode.HALF_UP).stripTrailingZeros();
+            return normalizedAmount.setScale(Math.max(2, normalizedAmount.scale()), RoundingMode.UNNECESSARY).toPlainString();
         } catch (NumberFormatException ignored) {
             return value;
         }

@@ -57,6 +57,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -239,9 +240,8 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
 
     @Override
     public ErpCustomerDeptDistributionRespVO getCustomerDeptDistribution(Long id) {
-        // 查看分配部门信息时，使用无可见范围限制的查询——调用此接口的用户已通过权限校验，
-        // 不应再受数据权限过滤的影响（例如部门可见范围会导致跨部门分配信息丢失）
-        ErpCustomerDO customer = DataPermissionUtils.executeIgnore(() -> customerMapper.selectById(id));
+        // 先校验父客户可见范围，再保留其完整部门配置用于原授权页面。
+        ErpCustomerDO customer = getCustomer(id);
         if (customer == null) {
             throw exception(CUSTOMER_NOT_EXISTS);
         }
@@ -286,7 +286,7 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
 
     @Override
     public ErpCustomerDeptCreditRespVO getCustomerDeptCredit(Long id) {
-        ErpCustomerDO customer = DataPermissionUtils.executeIgnore(() -> customerMapper.selectById(id));
+        ErpCustomerDO customer = getCustomer(id);
         if (customer == null) {
             throw exception(CUSTOMER_NOT_EXISTS);
         }
@@ -411,7 +411,7 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     }
 
     private ErpCustomerDO validateCustomerExists(Long id) {
-        ErpCustomerDO customer = DataPermissionUtils.executeIgnore(() -> customerMapper.selectById(id));
+        ErpCustomerDO customer = getCustomer(id);
         if (customer == null) {
             throw exception(CUSTOMER_NOT_EXISTS);
         }
@@ -556,9 +556,17 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
             return Collections.emptyMap();
         }
         List<ErpCustomerDO> customers = customerMapper.selectByIds(customerIds);
+        Map<Long, BigDecimal> balances = new LinkedHashMap<>();
+        receivableAccountMapper.selectByCustomerIds(customerIds).forEach(account ->
+                balances.put(account.getCustomerId(), nullToZero(account.getReceivableBalance())));
+        Map<Long, BigDecimal> debts = balances.entrySet().stream().filter(entry -> entry.getValue().signum() > 0)
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        Map<Long, LocalDate> dates = new HashMap<>();
+        if (!debts.isEmpty()) customerMapper.selectEarliestUnpaidDates(debts).forEach(row -> dates.put(row.getCustomerId(), row.getEarliestUnpaidDate()));
         Map<Long, ErpCustomerCreditStatusBO> result = new LinkedHashMap<>();
         for (ErpCustomerDO customer : customers) {
-            result.put(customer.getId(), buildCustomerCreditStatus(customer));
+            result.put(customer.getId(), buildCustomerCreditStatus(customer, customer.getCreditEnabled(), customer.getCreditLimit(),
+                    customer.getCreditTermDays(), null, balances.getOrDefault(customer.getId(), BigDecimal.ZERO), dates.get(customer.getId())));
         }
         return result;
     }
@@ -623,16 +631,27 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ErpCustomerImportRespVO importCustomerList(List<ErpCustomerImportExcelVO> list) {
+        return importCustomerList(list, ErpCustomerImportProgressListener.NOOP);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpCustomerImportRespVO importCustomerList(List<ErpCustomerImportExcelVO> list,
+                                                       ErpCustomerImportProgressListener listener) {
         ErpCustomerImportRespVO respVO = new ErpCustomerImportRespVO();
         if (CollUtil.isEmpty(list)) {
             return respVO;
         }
+
+        ErpCustomerImportProgressListener progressListener = listener == null
+                ? ErpCustomerImportProgressListener.NOOP : listener;
 
         Map<String, ErpCustomerDO> existedMap = buildExistedCustomerMap(list);
         ImportDeptContext deptContext = buildImportDeptContext(list);
         for (int i = 0; i < list.size(); i++) {
             ErpCustomerImportExcelVO importVO = list.get(i);
             if (importVO == null || !StringUtils.hasText(trimToNull(importVO.getName()))) {
+                progressListener.onRowProcessed(i + 1, list.size(), respVO);
                 continue;
             }
             Integer rowNo = i + 2;
@@ -654,9 +673,13 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
                 respVO.getFailureDetails().add(new ErpCustomerImportRespVO.FailureItem(
                         rowNo, code, getImportFailureReason(ex)));
             }
+            respVO.setSuccessCount(respVO.getCreateCount() + respVO.getUpdateCount());
+            respVO.setFailureCount(respVO.getFailureDetails().size());
+            progressListener.onRowProcessed(i + 1, list.size(), respVO);
         }
         respVO.setSuccessCount(respVO.getCreateCount() + respVO.getUpdateCount());
         respVO.setFailureCount(respVO.getFailureDetails().size());
+        progressListener.onFinalizing(list.size(), respVO);
         if (operateLogService != null) {
             operateLogService.record(ERP_CUSTOMER_TYPE, ERP_IMPORT_SUB_TYPE, 0L,
                     "导入客户信息，新增：" + respVO.getCreateCount()
@@ -1135,6 +1158,11 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         BigDecimal balance = getReceivableBalance(customer.getId(), saleDeptId);
         LocalDate earliestUnpaidDate = balance.compareTo(BigDecimal.ZERO) > 0
                 ? findEarliestUnpaidDate(customer.getId(), saleDeptId, balance) : null;
+        return buildCustomerCreditStatus(customer, creditEnabledFlag, creditLimit, creditTermDays, saleDeptId, balance, earliestUnpaidDate);
+    }
+
+    private ErpCustomerCreditStatusBO buildCustomerCreditStatus(ErpCustomerDO customer, Boolean creditEnabledFlag,
+            BigDecimal creditLimit, Integer creditTermDays, Long saleDeptId, BigDecimal balance, LocalDate earliestUnpaidDate) {
         Integer debtDays = earliestUnpaidDate == null ? null
                 : Math.toIntExact(ChronoUnit.DAYS.between(earliestUnpaidDate, LocalDate.now()));
 
@@ -1177,12 +1205,17 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
                                             boolean amountExceeded, boolean termExceeded) {
         List<String> reasons = new ArrayList<>();
         if (amountExceeded) {
-            reasons.add("欠款金额 " + balance + " 已达到授信金额 " + creditLimit);
+            reasons.add("欠款金额 " + formatCreditAmount(balance)
+                    + " 已达到授信金额 " + formatCreditAmount(creditLimit));
         }
         if (termExceeded) {
             reasons.add("欠款天数 " + debtDays + " 天已超过授信期限 " + creditTermDays + " 天");
         }
         return String.join("；", reasons);
+    }
+
+    private String formatCreditAmount(BigDecimal amount) {
+        return amount.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
     private LocalDate findEarliestUnpaidDate(Long customerId, Long saleDeptId, BigDecimal currentBalance) {

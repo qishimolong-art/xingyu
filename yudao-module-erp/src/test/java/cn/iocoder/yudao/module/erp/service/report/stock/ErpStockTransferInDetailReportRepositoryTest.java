@@ -52,7 +52,7 @@ class ErpStockTransferInDetailReportRepositoryTest {
         assertTrue(body.contains("p.deleted=b'0'"));
         assertTrue(body.contains("LEFT JOIN erp_warehouse fw"));
         assertTrue(body.contains("LEFT JOIN erp_warehouse tw"));
-        assertTrue(body.contains("ROUND(smi.count*smi.product_price,2) total_amount"));
+        assertTrue(body.contains("COALESCE(smi.total_price,ROUND(smi.count*smi.product_price,6)) total_amount"));
         assertTrue(body.contains("smi.product_price cost_unit_price"));
         assertTrue(body.contains("sm.dept_id IN (:deptIds)"));
         assertTrue(body.contains("sm.from_dept_id IN (:deptIds)"));

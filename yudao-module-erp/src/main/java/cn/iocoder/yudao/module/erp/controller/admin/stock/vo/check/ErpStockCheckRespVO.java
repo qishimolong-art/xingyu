@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.excel.core.annotations.DictFormat;
 import cn.iocoder.yudao.framework.excel.core.convert.DictConvert;
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.idev.excel.annotation.format.NumberFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -44,11 +45,12 @@ public class ErpStockCheckRespVO {
     private Integer checkType;
 
     @Schema(description = "合计数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "15663")
-    @ExcelProperty("合计数量")
+    @ExcelProperty(value = "合计数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.###")
     private BigDecimal totalCount;
 
     @Schema(description = "合计金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "24906")
-    @ExcelProperty("合计金额")
+    @ExcelProperty(value = "合计金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal totalPrice;
 
     @Schema(description = "整单总重", example = "125.00")
@@ -85,6 +87,7 @@ public class ErpStockCheckRespVO {
 
     @Schema(description = "打印次数")
     @ExcelProperty("打印次数")
+    @NumberFormat("0")
     private Integer printCount;
 
     @Schema(description = "最后打印时间")
@@ -105,7 +108,7 @@ public class ErpStockCheckRespVO {
     private String productNames;
 
     @Schema(description = "产品编码")
-    @ExcelProperty("产品编码")
+    @ExcelProperty(value = "产品编码")
     private String productCodes;
 
     @Data
@@ -159,6 +162,9 @@ public class ErpStockCheckRespVO {
 
         @Schema(description = "产品单价", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         private BigDecimal productPrice;
+
+        @Schema(description = "明细金额，盘成本时为已保存的盘点金额")
+        private BigDecimal totalPrice;
 
         @Schema(description = "账面数量（当前库存）", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @NotNull(message = "账面数量不能为空")

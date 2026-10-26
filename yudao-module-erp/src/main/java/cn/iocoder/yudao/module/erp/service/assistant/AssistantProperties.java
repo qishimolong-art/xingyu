@@ -17,6 +17,8 @@ public class AssistantProperties {
     @lombok.ToString.Exclude
     private String apiKey = "";
     private int modelTimeoutSeconds = 20;
+    /** 部署级回滚开关；启用后语义失败不允许单次请求自动回退。 */
+    private boolean semanticUnderstandingEnabled = true;
     private int conversationDays = 30;
     private int auditDays = 90;
     /** Page capability presentation cache; business queries always authorize in real time. */

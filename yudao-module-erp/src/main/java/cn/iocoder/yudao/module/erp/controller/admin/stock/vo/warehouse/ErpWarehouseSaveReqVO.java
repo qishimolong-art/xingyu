@@ -52,9 +52,11 @@ public class ErpWarehouseSaveReqVO {
     private String principal;
 
     @Schema(description = "仓储费，单位：元", example = "13973")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal warehousePrice;
 
     @Schema(description = "搬运费，单位：元", example = "9903")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal truckagePrice;
 
     @Schema(description = "开启状态", requiredMode = Schema.RequiredMode.REQUIRED, example = "2")
@@ -122,6 +124,7 @@ public class ErpWarehouseSaveReqVO {
     private Integer stockGroupType;
 
     @Schema(description = "额度管控")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField(integer = 10, scale = 2)
     private BigDecimal creditControl;
 
     @Schema(description = "区域ID")

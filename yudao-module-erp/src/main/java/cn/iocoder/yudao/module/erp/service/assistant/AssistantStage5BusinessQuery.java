@@ -55,6 +55,21 @@ public class AssistantStage5BusinessQuery {
 
     private static final Map<String, Spec> SPECS = createSpecs();
 
+    public static List<Map<String,Object>> understandingCatalog() {
+        List<Map<String,Object>> result = new ArrayList<>();
+        for (Spec spec : SPECS.values()) {
+            Map<String,Object> value = new LinkedHashMap<>();
+            value.put("id", spec.id); value.put("title", spec.title); value.put("capability", spec.tool);
+            result.add(value);
+        }
+        for (String id : Arrays.asList("transfer_ledger", "settlement_offset")) {
+            Map<String,Object> value = new LinkedHashMap<>(); value.put("id", id);
+            value.put("title", "transfer_ledger".equals(id) ? "调拨台账" : "往来对冲");
+            value.put("capability", "transfer_ledger".equals(id) ? STOCK_TOOL : FINANCE_TOOL); result.add(value);
+        }
+        return result;
+    }
+
     public boolean available(String tool) {
         if (!TOOLS.contains(tool)) return false;
         Long userId = SecurityFrameworkUtils.getLoginUserId();
@@ -71,6 +86,7 @@ public class AssistantStage5BusinessQuery {
     }
 
     public Map<String, Object> execute(String tool, String question, AssistantExecutionEnvelope envelope) {
+        if (envelope.getUnderstandingTask() != null) return executeStructured(tool, envelope);
         if (ORGANIZATION_TOOL.equals(tool)) return executeOrganization(question, envelope);
         if (STOCK_TOOL.equals(tool) && compact(question).contains("调拨台账")) return executeTransferLedger(question);
         if (FINANCE_TOOL.equals(tool) && compact(question).contains("往来对冲")) return executeSettlementOffset(question);
@@ -110,13 +126,17 @@ public class AssistantStage5BusinessQuery {
     }
 
     private Map<String, Object> executeSettlementOffset(String question) {
+        return executeSettlementOffset(question, null);
+    }
+
+    private Map<String, Object> executeSettlementOffset(String question, AssistantUnderstandingResult.Conditions conditions) {
         toolPermissions.authorize("erp:settlement-offset:query", "erp_finance_settlement_offset",
                 Arrays.asList("subjectName", "receivableBalance", "payableBalance", "offsetBalance"));
         ErpSettlementOffsetPageReqVO request = new ErpSettlementOffsetPageReqVO();
         request.setPageNo(1); request.setPageSize(100); request.setShowZeroBalance(false);
         request.setOrderField("offsetBalance"); request.setOrderDirection("desc");
-        request.setSubjectName(quoted(question));
-        LocalDateTime[] range = timeRange(question, LocalDateTime.now(BUSINESS_ZONE));
+        request.setSubjectName(conditions == null ? quoted(question) : conditions.getKeyword());
+        LocalDateTime[] range = conditions == null ? timeRange(question, LocalDateTime.now(BUSINESS_ZONE)) : conditions.range();
         if (range != null) request.setBizTime(range);
         PageResult<ErpSettlementOffsetDO> page = settlementOffsets.getSettlementOffsetPage(request);
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -140,9 +160,13 @@ public class AssistantStage5BusinessQuery {
     }
 
     private Map<String, Object> executeTransferLedger(String question) {
+        return executeTransferLedger(question, null);
+    }
+
+    private Map<String, Object> executeTransferLedger(String question, AssistantUnderstandingResult.Conditions conditions) {
         toolPermissions.authorize("erp:stock-transfer-ledger:query", "erp_stock_transfer_ledger",
                 Arrays.asList("businessDate", "transferOutCount", "transferInCount", "differenceCount"));
-        LocalDateTime[] range = timeRange(question, LocalDateTime.now(BUSINESS_ZONE));
+        LocalDateTime[] range = conditions == null ? timeRange(question, LocalDateTime.now(BUSINESS_ZONE)) : conditions.range();
         if (range == null) {
             LocalDate start = LocalDate.now(BUSINESS_ZONE).withDayOfMonth(1);
             range = new LocalDateTime[]{start.atStartOfDay(), start.plusMonths(1).atStartOfDay()};
@@ -151,10 +175,10 @@ public class AssistantStage5BusinessQuery {
         request.setPageNo(1); request.setPageSize(100);
         request.setMoveTime(new LocalDateTime[]{range[0], range[1].minusNanos(1)});
         request.setOrderDirection("desc");
-        String text = compact(question);
+        String text = conditions == null ? compact(question) : conditions.getStatus() == null ? "" : conditions.getStatus();
         if (text.contains("异常")) request.setMatchStatus("ABNORMAL");
         else if (text.contains("正常")) request.setMatchStatus("NORMAL");
-        String no = documentNo(question);
+        String no = conditions == null ? documentNo(question) : conditions.getDocumentNo();
         if (no != null) request.setKeyword(no);
         PageResult<ErpStockTransferLedgerSummaryRespVO> page = transferLedger.getSummaryPage(request);
         ErpStockTransferLedgerTotalRespVO total = transferLedger.getTotal(request);
@@ -199,6 +223,67 @@ public class AssistantStage5BusinessQuery {
         return result;
     }
 
+    private Map<String,Object> executeStructured(String tool, AssistantExecutionEnvelope envelope) {
+        AssistantUnderstandingResult.Conditions c = envelope.getUnderstandingTask().getConditions();
+        if (ORGANIZATION_TOOL.equals(tool)) {
+            if (!Arrays.asList("USERS", "DEPARTMENTS", "RELATION").contains(c.getOrganizationView()))
+                throw new AssistantFailure("CAPABILITY_UNVERIFIED", "实时组织负责人及职责查询尚未开放，请明确查询系统用户、部门或所属关系");
+            // 从枚举构造旧查询构建器的固定选项，不再解析用户原句。
+            String selector = "USERS".equals(c.getOrganizationView()) ? "系统用户" : "DEPARTMENTS".equals(c.getOrganizationView()) ? "系统部门" : "用户与部门关系";
+            if (c.getStatus() != null) selector += " " + checkedStatus(c.getStatus());
+            if ("COUNT".equals(c.getAggregation())) selector += " 总数";
+            if (!c.isIncludeChildren()) selector += " 只看本部门不含下级";
+            if (!"NONE".equals(c.getGroup())) throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "组织查询尚未支持指定分组");
+            return executeOrganization(selector, envelope);
+        }
+        if (c.getBusinessTypes().size() == 1 && "transfer_ledger".equals(c.getBusinessTypes().get(0)) && STOCK_TOOL.equals(tool))
+            return executeTransferLedger("", c);
+        if (c.getBusinessTypes().size() == 1 && "settlement_offset".equals(c.getBusinessTypes().get(0)) && FINANCE_TOOL.equals(tool))
+            return executeSettlementOffset("", c);
+        List<Spec> selected = new ArrayList<>();
+        for (String id : c.getBusinessTypes()) {
+            Spec spec = SPECS.get(id);
+            if (spec == null || !tool.equals(spec.tool)) throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "业务类型与查询能力不匹配");
+            selected.add(spec);
+        }
+        if (selected.isEmpty()) throw new AssistantFailure("CLARIFY", "请明确要查询的业务单据或档案类型");
+        if (!"NONE".equals(c.getGroup()) && !("PURCHASER".equals(c.getGroup()) && selected.size() == 1 && "purchase_in".equals(selected.get(0).id)))
+            throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "该业务尚未开放指定分组，未执行省略分组的查询");
+        List<Map<String,Object>> rows = new ArrayList<>(), summary = new ArrayList<>(); List<String> basis = new ArrayList<>();
+        for (Spec spec : selected) {
+            QueryParts parts = prepare(spec, "", envelope);
+            if ("SUM_AMOUNT".equals(c.getAggregation()) && spec.amountColumn==null
+                    || "SUM_QUANTITY".equals(c.getAggregation()) && spec.quantityColumn==null)
+                throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "该业务尚未开放指定金额或数量口径");
+            if ("PURCHASER".equals(c.getGroup())) {
+                String measure="SUM_QUANTITY".equals(c.getAggregation())?"total_quantity":"total_amount";
+                String groupedSql=purchaserGroupSql(spec,parts).replace("ORDER BY total_amount DESC,purchaser_name LIMIT 50",
+                        "ORDER BY "+measure+" "+c.getRankOrder().name()+",purchaser_name LIMIT "+c.getLimit());
+                rows.addAll(reader.query(groupedSql, parts.parameters, c.getLimit()));
+            } else {
+                summary.addAll(reader.query(summarySql(spec, parts), parts.parameters, 1));
+                if ("NONE".equals(c.getAggregation()) && rows.size() < c.getLimit()) {
+                    String detail=detailSql(spec,parts);
+                    if(c.getRankOrder()==AssistantPlan.RankOrder.ASC)detail=detail.replace(" DESC", " ASC");
+                    rows.addAll(reader.query(detail, parts.parameters, c.getLimit() - rows.size()));
+                }
+            }
+            basis.add(spec.title + "（" + spec.permission + "）");
+        }
+        Map<String,Object> result = baseResult(envelope.getUnderstandingTask().getTitle());
+        result.put("summary", summary); result.put("rows", rows); result.put("columns", columns(rows)); result.put("basis", basis);
+        result.put("status", empty(summary, rows) ? "EMPTY" : "SUCCESS");
+        result.put("queryTrace", trace(tool, selected, rows.size())); return result;
+    }
+
+    private static String checkedStatus(String status) {
+        if (!Arrays.asList("启用","在用","正常","有效","停用","禁用","无效","全部","待审核","已审核","审核通过","已审批","审批通过", "待审批", "审核中", "审批中", "草稿", "未提交", "作废", "已作废",
+                "待提货","部分提货","已完成","完成提货","待拣货","部分拣货","已拣货","完成拣货","待配送","待送货","部分配送","部分送货","已配送","已送货","完成配送","完成送货",
+                "待生效","未核销","反核销","已撤销核销","撤销核销","有效核销","识别中","正在识别","识别失败","处理失败","失败","已确认","已生成","已匹配","匹配完成","已识别","识别完成").contains(status))
+            throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "该业务状态尚未核验，未执行忽略状态的查询");
+        return status;
+    }
+
     private QueryParts prepare(Spec spec, String question, AssistantExecutionEnvelope envelope) {
         toolPermissions.authorize(spec.permission, spec.module, spec.protectedFields);
         Map<String, Object> scope = new LinkedHashMap<>();
@@ -210,10 +295,39 @@ public class AssistantStage5BusinessQuery {
         applyScope(spec, scope, where, parameters);
         applyWarehouseScope(spec, scope, where, parameters);
         applyFixedConditions(spec, where, parameters);
-        applyStatus(spec, compact(question), where);
-        applyTime(spec, question, where, parameters);
-        applyKeyword(spec, question, where, parameters);
-        applySubtype(spec, question, where, parameters);
+        if (envelope.getUnderstandingTask() == null) {
+            applyStatus(spec, compact(question), where);
+            applyTime(spec, question, where, parameters);
+            applyKeyword(spec, question, where, parameters);
+            applySubtype(spec, question, where, parameters);
+        } else {
+            AssistantUnderstandingResult.Conditions c = envelope.getUnderstandingTask().getConditions();
+            if (c.getStatus() != null && spec.statusColumn == null) throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "该业务不支持状态筛选");
+            applyStatus(spec, c.getStatus() == null ? "" : checkedStatus(c.getStatus()), where);
+            LocalDateTime[] range = c.range();
+            if (range != null) {
+                if (spec.timeColumn == null) throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "该业务不支持期间筛选");
+                where.append(" AND t.").append(spec.timeColumn).append(">=? AND t.").append(spec.timeColumn).append("<?");
+                parameters.add(range[0]); parameters.add(range[1]);
+            }
+            if (c.getDocumentNo() != null) {
+                if (spec.labelColumn == null || !("no".equals(spec.labelColumn) || spec.labelColumn.endsWith("_no")))
+                    throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "该业务不支持单号筛选");
+                where.append(" AND t.").append(spec.labelColumn).append("=?"); parameters.add(c.getDocumentNo());
+            }
+            if (c.getKeyword() != null) {
+                if (spec.searchColumn == null) throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "该业务不支持名称筛选");
+                where.append(" AND t.").append(spec.searchColumn).append(" LIKE CONCAT('%',?,'%')"); parameters.add(c.getKeyword());
+            }
+            if (!c.getSubtypes().isEmpty()) {
+                if (!"base_data".equals(spec.id)) throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "该业务不支持字典类型条件");
+                where.append(" AND t.type IN (").append(placeholders(c.getSubtypes().size())).append(')'); parameters.addAll(c.getSubtypes());
+            }
+            if (c.isLeafOnly()) {
+                if (!"product_category".equals(spec.id)) throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "末级筛选仅支持商品分类");
+                where.append(" AND NOT EXISTS (SELECT 1 FROM erp_product_category c WHERE c.parent_id=t.id AND c.tenant_id=t.tenant_id AND c.deleted=0)");
+            }
+        }
         applyEntity(spec, envelope, where, parameters);
         return new QueryParts(where.toString(), parameters);
     }
@@ -416,6 +530,8 @@ public class AssistantStage5BusinessQuery {
                 throw new AssistantFailure("DATASET_UNPUBLISHED", "采购员条件目前仅支持采购订单和采购入库单，未执行删除采购员条件的查询");
             if ("SALESPERSON".equals(type) && column == null)
                 throw new AssistantFailure("DATASET_UNPUBLISHED", "该销售单据尚未核验业务员关联字段，未执行删除业务员条件的查询");
+            if (column == null && envelope.getUnderstandingTask() != null)
+                throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "该单据不支持指定业务对象条件，未执行删减条件的查询");
             if (!(id instanceof Number) || column == null || !used.add(column)) continue;
             where.append(" AND ").append(column(column)).append("=?");
             parameters.add("PURCHASER".equals(type) && "purchase_in".equals(spec.id)
@@ -465,7 +581,7 @@ public class AssistantStage5BusinessQuery {
         OrganizationScope scope = organizationScope();
         Long targetUserId = resolvedId(envelope, "USER");
         Long targetDeptId = resolvedId(envelope, "DEPARTMENT");
-        if (targetDeptId == null) targetDeptId = resolveDepartmentId(question, scope);
+        if (targetDeptId == null && envelope.getUnderstandingTask() == null) targetDeptId = resolveDepartmentId(question, scope);
         Set<Long> targetDeptIds = new LinkedHashSet<>();
         if (targetDeptId != null) {
             if (!scope.all && !scope.visibleDeptIds.contains(targetDeptId)) throw new AssistantFailure("NO_PERMISSION", "没有该部门的数据访问范围");
@@ -478,7 +594,11 @@ public class AssistantStage5BusinessQuery {
 
         List<Map<String, Object>> rows = new ArrayList<>();
         List<Map<String, Object>> summary = new ArrayList<>();
-        if (asksDept && !asksRelation && targetUserId == null) rows.addAll(queryDepartments(scope, targetDeptIds, question));
+        boolean countDepartments=envelope.getUnderstandingTask()!=null && "COUNT".equals(envelope.getUnderstandingTask().getConditions().getAggregation());
+        if (asksDept && !asksRelation && targetUserId == null) {
+            List<Map<String,Object>> departmentRows=queryDepartments(scope,targetDeptIds,question,countDepartments);
+            if(countDepartments)summary.addAll(departmentRows);else rows.addAll(departmentRows);
+        }
         if (asksUser) {
             List<Object> parameters = new ArrayList<>();
             String userScope = userScopeSql(scope, "u", parameters);
@@ -525,6 +645,10 @@ public class AssistantStage5BusinessQuery {
     }
 
     private List<Map<String, Object>> queryDepartments(OrganizationScope scope, Set<Long> targetIds, String question) {
+        return queryDepartments(scope,targetIds,question,false);
+    }
+
+    private List<Map<String, Object>> queryDepartments(OrganizationScope scope, Set<Long> targetIds, String question,boolean countOnly) {
         List<Object> parameters = new ArrayList<>();
         StringBuilder sql = new StringBuilder("SELECT d.id,d.name label,p.name parent_name,CASE d.status WHEN 0 THEN '启用' WHEN 1 THEN '停用' ELSE CONCAT('状态',d.status) END status_name ")
                 .append("FROM system_dept d LEFT JOIN system_dept p ON p.id=d.parent_id AND p.tenant_id=d.tenant_id AND p.deleted=0 ")
@@ -537,6 +661,11 @@ public class AssistantStage5BusinessQuery {
         }
         if (compact(question).matches(".*(?:启用|在用|正常).*")) sql.append(" AND d.status=0");
         else if (compact(question).matches(".*(?:停用|禁用).*")) sql.append(" AND d.status=1");
+        if(countOnly) {
+            int from=sql.indexOf(" FROM system_dept");
+            sql=new StringBuilder("SELECT COUNT(DISTINCT d.id) record_count").append(sql.substring(from));
+            return reader.query(sql.toString(),parameters,1);
+        }
         sql.append(" ORDER BY d.parent_id,d.sort,d.id LIMIT 100");
         return reader.query(sql.toString(), parameters, 100);
     }

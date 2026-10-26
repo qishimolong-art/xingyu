@@ -25,10 +25,10 @@ public final class ErpMiscSettlementSql {
             + RECEIVABLE_ROWS + ") settlement_rows GROUP BY tenant_id, misc_id)";
 
     public static final String RECEIVABLE_ORIGINAL =
-            "SELECT m.id, m.tenant_id, m.deleted, m.status, m.customer_id, m.dept_id, m.handler_id, m.biz_time, m.amount, 0 AS settled_amount, m.no, m.remark, m.file_url, NULL AS document_id FROM erp_receivable_misc m WHERE (m.source_type IS NULL OR m.source_type != '收款单转其他应收冲减') ";
+            "SELECT m.id, m.tenant_id, m.deleted, m.status, m.customer_id, m.dept_id, m.handler_id, m.biz_time, m.approve_time, m.amount, 0 AS settled_amount, m.no, m.remark, m.file_url, NULL AS document_id FROM erp_receivable_misc m WHERE (m.source_type IS NULL OR m.source_type != '收款单转其他应收冲减') ";
 
     public static final String RECEIVABLE_LEDGER = "(" + RECEIVABLE_ORIGINAL
-            + " UNION ALL SELECT m.id, m.tenant_id, m.deleted, m.status, m.customer_id, f.dept_id, f.finance_user_id AS handler_id, f.receipt_time AS biz_time, -s.amount AS amount, s.amount AS settled_amount, f.no, f.remark, NULL AS file_url, f.id AS document_id"
+            + " UNION ALL SELECT m.id, m.tenant_id, m.deleted, m.status, m.customer_id, f.dept_id, f.finance_user_id AS handler_id, f.receipt_time AS biz_time, f.approve_time, -s.amount AS amount, s.amount AS settled_amount, f.no, f.remark, NULL AS file_url, f.id AS document_id"
             + " FROM (" + RECEIVABLE_ROWS + ") s INNER JOIN erp_receivable_misc m ON m.id = s.misc_id AND m.tenant_id = s.tenant_id"
             + " INNER JOIN erp_finance_receipt f ON f.id = s.document_id AND f.tenant_id = s.tenant_id WHERE m.deleted = 0 AND m.status = 20)";
 
@@ -53,10 +53,10 @@ public final class ErpMiscSettlementSql {
             + PAYABLE_ROWS + ") settlement_rows GROUP BY tenant_id, misc_id)";
 
     public static final String PAYABLE_ORIGINAL =
-            "SELECT m.id, m.tenant_id, m.deleted, m.status, m.supplier_id, m.dept_id, m.handler_id, m.biz_time, m.amount, 0 AS settled_amount, m.no, m.remark, m.file_url, NULL AS document_id FROM erp_payable_misc m WHERE (m.source_type IS NULL OR m.source_type != '付款单转其他应付冲减') ";
+            "SELECT m.id, m.tenant_id, m.deleted, m.status, m.supplier_id, m.dept_id, m.handler_id, m.biz_time, m.approve_time, m.amount, 0 AS settled_amount, m.no, m.remark, m.file_url, NULL AS document_id FROM erp_payable_misc m WHERE (m.source_type IS NULL OR m.source_type != '付款单转其他应付冲减') ";
 
     public static final String PAYABLE_LEDGER = "(" + PAYABLE_ORIGINAL
-            + " UNION ALL SELECT m.id, m.tenant_id, m.deleted, m.status, m.supplier_id, f.dept_id, f.finance_user_id AS handler_id, f.payment_time AS biz_time, -s.amount AS amount, s.amount AS settled_amount, f.no, f.remark, NULL AS file_url, f.id AS document_id"
+            + " UNION ALL SELECT m.id, m.tenant_id, m.deleted, m.status, m.supplier_id, f.dept_id, f.finance_user_id AS handler_id, f.payment_time AS biz_time, f.approve_time, -s.amount AS amount, s.amount AS settled_amount, f.no, f.remark, NULL AS file_url, f.id AS document_id"
             + " FROM (" + PAYABLE_ROWS + ") s INNER JOIN erp_payable_misc m ON m.id = s.misc_id AND m.tenant_id = s.tenant_id"
             + " INNER JOIN erp_finance_payment f ON f.id = s.document_id AND f.tenant_id = s.tenant_id WHERE m.deleted = 0 AND m.status = 20)";
 

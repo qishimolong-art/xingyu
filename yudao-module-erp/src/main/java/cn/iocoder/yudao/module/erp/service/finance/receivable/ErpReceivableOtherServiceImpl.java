@@ -71,6 +71,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createReceivableOther(ErpReceivableOtherSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         validateReceivableAmountNonZero(createReqVO.getReceivableAmount(), false);
         customerService.validateCustomer(createReqVO.getCustomerId());
         String no = noRedisDAO.generate(ErpNoRedisDAO.OTHER_RECEIVABLE_NO_PREFIX);
@@ -94,6 +95,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createReceivableOtherDraft(ErpReceivableOtherDraftSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         validateDraftForSave(createReqVO.getCustomerId());
         String no = noRedisDAO.generate(ErpNoRedisDAO.OTHER_RECEIVABLE_NO_PREFIX);
@@ -116,6 +118,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createAndSubmitReceivableOther(ErpReceivableOtherSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         return createReceivableOther(createReqVO);
     }
 
@@ -136,6 +139,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         ErpReceivableOtherDO doObj = new ErpReceivableOtherDO()
                 .setNo(no)
                 .setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setApproveTime(createReqBO.getApproveTime())
                 .setBizTime(createReqBO.getBizTime())
                 .setCustomerId(createReqBO.getCustomerId())
                 .setSettledAmount(BigDecimal.ZERO)
@@ -182,6 +186,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         ErpReceivableOtherDO doObj = new ErpReceivableOtherDO()
                 .setNo(no)
                 .setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setApproveTime(receipt.getApproveTime())
                 .setBizTime(receipt.getReceiptTime() == null ? null : receipt.getReceiptTime().toLocalDate())
                 .setCustomerId(receipt.getCustomerId())
                 .setSettledAmount(BigDecimal.ZERO)
@@ -205,6 +210,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateReceivableOther(ErpReceivableOtherSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpReceivableOtherDO db = validateReceivableOtherExists(updateReqVO.getId());
         if (ErpReceivableOtherStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_RECEIVABLE_DRAFT_UPDATE_FAIL, db.getNo());
@@ -238,6 +244,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateReceivableOtherDraft(ErpReceivableOtherDraftSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpReceivableOtherDO db = validateReceivableOtherExists(updateReqVO.getId());
         if (!ErpReceivableOtherStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_RECEIVABLE_DRAFT_UPDATE_FAIL, db.getNo());
@@ -267,6 +274,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateAndSubmitReceivableOther(ErpReceivableOtherSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         updateReceivableOtherDraft(
                 BeanUtils.toBean(updateReqVO, ErpReceivableOtherDraftSaveReqVO.class));
         submitReceivableOther(updateReqVO.getId());
@@ -293,6 +301,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
 
     @Override
     public void updateReceivableOtherRemark(ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpReceivableOtherDO db = validateReceivableOtherExists(updateReqVO.getId());
         receivableOtherMapper.updateById(new ErpReceivableOtherDO()
                 .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));

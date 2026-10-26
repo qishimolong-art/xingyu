@@ -675,7 +675,9 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
                 .setId(1L).setProductId(200L).setWarehouseId(7L)
                 .setCount(new BigDecimal("2")).setProductPrice(new BigDecimal("5"));
         when(purchaseOrderItemMapper.selectListByOrderId(eq(10L)))
-                .thenReturn(Collections.emptyList(), Collections.emptyList(), Collections.singletonList(persistedItem));
+                .thenReturn(Collections.emptyList());
+        when(purchaseOrderItemMapper.selectListByOrderIdForSubmit(eq(10L)))
+                .thenReturn(Collections.singletonList(persistedItem));
 
         ErpPurchaseOrderSaveReqVO.Item item = buildItem(200L, new BigDecimal("2"), new BigDecimal("5"));
         item.setWarehouseId(7L);
@@ -1218,6 +1220,8 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     public void testUpdatePurchaseOrderStatus_approveSuccess() {
+        when(purchaseOrderItemMapper.selectListByOrderIdForSubmit(eq(10L)))
+                .thenAnswer(invocation -> purchaseOrderItemMapper.selectListByOrderId(10L));
         ErpPurchaseOrderDO existing = new ErpPurchaseOrderDO()
                 .setId(10L).setStatus(ErpAuditStatus.PROCESS.getStatus())
                 .setSupplierId(100L).setOrderTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0))
@@ -1321,6 +1325,8 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     public void testUpdatePurchaseOrderStatus_approveLostByOptimisticLock_throwException() {
+        when(purchaseOrderItemMapper.selectListByOrderIdForSubmit(eq(10L)))
+                .thenAnswer(invocation -> purchaseOrderItemMapper.selectListByOrderId(10L));
         ErpPurchaseOrderDO existing = new ErpPurchaseOrderDO()
                 .setId(10L).setStatus(ErpAuditStatus.PROCESS.getStatus())
                 .setSupplierId(100L).setOrderTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0))

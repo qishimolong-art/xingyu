@@ -33,6 +33,7 @@ import static org.mockito.Mockito.when;
 
 class ErpReceivableDetailTimeTest {
 
+
     private final ErpReceivableAccountServiceImpl service = new ErpReceivableAccountServiceImpl();
     private final LocalDateTime created = LocalDateTime.of(2026, 9, 24, 14, 25, 36);
 
@@ -103,6 +104,7 @@ class ErpReceivableDetailTimeTest {
         when(apiService.getReceivableDetailList(req)).thenReturn(rows);
         ErpReceivableAccountController controller = new ErpReceivableAccountController();
         ReflectionTestUtils.setField(controller, "receivableAccountService", apiService);
+        ReflectionTestUtils.setField(controller, "fieldPermissionMasker", mock(cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker.class));
         assertThat(controller.getReceivableDetailList(req).getData().get(2).getDocDate()).isEqualTo(created);
         MockHttpServletResponse response = new MockHttpServletResponse();
         controller.exportReceivableDetail(req, response);

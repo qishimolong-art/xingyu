@@ -62,7 +62,7 @@ public class ErpPayableExpenseDetailReportRepository {
         return "SELECT CONCAT(e.id,':',i.id) row_key,e.id expense_id,i.id item_id,e.account_id,e.handler_id,"
                 + "e.dept_id billing_dept_id,i.dept_id,i.handler_id business_user_id,"
                 + "DATE_FORMAT(e.approve_time,'%Y-%m-%d') approve_date,a.name account_name,e.no document_no,"
-                + "i.item_name,ROUND(i.amount,2) amount,e.voucher_no,e.remark summary,hu.nickname handler_name,"
+                + "i.item_name,ROUND(i.amount,6) amount,e.voucher_no,e.remark summary,hu.nickname handler_name,"
                 + "e.party,CAST(NULL AS CHAR) type,bd.name billing_dept_name,idp.name dept_name,"
                 + "bu.nickname business_user_name,CAST(NULL AS CHAR) invoice,CAST(NULL AS CHAR) occurrence_date";
     }

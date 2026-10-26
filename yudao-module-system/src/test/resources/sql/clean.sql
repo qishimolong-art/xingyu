@@ -6,6 +6,7 @@ DELETE FROM "system_role_field_permission";
 DELETE FROM "system_role_form_data_scope";
 DELETE FROM "system_menu";
 DELETE FROM "system_user_role";
+DELETE FROM "system_user_permission_deny";
 DELETE FROM "system_user_dept";
 DELETE FROM "system_dict_type";
 DELETE FROM "system_user_session";

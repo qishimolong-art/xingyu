@@ -27,6 +27,9 @@ public interface ErpProductBrandService {
 
     ErpProductBrandImportRespVO importProductBrandList(List<ErpProductBrandImportExcelVO> list);
 
+    ErpProductBrandImportRespVO importProductBrandList(List<ErpProductBrandImportExcelVO> list,
+                                                       ErpSimpleArchiveImportProgressListener listener);
+
     List<ErpProductBrandImportExcelVO> parseCsvImport(Reader reader);
 
     ErpProductBrandDO getProductBrand(Long id);

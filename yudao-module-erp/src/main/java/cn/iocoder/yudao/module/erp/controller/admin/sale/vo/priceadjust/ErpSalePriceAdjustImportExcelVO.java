@@ -34,6 +34,7 @@ public class ErpSalePriceAdjustImportExcelVO {
 
     @ExcelRequired
     @ExcelProperty("调后价")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "newPrice最多支持 6 位小数")
     private BigDecimal newPrice;
 
     @ExcelProperty("调价原因")

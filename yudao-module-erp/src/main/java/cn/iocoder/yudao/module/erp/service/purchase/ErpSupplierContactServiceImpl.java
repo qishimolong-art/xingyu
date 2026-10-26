@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.suppliercontact.ErpSupplierContactSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierContactDO;
@@ -36,7 +38,10 @@ public class ErpSupplierContactServiceImpl implements ErpSupplierContactService 
     @Override
     public void updateSupplierContact(ErpSupplierContactSaveReqVO updateReqVO) {
         validateSupplierExists(updateReqVO.getSupplierId());
-        validateSupplierContactExists(updateReqVO.getId());
+        ErpSupplierContactDO existing = validateSupplierContactExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getSupplierId(), updateReqVO.getSupplierId())) {
+            throw exception(SUPPLIER_CONTACT_NOT_EXISTS);
+        }
         ErpSupplierContactDO updateObj = BeanUtils.toBean(updateReqVO, ErpSupplierContactDO.class);
         if (updateObj.getCompanyId() == null) {
             updateObj.setCompanyId(updateObj.getSupplierId());
@@ -50,10 +55,11 @@ public class ErpSupplierContactServiceImpl implements ErpSupplierContactService 
         supplierContactMapper.deleteById(id);
     }
 
-    private void validateSupplierContactExists(Long id) {
-        if (supplierContactMapper.selectById(id) == null) {
-            throw exception(SUPPLIER_CONTACT_NOT_EXISTS);
-        }
+    private ErpSupplierContactDO validateSupplierContactExists(Long id) {
+        ErpSupplierContactDO existing = supplierContactMapper.selectById(id);
+        if (existing == null) throw exception(SUPPLIER_CONTACT_NOT_EXISTS);
+        validateSupplierExists(existing.getSupplierId());
+        return existing;
     }
 
     private void validateSupplierExists(Long supplierId) {
@@ -64,7 +70,7 @@ public class ErpSupplierContactServiceImpl implements ErpSupplierContactService 
 
     @Override
     public ErpSupplierContactDO getSupplierContact(Long id) {
-        return supplierContactMapper.selectById(id);
+        return validateSupplierContactExists(id);
     }
 
     @Override
@@ -73,4 +79,11 @@ public class ErpSupplierContactServiceImpl implements ErpSupplierContactService 
         return supplierContactMapper.selectListBySupplierId(supplierId);
     }
 
+
+    @Override
+    public PageResult<ErpSupplierContactDO> getSupplierContactPage(ErpSupplierItemPageReqVO reqVO) {
+        validateSupplierExists(reqVO.getSupplierId());
+        reqVO.boundPageSize();
+        return supplierContactMapper.selectPage(reqVO);
+    }
 }

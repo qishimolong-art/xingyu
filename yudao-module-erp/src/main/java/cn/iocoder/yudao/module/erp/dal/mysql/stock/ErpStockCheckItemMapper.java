@@ -56,6 +56,17 @@ public interface ErpStockCheckItemMapper extends BaseMapperX<ErpStockCheckItemDO
                 getOrderSpec(orderField));
     }
 
+    /** Bounded export pages for already-authorized document IDs. */
+    default PageResult<ErpStockCheckItemDO> selectExportPageByCheckIds(Collection<Long> checkIds, int pageNo) {
+        if (CollUtil.isEmpty(checkIds)) return PageResult.empty();
+        cn.iocoder.yudao.framework.common.pojo.PageParam page = new cn.iocoder.yudao.framework.common.pojo.PageParam();
+        page.setPageNo(pageNo);
+        page.setPageSize(500);
+        return selectPage(page, new LambdaQueryWrapperX<ErpStockCheckItemDO>()
+                .in(ErpStockCheckItemDO::getCheckId, checkIds)
+                .orderByAsc(ErpStockCheckItemDO::getCheckId, ErpStockCheckItemDO::getId));
+    }
+
     default List<ErpStockCheckItemDO> selectListByCheckIds(Collection<Long> checkIds) {
         return selectList(ErpStockCheckItemDO::getCheckId, checkIds);
     }

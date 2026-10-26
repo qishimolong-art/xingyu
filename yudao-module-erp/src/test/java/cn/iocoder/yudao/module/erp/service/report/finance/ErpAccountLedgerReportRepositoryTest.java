@@ -60,8 +60,8 @@ class ErpAccountLedgerReportRepositoryTest {
             assertTrue(cte.contains(table));
         }
         assertEquals(2, occurrences(cte, "FROM erp_finance_transfer"));
-        assertTrue(cte.contains("ROUND(COALESCE(t.transfer_price,0)+COALESCE(t.fee_price,0),2)"));
-        assertTrue(cte.contains("ROUND(COALESCE(t.transfer_price,0),2),CAST(NULL AS DECIMAL(24,2))"));
+        assertTrue(cte.contains("ROUND(COALESCE(t.transfer_price,0)+COALESCE(t.fee_price,0),6)"));
+        assertTrue(cte.contains("ROUND(COALESCE(t.transfer_price,0),6),CAST(NULL AS DECIMAL(24,6))"));
         assertTrue(cte.contains("SUM(COALESCE(s.income_amount,0)-COALESCE(s.expense_amount,0))"));
         assertTrue(cte.contains("PARTITION BY s.account_id"));
         assertTrue(cte.contains("a.dept_id IN (:accountDeptIds) OR CAST(a.creator AS UNSIGNED)=:accountSelf"));
@@ -136,11 +136,11 @@ class ErpAccountLedgerReportRepositoryTest {
         }
 
         List<Map<String, Object>> cases = jdbc.queryForList("WITH ledger_inputs AS ("
-                + "SELECT 1 account_id,1 seq,CAST(-10 AS DECIMAL(18,2)) income_amount,"
-                + "CAST(NULL AS DECIMAL(18,2)) expense_amount UNION ALL "
-                + "SELECT 1,2,NULL,CAST(7 AS DECIMAL(18,2)) UNION ALL "
-                + "SELECT 2,1,CAST(100 AS DECIMAL(18,2)),NULL UNION ALL "
-                + "SELECT 2,2,NULL,CAST(103 AS DECIMAL(18,2))), calculated AS ("
+                + "SELECT 1 account_id,1 seq,CAST(-10 AS DECIMAL(18,6)) income_amount,"
+                + "CAST(NULL AS DECIMAL(18,6)) expense_amount UNION ALL "
+                + "SELECT 1,2,NULL,CAST(7 AS DECIMAL(18,6)) UNION ALL "
+                + "SELECT 2,1,CAST(100 AS DECIMAL(18,6)),NULL UNION ALL "
+                + "SELECT 2,2,NULL,CAST(103 AS DECIMAL(18,6))), calculated AS ("
                 + "SELECT account_id,seq,SUM(COALESCE(income_amount,0)-COALESCE(expense_amount,0)) "
                 + "OVER(PARTITION BY account_id ORDER BY seq ROWS UNBOUNDED PRECEDING) balance FROM ledger_inputs) "
                 + "SELECT account_id,MAX(CASE WHEN seq=2 THEN balance END) balance FROM calculated "

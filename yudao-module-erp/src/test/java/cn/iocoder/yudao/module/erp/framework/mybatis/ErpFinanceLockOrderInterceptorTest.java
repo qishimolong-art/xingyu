@@ -16,6 +16,7 @@ import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.RowBounds;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
@@ -28,6 +29,7 @@ import static org.mockito.Mockito.*;
 
 class ErpFinanceLockOrderInterceptorTest {
     static final String PREFIX = "cn.iocoder.yudao.module.erp.dal.mysql.finance.";
+    static final String PURCHASE_PREFIX = "cn.iocoder.yudao.module.erp.dal.mysql.purchase.";
 
     static TenantLineInnerInterceptor tenant() {
         return new TenantLineInnerInterceptor(new TenantLineHandler() {
@@ -48,14 +50,18 @@ class ErpFinanceLockOrderInterceptorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Payment", "Receipt"})
-    void repairsAfterTenantAndPermissionParsingAtActualPrepare(String kind) throws Exception {
-        String table = "erp_finance_" + kind.toLowerCase() + "_item";
+    @CsvSource({
+            "ErpFinancePaymentItemMapper, erp_finance_payment_item, payment_id",
+            "ErpFinanceReceiptItemMapper, erp_finance_receipt_item, receipt_id",
+            "receivable.ErpReceivableOtherIncomeItemMapper, erp_receivable_other_income_item, income_id",
+            "payable.ErpPayableExpenseItemMapper, erp_payable_expense_item, expense_id"
+    })
+    void repairsAfterTenantAndPermissionParsingAtActualPrepare(String mapper, String table, String parentColumn) throws Exception {
         Configuration config = new Configuration();
         ParameterMapping parameter = new ParameterMapping.Builder(config, "documentId", Long.class).build();
-        MappedStatement ms = new MappedStatement.Builder(config, PREFIX + "ErpFinance" + kind + "ItemMapper.selectList",
+        MappedStatement ms = new MappedStatement.Builder(config, PREFIX + mapper + ".selectList",
                 new StaticSqlSource(config, "SELECT id FROM " + table + " WHERE deleted = 0 AND "
-                        + kind.toLowerCase() + "_id = ? ORDER BY id ASC FOR UPDATE",
+                        + parentColumn + " = ? ORDER BY id ASC FOR UPDATE",
                         Collections.singletonList(parameter)), SqlCommandType.SELECT).build();
         BoundSql sql = ms.getBoundSql(Collections.singletonMap("documentId", 52L));
         sql.setAdditionalParameter("preserved", 123L);
@@ -92,16 +98,31 @@ class ErpFinanceLockOrderInterceptorTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"ErpPurchaseInItemMapper", "ErpPurchasePriceAdjustItemMapper",
+            "ErpPurchaseReturnItemMapper"})
+    void repairsPurchaseInvoiceSourceLockQueries(String mapper) {
+        assertEquals("SELECT id FROM t ORDER BY id ASC FOR UPDATE",
+                processFull(PURCHASE_PREFIX + mapper + ".selectList",
+                        "SELECT id FROM t FOR UPDATE ORDER BY id ASC"));
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"SELECT id FROM t ORDER BY id ASC", "SELECT id FROM t ORDER BY id ASC FOR UPDATE",
             "SELECT id FROM t FOR UPDATE", "SELECT id FROM t FOR UPDATE ORDER BY id DESC",
             "SELECT id FROM t FOR UPDATE ORDER BY biz_id ASC", "SELECT id FROM t FOR UPDATE ORDER BY id ASC LIMIT 1"})
     void leavesOtherSqlFormsUntouched(String sql) {
         assertEquals(sql, process("ErpFinancePaymentItemMapper.selectList", sql));
+        assertEquals(sql, process("receivable.ErpReceivableOtherIncomeItemMapper.selectList", sql));
+        assertEquals(sql, process("payable.ErpPayableExpenseItemMapper.selectList", sql));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"ErpFinancePaymentMapper.selectList", "ErpFinancePaymentItemMapper.selectById",
-            "ErpFinanceReceiptItemMapper.selectPage", "AnotherMapper.selectList"})
+            "ErpFinanceReceiptItemMapper.selectPage", "AnotherMapper.selectList",
+            "receivable.ErpReceivableOtherIncomeItemMapper.selectById",
+            "receivable.ErpReceivableOtherIncomeItemMapper.selectPage",
+            "payable.ErpPayableExpenseItemMapper.selectById",
+            "payable.ErpPayableExpenseItemMapper.selectPage"})
     void leavesOtherMappedStatementsUntouched(String id) {
         String sql = "SELECT id FROM t FOR UPDATE ORDER BY id ASC";
         assertEquals(sql, process(id, sql));
@@ -126,8 +147,12 @@ class ErpFinanceLockOrderInterceptorTest {
     }
 
     private String process(String id, String sql) {
+        return processFull(PREFIX + id, sql);
+    }
+
+    private String processFull(String id, String sql) {
         Configuration config = new Configuration();
-        MappedStatement ms = new MappedStatement.Builder(config, PREFIX + id,
+        MappedStatement ms = new MappedStatement.Builder(config, id,
                 new StaticSqlSource(config, sql), SqlCommandType.SELECT).build();
         BoundSql boundSql = ms.getBoundSql(null);
         StatementHandler handler = config.newStatementHandler(null, ms, null, RowBounds.DEFAULT, null, boundSql);

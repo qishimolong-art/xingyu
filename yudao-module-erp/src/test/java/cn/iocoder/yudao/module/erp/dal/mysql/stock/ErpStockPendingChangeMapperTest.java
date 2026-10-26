@@ -14,6 +14,7 @@ class ErpStockPendingChangeMapperTest {
         assertTrue(expression.contains("erp_purchase_in_items"));
         assertTrue(expression.contains("erp_sale_return_items"));
         assertTrue(expression.contains("erp_stock_in_item"));
+        assertTrue(expression.contains("si.status IN (10, 15)"));
         assertTrue(expression.contains("erp_stock_move_item"));
         assertTrue(expression.contains("sm.transfer_direction = 20"));
         assertTrue(expression.contains("to_warehouse_id"));
@@ -35,6 +36,7 @@ class ErpStockPendingChangeMapperTest {
         assertTrue(expression.contains("erp_sale_out_items"));
         assertTrue(expression.contains("erp_purchase_return_items"));
         assertTrue(expression.contains("erp_stock_out_item"));
+        assertTrue(expression.contains("so2.status IN (10, 15)"));
         assertTrue(expression.contains("sm.transfer_direction = 10"));
         assertTrue(expression.contains("from_warehouse_id"));
         assertTrue(expression.contains("erp_warehouse_move_item"));

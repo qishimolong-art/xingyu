@@ -35,6 +35,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ErpReceivableDetailDisplayTest {
+
     private final ErpReceivableDetailDisplayService service = new ErpReceivableDetailDisplayService();
     private final LocalDateTime time = LocalDateTime.of(2026, 9, 27, 12, 34, 56);
     private final ErpReceivableDetailReqVO req = new ErpReceivableDetailReqVO();
@@ -194,6 +195,7 @@ class ErpReceivableDetailDisplayTest {
         when(api.getReceivableDetailList(req)).thenReturn(Collections.singletonList(row));
         ErpReceivableAccountController controller = new ErpReceivableAccountController();
         ReflectionTestUtils.setField(controller, "receivableAccountService", api);
+        ReflectionTestUtils.setField(controller, "fieldPermissionMasker", mock(cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker.class));
         MockHttpServletResponse response = new MockHttpServletResponse();
         controller.exportReceivableDetail(req, response);
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(response.getContentAsByteArray()))) {

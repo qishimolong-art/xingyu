@@ -54,6 +54,7 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
                 .likeIfPresent(ErpPurchaseOrderDO::getRemark, normalizeLikeValue(reqVO.getRemark()))
                 .eqIfPresent(ErpPurchaseOrderDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpPurchaseOrderDO::getPurchaser, reqVO.getPurchaser());
+        query.inIfPresent(ErpPurchaseOrderDO::getId, reqVO.getIds());
         // 入库状态。为什么需�?t. 的原因，是因为联表查询时，需要指定表名，不然会报 in_count 错误
         if (Objects.equals(reqVO.getInStatus(), ErpPurchaseOrderPageReqVO.IN_STATUS_NONE)) {
             query.eq(ErpPurchaseOrderDO::getInCount, 0);

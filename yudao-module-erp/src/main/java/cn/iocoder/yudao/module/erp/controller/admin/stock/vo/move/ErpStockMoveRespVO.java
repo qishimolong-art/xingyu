@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move;
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.idev.excel.annotation.format.NumberFormat;
 import cn.iocoder.yudao.framework.excel.core.annotations.DictFormat;
 import cn.iocoder.yudao.framework.excel.core.convert.DictConvert;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -35,6 +36,7 @@ public class ErpStockMoveRespVO {
     private String deptName;
 
     @Schema(description = "Transfer direction, 10 transfer out, 20 transfer in", example = "10")
+    @NumberFormat("0")
     private Integer transferDirection;
 
     @Schema(description = "Related stock move id", example = "1024")
@@ -63,6 +65,7 @@ public class ErpStockMoveRespVO {
     private LocalDateTime moveTime;
 
     @Schema(description = "Source type", example = "30")
+    @NumberFormat("0")
     private Integer sourceType;
 
     @Schema(description = "Source document id", example = "1024")
@@ -76,19 +79,22 @@ public class ErpStockMoveRespVO {
     private String directCustomerName;
 
     @Schema(description = "Total count", requiredMode = Schema.RequiredMode.REQUIRED, example = "15663")
-    @ExcelProperty("合计数量")
+    @ExcelProperty(value = "合计数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
     private BigDecimal totalCount;
 
     @Schema(description = "Total price", requiredMode = Schema.RequiredMode.REQUIRED, example = "24906")
-    @ExcelProperty("合计金额")
+    @ExcelProperty(value = "合计金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal totalPrice;
 
     @Schema(description = "Document total weight", example = "125.00")
+    @NumberFormat("0.######")
     private BigDecimal totalWeight;
 
     @Schema(description = "Status", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
     @ExcelProperty(value = "状态", converter = DictConvert.class)
     @DictFormat(AUDIT_STATUS)
+    @NumberFormat("0")
     private Integer status;
 
     @Schema(description = "Approve user id", example = "1")
@@ -129,6 +135,7 @@ public class ErpStockMoveRespVO {
 
     @Schema(description = "Print count")
     @ExcelProperty("打印次数")
+    @NumberFormat("0")
     private Integer printCount;
 
     @Schema(description = "Last print time")
@@ -143,7 +150,7 @@ public class ErpStockMoveRespVO {
     private String productNames;
 
     @Schema(description = "Product codes")
-    @ExcelProperty("产品编码")
+    @ExcelProperty(value = "产品编码")
     private String productCodes;
 
     @Schema(description = "Distinct from warehouse names")
@@ -153,6 +160,7 @@ public class ErpStockMoveRespVO {
     private String toWarehouseNames;
 
     @Schema(description = "Item count")
+    @NumberFormat("0")
     private Integer itemCount;
 
     @Schema(description = "Whether current user can approve")
@@ -175,6 +183,7 @@ public class ErpStockMoveRespVO {
 
     @Data
     public static class Item {
+        private BigDecimal totalPrice;
 
         @Schema(description = "Move item id", example = "11756")
         private Long id;
@@ -219,47 +228,63 @@ public class ErpStockMoveRespVO {
         private Long productId;
 
         @Schema(description = "Product purchase price from product or stock", example = "88.00")
-        private BigDecimal productPurchasePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal productPurchasePrice;
         @Schema(description = "Sale price", example = "120.00")
-        private BigDecimal salePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal salePrice;
         @Schema(description = "Latest sale price", example = "118.00")
-        private BigDecimal lastSalePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal lastSalePrice;
         @Schema(description = "Minimum price", example = "95.00")
-        private BigDecimal minPrice;
+        @NumberFormat("0.####################")
+    private BigDecimal minPrice;
         @Schema(description = "Reference price", example = "100.00")
-        private BigDecimal referencePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal referencePrice;
         @Schema(description = "Retail price", example = "128.00")
-        private BigDecimal retailPrice;
+        @NumberFormat("0.####################")
+    private BigDecimal retailPrice;
         @Schema(description = "Last purchase price", example = "86.00")
-        private BigDecimal lastPurchasePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal lastPurchasePrice;
         @Schema(description = "Gross profit rate", example = "20")
-        private Integer grossProfitRate;
+        @NumberFormat("0")
+    private Integer grossProfitRate;
         @Schema(description = "Backup price 1", example = "98.00")
-        private BigDecimal backupPrice1;
+        @NumberFormat("0.####################")
+    private BigDecimal backupPrice1;
         @Schema(description = "Wholesale price", example = "98.00")
-        private BigDecimal wholesalePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal wholesalePrice;
         @Schema(description = "Share price", example = "90.00")
-        private BigDecimal sharePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal sharePrice;
         @Schema(description = "Price visible", example = "true")
         private Boolean priceVisible;
 
         @Schema(description = "Product price", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        private BigDecimal productPrice;
+        @NumberFormat("0.####################")
+    private BigDecimal productPrice;
 
         @Schema(description = "Product count", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        private BigDecimal count;
+        @NumberFormat("0.######")
+    private BigDecimal count;
 
         @Schema(description = "Product unit id")
         private Long productUnitId;
 
         @Schema(description = "Package quantity", example = "12")
-        private Integer packageQty;
+        @NumberFormat("0")
+    private Integer packageQty;
 
         @Schema(description = "Unit weight", example = "1.25")
-        private BigDecimal weight;
+        @NumberFormat("0.######")
+    private BigDecimal weight;
 
         @Schema(description = "Total weight", example = "125.00")
-        private BigDecimal totalWeight;
+        @NumberFormat("0.######")
+    private BigDecimal totalWeight;
 
         @Schema(description = "Remark", example = "remark")
         private String remark;
@@ -277,7 +302,8 @@ public class ErpStockMoveRespVO {
         private String productUnitName;
 
         @Schema(description = "Stock count", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        private BigDecimal stockCount;
+        @NumberFormat("0.######")
+    private BigDecimal stockCount;
 
         @Schema(description = "From shelf", example = "A-01")
         private String fromShelf;
@@ -295,7 +321,8 @@ public class ErpStockMoveRespVO {
         private String sourceInNo;
 
         @Schema(description = "Source purchase in count", example = "100.00")
-        private BigDecimal sourceCount;
+        @NumberFormat("0.######")
+    private BigDecimal sourceCount;
 
         @Schema(description = "Source sale return id", example = "1024")
         private Long sourceSaleReturnId;

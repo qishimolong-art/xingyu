@@ -11,6 +11,7 @@ public class ErpMiscSettlementLedgerRow {
     private Long documentId;
     private String no;
     private LocalDateTime bizTime;
+    private LocalDateTime approveTime;
     private BigDecimal amount;
     private BigDecimal settledAmount;
     private Long deptId;

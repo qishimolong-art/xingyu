@@ -57,7 +57,7 @@ class ErpReceiptDetailReportRepositoryTest {
         assertTrue(cte.contains("SUM(settlement_amount) OVER(PARTITION BY receipt_id)"));
         assertTrue(cte.contains("MAX(receipt_item_id) OVER(PARTITION BY receipt_id)"));
         assertTrue(cte.contains("receipt_actual-SUM"));
-        assertTrue(cte.contains("CAST(NULL AS DECIMAL(20,2)) cost_amount"));
+        assertTrue(cte.contains("CAST(NULL AS DECIMAL(20,6)) cost_amount"));
         assertTrue(cte.contains("r.id receipt_id"));
         assertTrue(cte.contains("s.id business_id"));
         assertTrue(cte.contains("r.payment_voucher_no"));

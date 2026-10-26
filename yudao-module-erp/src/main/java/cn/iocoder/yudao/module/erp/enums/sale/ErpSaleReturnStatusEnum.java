@@ -14,7 +14,8 @@ import java.util.Arrays;
 public enum ErpSaleReturnStatusEnum implements ArrayValuable<Integer> {
 
     DRAFT(0, "草稿"),
-    PROCESS(10, "待审批"),
+    PROCESS(10, "待下单确认"),
+    PICKING(15, "待拣货"),
     APPROVE(20, "已审批"),
     ;
 

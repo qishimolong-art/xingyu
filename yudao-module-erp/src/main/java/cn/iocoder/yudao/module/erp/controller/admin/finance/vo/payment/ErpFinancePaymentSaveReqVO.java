@@ -43,14 +43,17 @@ public class ErpFinancePaymentSaveReqVO {
 
     @Schema(description = "优惠金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "11600")
     @NotNull(message = "优惠金额不能为空")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal discountPrice;
 
     @Schema(description = "合计金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
     @NotNull(message = "合计金额不能为空")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal totalPrice;
 
     @Schema(description = "实际付款金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
     @NotNull(message = "实际付款金额不能为空")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal paymentPrice;
 
     @Schema(description = "凭证号（供应商收款编号等业务侧手工凭据）", example = "PAY-20261015-001")
@@ -83,13 +86,16 @@ public class ErpFinancePaymentSaveReqVO {
         private String bizNo;
 
         @Schema(description = "应付金额")
-        private BigDecimal totalPrice;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal totalPrice;
 
         @Schema(description = "已付金额，单位：分", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
-        private BigDecimal paidPrice;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal paidPrice;
 
         @Schema(description = "本次付款，单位：分", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
-        private BigDecimal paymentPrice;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal paymentPrice;
 
         @Schema(description = "备注", example = "随便")
         private String remark;

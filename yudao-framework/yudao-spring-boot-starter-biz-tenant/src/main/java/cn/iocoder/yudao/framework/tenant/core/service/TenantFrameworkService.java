@@ -23,4 +23,9 @@ public interface TenantFrameworkService {
      */
     void validTenant(Long id);
 
+    /**
+     * 校验平台用户是否可以临时访问目标租户。
+     */
+    void validTenantVisit(Long userId, Long loginTenantId, Long visitTenantId);
+
 }

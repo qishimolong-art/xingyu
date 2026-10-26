@@ -222,7 +222,7 @@ public class AssistantEntityResolver {
                 args.put("entityKeyword",candidate);args.put("entityMatchMode", matchMode);
                 List<Map<String,Object>> rows=decorate(select(args), type, matchMode);
                 if("TOKEN_FUZZY".equals(matchMode)) {
-                    List<String> tokens=ErpKeywordQuery.parseKeywordSearch(candidate).tokens();
+                    List<String> tokens=AssistantSemanticKnowledge.productNameQueryTokens(candidate);
                     for(Map<String,Object> row:rows) row.put("matchTokens",new ArrayList<>(tokens));
                 }
                 combined.addAll(rows);
@@ -467,8 +467,7 @@ public class AssistantEntityResolver {
             return Collections.singletonList("BRAND");
         if(type==EntityType.PRODUCT) {
             List<String> result=new ArrayList<>();result.add("EXACT_NAME");
-            if(ErpKeywordQuery.shouldAppendTokenProductItemCondition(
-                    ErpKeywordQuery.parseKeywordSearch(keyword))) result.add("TOKEN_FUZZY");
+            if(AssistantSemanticKnowledge.productNameQueryTokens(keyword).size()>1) result.add("TOKEN_FUZZY");
             result.add("FUZZY");
             return result;
         }

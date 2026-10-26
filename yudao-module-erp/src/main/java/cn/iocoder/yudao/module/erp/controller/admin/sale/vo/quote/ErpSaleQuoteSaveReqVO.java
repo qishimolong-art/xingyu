@@ -33,12 +33,15 @@ public class ErpSaleQuoteSaveReqVO {
     private LocalDateTime quoteTime;
 
     @Schema(description = "优惠率，百分比")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "优惠率，百分比最多支持 6 位小数")
     private BigDecimal discountPercent;
 
     @Schema(description = "费用金额，单位：元")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "费用金额，单位：元最多支持 6 位小数")
     private BigDecimal feeAmount;
 
     @Schema(description = "其它金额，单位：元")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "其它金额，单位：元最多支持 6 位小数")
     private BigDecimal otherPrice;
 
     @Schema(description = "附件地址")
@@ -69,6 +72,7 @@ public class ErpSaleQuoteSaveReqVO {
     private String deliveryAddress;
 
     @Schema(description = "折让金额")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "折让金额最多支持 6 位小数")
     private BigDecimal allowancePrice;
 
     @Schema(description = "票据号")
@@ -81,6 +85,7 @@ public class ErpSaleQuoteSaveReqVO {
     private String freightType;
 
     @Schema(description = "费用金额")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "费用金额最多支持 6 位小数")
     private BigDecimal freightAmount;
 
     @Schema(description = "物流公司")
@@ -140,21 +145,25 @@ public class ErpSaleQuoteSaveReqVO {
         private Long productId;
 
         @Schema(description = "产品单价")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "产品单价最多支持 6 位小数")
         private BigDecimal productPrice;
 
         @Schema(description = "重量")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "重量最多支持 6 位小数")
         private BigDecimal weight;
 
         @Schema(description = "包装数")
         private Integer packageQty;
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED)
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "产品数量最多支持 6 位小数")
         private BigDecimal count;
 
         @Schema(description = "是否赠品", example = "false")
         private Boolean giftFlag;
 
         @Schema(description = "税率，百分比")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "税率，百分比最多支持 6 位小数")
         private BigDecimal taxPercent;
 
         @Schema(description = "货架位")

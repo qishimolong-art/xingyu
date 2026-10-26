@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplieraccount.ErpSupplierAccountSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierAccountDO;
@@ -36,7 +38,10 @@ public class ErpSupplierAccountServiceImpl implements ErpSupplierAccountService 
     @Override
     public void updateSupplierAccount(ErpSupplierAccountSaveReqVO updateReqVO) {
         validateSupplierExists(updateReqVO.getSupplierId());
-        validateSupplierAccountExists(updateReqVO.getId());
+        ErpSupplierAccountDO existing = validateSupplierAccountExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getSupplierId(), updateReqVO.getSupplierId())) {
+            throw exception(SUPPLIER_ACCOUNT_NOT_EXISTS);
+        }
         if (Boolean.TRUE.equals(updateReqVO.getDefaulted())) {
             supplierAccountMapper.clearDefaultBySupplierId(updateReqVO.getSupplierId(), updateReqVO.getId());
         }
@@ -49,10 +54,11 @@ public class ErpSupplierAccountServiceImpl implements ErpSupplierAccountService 
         supplierAccountMapper.deleteById(id);
     }
 
-    private void validateSupplierAccountExists(Long id) {
-        if (supplierAccountMapper.selectById(id) == null) {
-            throw exception(SUPPLIER_ACCOUNT_NOT_EXISTS);
-        }
+    private ErpSupplierAccountDO validateSupplierAccountExists(Long id) {
+        ErpSupplierAccountDO existing = supplierAccountMapper.selectById(id);
+        if (existing == null) throw exception(SUPPLIER_ACCOUNT_NOT_EXISTS);
+        validateSupplierExists(existing.getSupplierId());
+        return existing;
     }
 
     private void validateSupplierExists(Long supplierId) {
@@ -63,7 +69,7 @@ public class ErpSupplierAccountServiceImpl implements ErpSupplierAccountService 
 
     @Override
     public ErpSupplierAccountDO getSupplierAccount(Long id) {
-        return supplierAccountMapper.selectById(id);
+        return validateSupplierAccountExists(id);
     }
 
     @Override
@@ -72,4 +78,11 @@ public class ErpSupplierAccountServiceImpl implements ErpSupplierAccountService 
         return supplierAccountMapper.selectListBySupplierId(supplierId);
     }
 
+
+    @Override
+    public PageResult<ErpSupplierAccountDO> getSupplierAccountPage(ErpSupplierItemPageReqVO reqVO) {
+        validateSupplierExists(reqVO.getSupplierId());
+        reqVO.boundPageSize();
+        return supplierAccountMapper.selectPage(reqVO);
+    }
 }

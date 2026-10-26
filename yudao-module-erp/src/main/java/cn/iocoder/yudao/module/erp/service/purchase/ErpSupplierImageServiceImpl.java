@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplierimage.ErpSupplierImageSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierImageDO;
@@ -33,7 +35,10 @@ public class ErpSupplierImageServiceImpl implements ErpSupplierImageService {
     @Override
     public void updateSupplierImage(ErpSupplierImageSaveReqVO updateReqVO) {
         validateSupplierExists(updateReqVO.getSupplierId());
-        validateSupplierImageExists(updateReqVO.getId());
+        ErpSupplierImageDO existing = validateSupplierImageExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getSupplierId(), updateReqVO.getSupplierId())) {
+            throw exception(SUPPLIER_IMAGE_NOT_EXISTS);
+        }
         supplierImageMapper.updateById(BeanUtils.toBean(updateReqVO, ErpSupplierImageDO.class));
     }
 
@@ -43,10 +48,11 @@ public class ErpSupplierImageServiceImpl implements ErpSupplierImageService {
         supplierImageMapper.deleteById(id);
     }
 
-    private void validateSupplierImageExists(Long id) {
-        if (supplierImageMapper.selectById(id) == null) {
-            throw exception(SUPPLIER_IMAGE_NOT_EXISTS);
-        }
+    private ErpSupplierImageDO validateSupplierImageExists(Long id) {
+        ErpSupplierImageDO existing = supplierImageMapper.selectById(id);
+        if (existing == null) throw exception(SUPPLIER_IMAGE_NOT_EXISTS);
+        validateSupplierExists(existing.getSupplierId());
+        return existing;
     }
 
     private void validateSupplierExists(Long supplierId) {
@@ -57,7 +63,7 @@ public class ErpSupplierImageServiceImpl implements ErpSupplierImageService {
 
     @Override
     public ErpSupplierImageDO getSupplierImage(Long id) {
-        return supplierImageMapper.selectById(id);
+        return validateSupplierImageExists(id);
     }
 
     @Override
@@ -66,4 +72,11 @@ public class ErpSupplierImageServiceImpl implements ErpSupplierImageService {
         return supplierImageMapper.selectListBySupplierId(supplierId);
     }
 
+
+    @Override
+    public PageResult<ErpSupplierImageDO> getSupplierImagePage(ErpSupplierItemPageReqVO reqVO) {
+        validateSupplierExists(reqVO.getSupplierId());
+        reqVO.boundPageSize();
+        return supplierImageMapper.selectPage(reqVO);
+    }
 }

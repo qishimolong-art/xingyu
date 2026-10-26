@@ -40,6 +40,9 @@ public class ErpSaleReturnPageReqVO extends PageParam {
     @Schema(description = "退货状态", example = "2")
     private Integer status;
 
+    @Schema(description = "拣货状态，仅用于待拣货/部分拣货筛选", example = "10")
+    private Integer pickStatus;
+
     @Schema(description = "创建者")
     private String creator;
 

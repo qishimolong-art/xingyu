@@ -66,10 +66,17 @@ public class ErpReceivableDetailDisplayService {
                 if (users.get(id) != null) row.setAuditorName(users.get(id).getNickname());
             });
         }
-        rows.sort(Comparator.comparing(ErpReceivableDetailRespVO::getDocDate,
-                        Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(ErpReceivableDetailRespVO::getDocType)
-                .thenComparing(ErpReceivableDetailRespVO::getDocNo, Comparator.nullsLast(String::compareTo)));
+        if (req.isApproveTimeBasis()) {
+            rows.sort(Comparator.comparing(ErpReceivableDetailRespVO::getApproveTime,
+                            Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(ErpReceivableDetailRespVO::getEventKey,
+                            Comparator.nullsLast(Comparator.naturalOrder())));
+        } else {
+            rows.sort(Comparator.comparing(ErpReceivableDetailRespVO::getDocDate,
+                            Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(ErpReceivableDetailRespVO::getDocType)
+                    .thenComparing(ErpReceivableDetailRespVO::getDocNo, Comparator.nullsLast(String::compareTo)));
+        }
         return rows;
     }
 

@@ -700,13 +700,13 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         when(adminUserApi.getUserMap(anyCollection())).thenReturn(Collections.emptyMap());
         when(stockMapper.selectSumMapByProductIds(anyCollection())).thenReturn(Collections.emptyMap());
         when(stockLockMapper.selectList(any())).thenReturn(Collections.emptyList());
-        when(productUniversalMapper.selectListByProductIds(anyCollection())).thenReturn(Collections.emptyList());
 
         PageResult<ErpProductRespVO> result;
         try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
             security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
 
             result = productService.getProductVOPage(new ErpProductPageReqVO(), false);
+            verify(productUniversalMapper, never()).selectListByProductIds(anyCollection());
         }
 
         assertEquals(1L, result.getTotal());

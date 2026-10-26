@@ -38,12 +38,15 @@ public class ErpFinanceReceiptDraftSaveReqVO {
     private String sourceReceivableMiscNo;
 
     @Schema(description = "优惠金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal discountPrice;
 
     @Schema(description = "合计收款")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal totalPrice;
 
     @Schema(description = "实际收款")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal receiptPrice;
 
     @Schema(description = "凭证号（客户付款编号）")

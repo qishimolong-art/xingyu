@@ -22,6 +22,7 @@ import org.mockito.Mock;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -110,10 +111,45 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
                 () -> service.submitFinancePayment(900L));
         verify(paymentMapper, never()).updateByIdAndStatus(any(), any(), any());
     }
+
+    @Test
+    void createDraft_withoutItems_preservesManualAmountsAndDraftStatus() {
+        when(noRedisDAO.generate(any())).thenReturn("payment-header-draft");
+        service.createFinancePaymentDraft(new ErpFinancePaymentDraftSaveReqVO()
+                .setSupplierId(2L).setAccountId(3L).setTotalPrice(new BigDecimal("-100.123456"))
+                .setDiscountPrice(new BigDecimal("5.000001")).setRemark("先录金额，稍后核销")
+                .setItems(Collections.emptyList()));
+        ArgumentCaptor<ErpFinancePaymentDO> captor = ArgumentCaptor.forClass(ErpFinancePaymentDO.class);
+        verify(paymentMapper).insert(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(0);
+        assertThat(captor.getValue().getTotalPrice()).isEqualByComparingTo("-100.123456");
+        assertThat(captor.getValue().getDiscountPrice()).isEqualByComparingTo("5.000001");
+        assertThat(captor.getValue().getPaymentPrice()).isEqualByComparingTo("-105.123457");
+        verify(paymentItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    void createDraft_partialHeaderContentDoesNotRequireItems() {
+        when(noRedisDAO.generate(any())).thenReturn("payment-partial-draft");
+        for (ErpFinancePaymentDraftSaveReqVO request : Arrays.asList(
+                new ErpFinancePaymentDraftSaveReqVO().setSupplierId(2L),
+                new ErpFinancePaymentDraftSaveReqVO().setTotalPrice(BigDecimal.TEN),
+                new ErpFinancePaymentDraftSaveReqVO().setDiscountPrice(BigDecimal.ONE),
+                new ErpFinancePaymentDraftSaveReqVO().setPaymentVoucherNo("CUSTOM-001"),
+                new ErpFinancePaymentDraftSaveReqVO().setRemark("待补齐"))) {
+            service.createFinancePaymentDraft(request);
+        }
+        verify(paymentMapper, org.mockito.Mockito.times(5)).insert(any(ErpFinancePaymentDO.class));
+        verify(paymentItemMapper, never()).insertBatch(any());
+    }
+
     @Test
     void createDraft_withoutValidItems_throwException() {
         assertServiceException(
-                () -> service.createFinancePaymentDraft(new ErpFinancePaymentDraftSaveReqVO()),
+                () -> service.createFinancePaymentDraft(new ErpFinancePaymentDraftSaveReqVO()
+                        .setAccountId(3L).setPaymentTime(LocalDateTime.now())
+                        .setTotalPrice(BigDecimal.ZERO).setDiscountPrice(BigDecimal.ZERO)
+                        .setPaymentVoucherNo("  ").setRemark("  ")),
                 FINANCE_PAYMENT_DRAFT_ITEMS_REQUIRED);
         verify(noRedisDAO, never()).generate(any());
         verify(paymentMapper, never()).insert(any(ErpFinancePaymentDO.class));
@@ -466,6 +502,11 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
 
         service.approveFinancePayment(10L);
 
+        ArgumentCaptor<ErpFinancePaymentDO> approvalCaptor = ArgumentCaptor.forClass(ErpFinancePaymentDO.class);
+        verify(paymentMapper).updateByIdAndStatus(eq(10L),
+                eq(ErpFinancePaymentStatusEnum.PROCESS.getStatus()), approvalCaptor.capture());
+        assertThat(approvalCaptor.getValue().getApproveTime()).isNotNull();
+        assertThat(payment.getApproveTime()).isEqualTo(approvalCaptor.getValue().getApproveTime());
         verify(payableOtherService).createFromFinancePaymentDiscount(payment);
         verify(receivableOtherIncomeService).createApprovedFromFinancePaymentDiscount(payment, null);
         verify(financeAutoWriteOffService).autoWriteOffPayment(10L, null);

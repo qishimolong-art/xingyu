@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import javax.validation.Valid;
+import javax.validation.constraints.Digits;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -30,12 +32,15 @@ public class ErpPurchaseInSaveReqVO {
     private Long orderId;
 
     @Schema(description = "优惠率，百分比", requiredMode = Schema.RequiredMode.REQUIRED, example = "99.88")
+    @Digits(integer = 18, fraction = 6, message = "优惠率最多支持 6 位小数")
     private BigDecimal discountPercent;
 
     @Schema(description = "费用金额，单位：元", example = "7127")
+    @Digits(integer = 18, fraction = 6, message = "费用金额最多支持 6 位小数")
     private BigDecimal feeAmount;
 
     @Schema(description = "其它金额，单位：元", example = "7127")
+    @Digits(integer = 18, fraction = 6, message = "其它金额最多支持 6 位小数")
     private BigDecimal otherPrice;
 
     @Schema(description = "附件地址", example = "https://www.iocoder.cn")
@@ -66,6 +71,7 @@ public class ErpPurchaseInSaveReqVO {
     private String accountant;
 
     @Schema(description = "浮动率", example = "1.00")
+    @Digits(integer = 18, fraction = 6, message = "浮动率最多支持 6 位小数")
     private BigDecimal floatRate;
 
     @Schema(description = "件数", example = "0")
@@ -98,12 +104,14 @@ public class ErpPurchaseInSaveReqVO {
     private String handler;
 
     @Schema(description = "税率", example = "13.00")
+    @Digits(integer = 18, fraction = 6, message = "税率最多支持 6 位小数")
     private BigDecimal taxRate;
 
     @Schema(description = "部门 ID", example = "100")
     private Long deptId;
 
     @Schema(description = "采购折让", example = "0.00")
+    @Digits(integer = 18, fraction = 6, message = "采购折让最多支持 6 位小数")
     private BigDecimal purchaseDiscount;
 
     @Schema(description = "优先级", example = "正常件")
@@ -119,9 +127,11 @@ public class ErpPurchaseInSaveReqVO {
     private String receiveUnit;
 
     @Schema(description = "总运费1", example = "0.00")
+    @Digits(integer = 18, fraction = 6, message = "总运费1最多支持 6 位小数")
     private BigDecimal totalFreight1;
 
     @Schema(description = "总运费2", example = "0.00")
+    @Digits(integer = 18, fraction = 6, message = "总运费2最多支持 6 位小数")
     private BigDecimal totalFreight2;
 
     @Schema(description = "付款日期")
@@ -135,6 +145,7 @@ public class ErpPurchaseInSaveReqVO {
     private String businessEntity;
 
     @Schema(description = "入库清单列表")
+    @Valid
     private List<Item> items;
 
     @Data
@@ -172,15 +183,18 @@ public class ErpPurchaseInSaveReqVO {
         private String productUnitName;
 
         @Schema(description = "产品单价", example = "100.00")
+        @Digits(integer = 18, fraction = 6, message = "产品单价最多支持 6 位小数")
         private BigDecimal productPrice;
 
         @Schema(description = "是否赠品", example = "false")
         private Boolean gift;
 
         @Schema(description = "产品数量", example = "100.00")
+        @Digits(integer = 18, fraction = 6, message = "产品数量最多支持 6 位小数")
         private BigDecimal count;
 
         @Schema(description = "税率，百分比", example = "99.88")
+        @Digits(integer = 18, fraction = 6, message = "明细税率最多支持 6 位小数")
         private BigDecimal taxPercent;
 
         @Schema(description = "备注", example = "随便")

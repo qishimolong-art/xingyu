@@ -83,6 +83,9 @@ public interface ErpProductUnitService {
      */
     ErpProductUnitImportRespVO importProductUnitList(List<ErpProductUnitImportExcelVO> list);
 
+    ErpProductUnitImportRespVO importProductUnitList(List<ErpProductUnitImportExcelVO> list,
+                                                     ErpSimpleArchiveImportProgressListener listener);
+
     /**
      * 解析 CSV 导入文件
      *

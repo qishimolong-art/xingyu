@@ -12,6 +12,7 @@ import cn.iocoder.yudao.module.system.dal.mysql.permission.MenuMapper;
 import cn.iocoder.yudao.module.system.dal.redis.RedisKeyConstants;
 import cn.iocoder.yudao.module.system.enums.permission.MenuTypeEnum;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
+import cn.iocoder.yudao.module.system.service.tenant.TenantVisitScopeService;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +47,8 @@ public class MenuServiceImpl implements MenuService {
     @Resource
     @Lazy // 延迟，避免循环依赖报错
     private TenantService tenantService;
+    @Resource
+    private TenantVisitScopeService tenantVisitScopeService;
 
     @Override
     @CacheEvict(value = RedisKeyConstants.PERMISSION_MENU_ID_LIST, key = "#createReqVO.permission",
@@ -70,7 +73,8 @@ public class MenuServiceImpl implements MenuService {
             allEntries = true) // allEntries 清空所有缓存，因为 permission 如果变更，涉及到新老两个 permission。直接清理，简单有效
     public void updateMenu(MenuSaveVO updateReqVO) {
         // 校验更新的菜单是否存在
-        if (menuMapper.selectById(updateReqVO.getId()) == null) {
+        MenuDO oldMenu = menuMapper.selectById(updateReqVO.getId());
+        if (oldMenu == null) {
             throw exception(MENU_NOT_EXISTS);
         }
         // 校验父菜单存在
@@ -83,6 +87,10 @@ public class MenuServiceImpl implements MenuService {
         MenuDO updateObj = BeanUtils.toBean(updateReqVO, MenuDO.class);
         initMenuProperty(updateObj);
         menuMapper.updateById(updateObj);
+        if (TenantVisitScopeService.PERMISSION_TENANT_VISIT.equals(oldMenu.getPermission())
+                || TenantVisitScopeService.PERMISSION_TENANT_VISIT.equals(updateObj.getPermission())) {
+            tenantVisitScopeService.reconcileAllUserScopes();
+        }
     }
 
     @Override
@@ -95,13 +103,17 @@ public class MenuServiceImpl implements MenuService {
             throw exception(MENU_EXISTS_CHILDREN);
         }
         // 校验删除的菜单是否存在
-        if (menuMapper.selectById(id) == null) {
+        MenuDO menu = menuMapper.selectById(id);
+        if (menu == null) {
             throw exception(MENU_NOT_EXISTS);
         }
         // 标记删除
         menuMapper.deleteById(id);
         // 删除授予给角色的权限
         permissionService.processMenuDeleted(id);
+        if (TenantVisitScopeService.PERMISSION_TENANT_VISIT.equals(menu.getPermission())) {
+            tenantVisitScopeService.reconcileAllUserScopes();
+        }
     }
 
     @Override
@@ -116,10 +128,15 @@ public class MenuServiceImpl implements MenuService {
             }
         });
 
+        boolean deletesTenantVisitPermission = menuMapper.selectByIds(ids).stream()
+                .anyMatch(menu -> TenantVisitScopeService.PERMISSION_TENANT_VISIT.equals(menu.getPermission()));
         // 标记删除
         menuMapper.deleteByIds(ids);
         // 删除授予给角色的权限
         ids.forEach(id -> permissionService.processMenuDeleted(id));
+        if (deletesTenantVisitPermission) {
+            tenantVisitScopeService.reconcileAllUserScopes();
+        }
     }
 
     @Override

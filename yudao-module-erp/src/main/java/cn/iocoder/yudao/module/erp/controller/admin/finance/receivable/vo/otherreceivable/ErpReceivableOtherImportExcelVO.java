@@ -22,6 +22,7 @@ public class ErpReceivableOtherImportExcelVO {
     private String voucherNo;
 
     @ExcelProperty("已结金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal settledAmount;
 
     @ExcelProperty("部门ID")
@@ -29,6 +30,7 @@ public class ErpReceivableOtherImportExcelVO {
 
     @ExcelRequired
     @ExcelProperty("应收金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal receivableAmount;
 
     @ExcelProperty("调账项目")
@@ -44,6 +46,7 @@ public class ErpReceivableOtherImportExcelVO {
     private String receivableType;
 
     @ExcelProperty("成本金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal costAmount;
 
     @ExcelRequired

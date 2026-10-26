@@ -30,7 +30,8 @@ public class ErpFinanceReceiptWriteOffReqVO {
         private Long bizId;
 
         @NotNull(message = "核销金额不能为空")
-        private BigDecimal writeOffAmount;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal writeOffAmount;
 
         private String remark;
 

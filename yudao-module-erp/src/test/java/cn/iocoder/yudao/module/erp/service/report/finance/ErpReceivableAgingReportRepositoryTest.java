@@ -38,7 +38,7 @@ class ErpReceivableAgingReportRepositoryTest {
         assertTrue(sql.cte.contains("age_days BETWEEN 91 AND 180"));
         assertTrue(sql.cte.contains("age_days BETWEEN 181 AND 365"));
         assertTrue(sql.cte.contains("age_days>=366"));
-        assertTrue(sql.cte.contains("ROUND(e.balance,2)<>0"));
+        assertTrue(sql.cte.contains("ROUND(e.balance,6)<>0"));
         assertTrue(sql.cte.contains("source_type='收款单优惠'"));
     }
 

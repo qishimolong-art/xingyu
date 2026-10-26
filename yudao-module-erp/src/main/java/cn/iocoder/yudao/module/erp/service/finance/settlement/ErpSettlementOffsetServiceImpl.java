@@ -109,6 +109,8 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
 
         ErpReceivableAccountPageReqVO receivableReq = new ErpReceivableAccountPageReqVO();
         receivableReq.setBizTime(reqVO.getBizTime());
+        receivableReq.setApproveTime(reqVO.getApproveTime());
+        receivableReq.setDateBasis(reqVO.getDateBasis());
         receivableReq.setShowZeroBalance(true);
         Map<Long, BigDecimal> receivableBalanceMap = receivableAccountService
                 .getReceivableAccountList(receivableReq, scope).stream()
@@ -116,6 +118,8 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
                         row -> defaultAmount(row.getReceivableBalance()), BigDecimal::add));
         ErpPayableAccountPageReqVO payableReq = new ErpPayableAccountPageReqVO();
         payableReq.setBizTime(reqVO.getBizTime());
+        payableReq.setApproveTime(reqVO.getApproveTime());
+        payableReq.setDateBasis(reqVO.getDateBasis());
         payableReq.setShowZeroBalance(true);
         Map<Long, BigDecimal> payableBalanceMap = payableAccountService
                 .getPayableAccountList(payableReq, scope).stream()
@@ -149,18 +153,28 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
         ErpReceivableDetailReqVO receivableReqVO = new ErpReceivableDetailReqVO();
         receivableReqVO.setCustomerId(reqVO.getCustomerId());
         receivableReqVO.setBizTime(reqVO.getBizTime());
+        receivableReqVO.setApproveTime(reqVO.getApproveTime());
+        receivableReqVO.setDateBasis(reqVO.getDateBasis());
 
         ErpPayableDetailReqVO payableReqVO = new ErpPayableDetailReqVO();
         payableReqVO.setSupplierId(reqVO.getSupplierId());
         payableReqVO.setBizTime(reqVO.getBizTime());
+        payableReqVO.setApproveTime(reqVO.getApproveTime());
+        payableReqVO.setDateBasis(reqVO.getDateBasis());
 
         ErpSettlementOffsetDetailRespVO respVO = new ErpSettlementOffsetDetailRespVO();
         respVO.setReceivableDetails(receivableAccountService.getReceivableDetailList(receivableReqVO, scope));
         respVO.setPayableDetails(payableAccountService.getPayableDetailList(payableReqVO, scope));
-        sortReceivableDetails(respVO.getReceivableDetails(), reqVO.getReceivableOrderField(),
-                reqVO.getReceivableOrderDirection());
-        sortPayableDetails(respVO.getPayableDetails(), reqVO.getPayableOrderField(),
-                reqVO.getPayableOrderDirection());
+        String receivableOrderField = reqVO.isApproveTimeBasis() && reqVO.getReceivableOrderField() == null
+                ? "approveTime" : reqVO.getReceivableOrderField();
+        String receivableOrderDirection = reqVO.isApproveTimeBasis() && reqVO.getReceivableOrderDirection() == null
+                ? "asc" : reqVO.getReceivableOrderDirection();
+        String payableOrderField = reqVO.isApproveTimeBasis() && reqVO.getPayableOrderField() == null
+                ? "approveTime" : reqVO.getPayableOrderField();
+        String payableOrderDirection = reqVO.isApproveTimeBasis() && reqVO.getPayableOrderDirection() == null
+                ? "asc" : reqVO.getPayableOrderDirection();
+        sortReceivableDetails(respVO.getReceivableDetails(), receivableOrderField, receivableOrderDirection);
+        sortPayableDetails(respVO.getPayableDetails(), payableOrderField, payableOrderDirection);
         return respVO;
     }
 
@@ -175,6 +189,8 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
             comparator = comparing(ErpReceivableDetailRespVO::getDocType, ascending);
         } else if ("docDate".equals(orderField)) {
             comparator = comparing(ErpReceivableDetailRespVO::getDocDate, ascending);
+        } else if ("approveTime".equals(orderField)) {
+            comparator = comparing(ErpReceivableDetailRespVO::getApproveTime, ascending);
         } else if ("docNo".equals(orderField)) {
             comparator = comparing(ErpReceivableDetailRespVO::getDocNo, ascending);
         } else if ("deptName".equals(orderField)) {
@@ -194,8 +210,10 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
         } else {
             return;
         }
-        rows.sort(comparator.thenComparing(ErpReceivableDetailRespVO::getBizId,
-                Comparator.nullsLast(Comparator.reverseOrder())));
+        rows.sort(comparator.thenComparing(ErpReceivableDetailRespVO::getApproveTime,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ErpReceivableDetailRespVO::getEventKey,
+                        Comparator.nullsLast(Comparator.naturalOrder())));
     }
 
     private void sortPayableDetails(List<ErpPayableDetailRespVO> rows, String orderField,
@@ -209,6 +227,8 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
             comparator = comparing(ErpPayableDetailRespVO::getDocType, ascending);
         } else if ("docDate".equals(orderField)) {
             comparator = comparing(ErpPayableDetailRespVO::getDocDate, ascending);
+        } else if ("approveTime".equals(orderField)) {
+            comparator = comparing(ErpPayableDetailRespVO::getApproveTime, ascending);
         } else if ("docNo".equals(orderField)) {
             comparator = comparing(ErpPayableDetailRespVO::getDocNo, ascending);
         } else if ("deptName".equals(orderField)) {
@@ -226,8 +246,10 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
         } else {
             return;
         }
-        rows.sort(comparator.thenComparing(ErpPayableDetailRespVO::getBizId,
-                Comparator.nullsLast(Comparator.reverseOrder())));
+        rows.sort(comparator.thenComparing(ErpPayableDetailRespVO::getApproveTime,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ErpPayableDetailRespVO::getEventKey,
+                        Comparator.nullsLast(Comparator.naturalOrder())));
     }
 
     private boolean isSortDirectionValid(String direction) {

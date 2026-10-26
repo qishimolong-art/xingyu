@@ -10,6 +10,11 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpArchiveMergeReq
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductBatchDisableReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportTaskStartRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductExportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductExportTaskStartReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductExportTaskStartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductStockDistributionBatchSaveReqVO;
@@ -22,10 +27,13 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsB
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchAdjustStockLimitsReqVO;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductUniversalPageReqVO;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductImportTaskService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductExportTaskService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -86,6 +94,10 @@ public class ErpProductController {
 
     @Resource
     private ErpProductService productService;
+    @Resource
+    private ErpProductImportTaskService productImportTaskService;
+    @Resource
+    private ErpProductExportTaskService productExportTaskService;
     @Resource
     private ErpExportCaptchaService exportCaptchaService;
     @Resource
@@ -163,8 +175,63 @@ public class ErpProductController {
     @Operation(summary = "获得产品完整详情")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:product:query')")
-    public CommonResult<ErpProductRespVO> getProductDetail(@RequestParam("id") Long id) {
-        return success(productService.getProductArchiveDetail(id));
+    public CommonResult<ErpProductRespVO> getProductDetail(@RequestParam("id") Long id,
+            @RequestParam(value = "includeUniversals", defaultValue = "true") boolean includeUniversals) {
+        return success(productService.getProductArchiveDetail(id, includeUniversals));
+    }
+
+    @Resource private cn.iocoder.yudao.module.erp.service.product.ErpProductUnitService unitService;
+    @Resource private cn.iocoder.yudao.module.erp.service.product.ErpProductBrandService brandService;
+    @Resource private cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService warehouseService;
+    @Resource private cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMapper warehouseMapper;
+
+    private void boundCandidatePage(PageParam page) {
+        if (page.getPageSize() <= 0 || page.getPageSize() > 100) page.setPageSize(100);
+    }
+    @GetMapping("/form-unit-page")
+    @PreAuthorize("@ss.hasPermission('erp:product:create') or @ss.hasPermission('erp:product:update') or @ss.hasPermission('erp:product:query')")
+    public CommonResult<PageResult<cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO>> getFormUnitPage(
+            @Valid cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUnitPageReqVO page) {
+        boundCandidatePage(page); page.setStatus(0);
+        return success(unitService.getProductUnitPage(page));
+    }
+    @GetMapping("/form-brand-page")
+    @PreAuthorize("@ss.hasPermission('erp:product:create') or @ss.hasPermission('erp:product:update') or @ss.hasPermission('erp:product:query')")
+    public CommonResult<PageResult<cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductBrandDO>> getFormBrandPage(
+            @Valid cn.iocoder.yudao.module.erp.controller.admin.product.vo.brand.ErpProductBrandPageReqVO page) {
+        boundCandidatePage(page); page.setStatus(0);
+        return success(brandService.getProductBrandPage(page));
+    }
+    @GetMapping("/form-warehouse-page")
+    @PreAuthorize("@ss.hasPermission('erp:product:create') or @ss.hasPermission('erp:product:update') or @ss.hasPermission('erp:product:query')")
+    public CommonResult<PageResult<java.util.Map<String,Object>>> getFormWarehousePage(
+            @Valid cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO page) {
+        boundCandidatePage(page); page.setStatus(0);
+        PageResult<cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> result =
+            cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils.executeIgnore(() ->
+                warehouseMapper.selectPageByIds(page, warehouseService.getCurrentUserAuthorizedWarehouseIds()));
+        return success(new PageResult<>(convertList(result.getList(), row -> {
+            java.util.Map<String,Object> item = new java.util.LinkedHashMap<>();
+            item.put("id",row.getId()); item.put("name",row.getName()); return item;
+        }), result.getTotal()));
+    }
+    @GetMapping("/merge-candidate-page")
+    @PreAuthorize("@ss.hasPermission('erp:product:merge')")
+    public CommonResult<PageResult<java.util.Map<String,Object>>> getMergeCandidatePage(@Valid ErpProductPageReqVO page) {
+        boundCandidatePage(page); page.setStatus(0); page.setIncludeSaleDistributedArchive(false);
+        PageResult<ErpProductRespVO> result = productService.getProductVOPage(page);
+        return success(new PageResult<>(convertList(result.getList(), row -> {
+            java.util.Map<String,Object> item = new java.util.LinkedHashMap<>();
+            item.put("id", row.getId()); item.put("name",row.getName()); item.put("code",row.getCode()); return item;
+        }), result.getTotal()));
+    }
+
+    @GetMapping("/universal-page")
+    @PreAuthorize("@ss.hasPermission('erp:product:query')")
+    public CommonResult<PageResult<ErpProductRespVO.Universal>> getUniversalPage(
+            @Valid ErpProductUniversalPageReqVO reqVO) {
+        if (reqVO.getPageSize() <= 0 || reqVO.getPageSize() > 100) reqVO.setPageSize(100);
+        return success(productService.getUniversalPage(reqVO));
     }
 
     @GetMapping("/stock-distribution")
@@ -229,21 +296,99 @@ public class ErpProductController {
                 .setSharePrice(product.getSharePrice())));
     }
 
+    @GetMapping("/export-fields")
+    @PreAuthorize("@ss.hasPermission('erp:product:export')")
+    public CommonResult<List<cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO>> getExportFields() {
+        return success(ErpProductExportSupport.fields(productService.getExportHiddenFields(), fieldConfigService.getFieldConfigListByModule("erp_product")));
+    }
+
     @GetMapping("/export-excel")
     @Operation(summary = "导出产品 Excel")
     @PreAuthorize("@ss.hasPermission('erp:product:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportProductExcel(@Valid ErpProductPageReqVO pageReqVO,
-                                   @RequestParam(value = "captchaCode", required = false) String captchaCode,
-                                   @RequestParam(value = "verifyCode", required = false) String verifyCode,
-                                   HttpServletResponse response) throws IOException {
+            @RequestParam(value = "captchaCode", required = false) String captchaCode,
+            @RequestParam(value = "verifyCode", required = false) String verifyCode,
+            @RequestParam(value = "fields", required = false) String fields,
+            HttpServletResponse response) throws IOException {
         exportCaptchaService.validate(captchaCode, verifyCode);
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        PageResult<ErpProductRespVO> pageResult = productService.getProductVOPage(pageReqVO);
-        operateLogService.record(ERP_PRODUCT_TYPE, ERP_EXPORT_SUB_TYPE, 0L,
-                "导出配件信息，导出数量：" + pageResult.getList().size(), "产品导出");
-        ExcelUtils.write(response, "产品.xls", "数据", ErpProductRespVO.class, pageResult.getList(),
-                filterVisibleExcelFields(PRODUCT_EXPORT_FIELDS));
+        List<cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO> configs = fieldConfigService.getFieldConfigListByModule("erp_product");
+        List<cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO> selected = ErpProductExportSupport.select(
+                ErpProductExportSupport.fields(productService.getExportHiddenFields(), configs), fields, PRODUCT_EXPORT_FIELDS);
+        ErpProductPageReqVO query = cn.iocoder.yudao.framework.common.util.object.BeanUtils.toBean(pageReqVO, ErpProductPageReqVO.class);
+        if (pageReqVO.getIds() != null && !pageReqVO.getIds().isEmpty()) {
+            query = new ErpProductPageReqVO(); query.setIds(pageReqVO.getIds());
+            query.setOrderField(pageReqVO.getOrderField()); query.setOrderDirection(pageReqVO.getOrderDirection());
+        }
+        query.setIncludeSaleDistributedArchive(true);
+        final ErpProductPageReqVO snapshot = query;
+        ErpProductExportSupport.write(response, selected, configs, page -> {
+            snapshot.setPageNo(page); snapshot.setPageSize(500);
+            return productService.getProductVOPage(snapshot).getList();
+        });
+    }
+
+    @PostMapping("/export-task/start")
+    @Operation(summary = "创建配件信息异步导出任务")
+    @PreAuthorize("@ss.hasPermission('erp:product:export')")
+    public CommonResult<ErpProductExportTaskStartRespVO> startExportTask(
+            @Valid @RequestBody ErpProductExportTaskStartReqVO reqVO) {
+        exportCaptchaService.validate(reqVO.getCaptchaCode(), reqVO.getVerifyCode());
+        List<cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO> configs =
+                fieldConfigService.getFieldConfigListByModule("erp_product");
+        List<cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO> selected =
+                ErpProductExportSupport.select(
+                        ErpProductExportSupport.fields(productService.getExportHiddenFields(), configs),
+                        String.join(",", reqVO.getFields()), PRODUCT_EXPORT_FIELDS);
+        ErpProductPageReqVO query = cn.iocoder.yudao.framework.common.util.object.BeanUtils.toBean(
+                reqVO, ErpProductPageReqVO.class);
+        if (reqVO.getIds() != null && !reqVO.getIds().isEmpty()) {
+            query = new ErpProductPageReqVO();
+            query.setIds(new java.util.ArrayList<>(new LinkedHashSet<>(reqVO.getIds())));
+            query.setOrderField(reqVO.getOrderField());
+            query.setOrderDirection(reqVO.getOrderDirection());
+        }
+        query.setPageNo(1);
+        query.setPageSize(500);
+        query.setIncludeSaleDistributedArchive(true);
+        return success(productExportTaskService.startTask(query, selected, configs));
+    }
+
+    @GetMapping("/export-task/active")
+    @Operation(summary = "获得当前用户正在执行的配件信息导出任务")
+    @PreAuthorize("@ss.hasPermission('erp:product:export')")
+    public CommonResult<ErpProductExportTaskRespVO> getActiveExportTask() {
+        return success(productExportTaskService.getActiveTask());
+    }
+
+    @GetMapping("/export-task/get")
+    @Operation(summary = "获得配件信息导出任务进度")
+    @PreAuthorize("@ss.hasPermission('erp:product:export')")
+    public CommonResult<ErpProductExportTaskRespVO> getExportTask(@RequestParam("id") Long id) {
+        return success(productExportTaskService.getTask(id));
+    }
+
+    @GetMapping("/export-task/history")
+    @Operation(summary = "获得当前用户的配件信息导出记录")
+    @PreAuthorize("@ss.hasPermission('erp:product:export')")
+    public CommonResult<PageResult<ErpProductExportTaskRespVO>> getExportTaskHistory(
+            @RequestParam(value = "pageNo", defaultValue = "1") Integer pageNo,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
+        return success(productExportTaskService.getHistory(pageNo, pageSize));
+    }
+
+    @GetMapping("/export-task/download")
+    @Operation(summary = "下载配件信息异步导出文件")
+    @PreAuthorize("@ss.hasPermission('erp:product:export')")
+    public void downloadExportTask(@RequestParam("id") Long id, HttpServletResponse response) throws IOException {
+        productExportTaskService.downloadTask(id, response);
+    }
+
+    @Resource private cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService importExportRecordService;
+    @GetMapping("/import-failure-details/download")
+    @PreAuthorize("@ss.hasPermission('erp:product:import')")
+    public void downloadFailureDetails(@RequestParam("recordId") Long recordId, HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, "erp_product", response);
     }
 
     @GetMapping("/get-import-template")
@@ -268,6 +413,28 @@ public class ErpProductController {
                 ? productService.parseCsvImport(new java.io.InputStreamReader(file.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))
                 : ExcelUtils.read(file, ErpProductImportExcelVO.class);
         return success(productService.importProductList(list));
+    }
+
+    @PostMapping("/import-task/start")
+    @Operation(summary = "创建配件异步导入任务")
+    @PreAuthorize("@ss.hasPermission('erp:product:import')")
+    public CommonResult<ErpProductImportTaskStartRespVO> startImportTask(
+            @RequestParam("file") MultipartFile file) throws IOException {
+        return success(productImportTaskService.startTask(file));
+    }
+
+    @GetMapping("/import-task/active")
+    @Operation(summary = "获得当前租户正在执行的配件导入任务")
+    @PreAuthorize("@ss.hasPermission('erp:product:import')")
+    public CommonResult<ErpProductImportTaskRespVO> getActiveImportTask() {
+        return success(productImportTaskService.getActiveTask());
+    }
+
+    @GetMapping("/import-task/get")
+    @Operation(summary = "获得配件导入任务进度")
+    @PreAuthorize("@ss.hasPermission('erp:product:import')")
+    public CommonResult<ErpProductImportTaskRespVO> getImportTask(@RequestParam("id") Long id) {
+        return success(productImportTaskService.getTask(id));
     }
 
     private Set<String> filterVisibleExcelFields(Set<String> candidateFields) {

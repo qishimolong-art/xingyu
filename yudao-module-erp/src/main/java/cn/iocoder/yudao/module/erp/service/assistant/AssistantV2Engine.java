@@ -33,7 +33,9 @@ public class AssistantV2Engine {
         AssistantExecutionEnvelope executionContext = request == null ? previous
                 : semantics.executionContext(request, previous);
         try {
-            return enrich(validate(orchestrator.execute(question, executionContext, metricCatalog)), request);
+            return enrich(validate(request != null && request.getUnderstanding() != null
+                    ? orchestrator.executeUnderstood(question, request.getUnderstanding(), executionContext, metricCatalog)
+                    : orchestrator.execute(question, executionContext, metricCatalog)), request);
         } catch (AssistantOrchestrationClarification clarification) {
             enrich(clarification.getEnvelope(), request);
             AssistantClarification.normalize(clarification.getResponse());

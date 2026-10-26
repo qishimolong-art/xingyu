@@ -83,6 +83,11 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
             query.eq(ErpSaleReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply(EFFECTIVE_REFUND_PRICE_EXPRESSION + " < t.total_price");
         }
+        if (reqVO.getPickStatus() != null) {
+            query.apply("EXISTS (SELECT 1 FROM erp_sale_pick_delivery_order p "
+                    + "WHERE p.source_type = 70 AND p.source_id = t.id AND p.pick_status = {0} AND p.deleted = b'0')",
+                    reqVO.getPickStatus());
+        }
         ErpKeywordQuery.appendProductItemFilter(query, "erp_sale_return_items", "return_id",
                 reqVO.getProductId(), reqVO.getWarehouseId(), null, null,
                 reqVO.getProductKeyword(), true);

@@ -87,7 +87,7 @@ class AssistantEntitySqlTest {
         AssistantEntitySql.Query query=AssistantEntitySql.select(context);String sql=query.getSql();
 
         assertTrue(sql.contains("'TOKEN_FUZZY' matchedBy"));
-        assertTrue(sql.contains("UPPER(COALESCE(e.name,'')) LIKE UPPER(?)"));
+        assertTrue(sql.contains("UPPER(COALESCE(e.name,'')) REGEXP UPPER(?)"));
         assertFalse(sql.contains("UPPER(COALESCE(e.drawing_no,'')) LIKE UPPER(?)"));
         assertFalse(sql.contains("UPPER(COALESCE(e.code,'')) LIKE UPPER(?)"));
         assertFalse(sql.contains("UPPER(COALESCE(e.pinyin_code,'')) LIKE UPPER(?)"));
@@ -97,11 +97,11 @@ class AssistantEntitySqlTest {
         assertFalse(sql.contains("UPPER(COALESCE(e.factory_code,'')) LIKE UPPER(?)"));
         assertFalse(sql.contains("UPPER(COALESCE(e.brand,'')) LIKE UPPER(?)"));
         assertFalse(sql.contains("UPPER(COALESCE(e.standard,'')) LIKE UPPER(?)"));
-        assertTrue(query.getParameters().contains("%美孚%CF%4L%"));
-        assertTrue(query.getParameters().contains("%美%孚%C%F%4%L%"));
-        assertTrue(query.getParameters().contains("%美孚%CF%4升%"));
-        assertTrue(query.getParameters().contains("%美%孚%C%F%4升%"));
-        assertFalse(query.getParameters().contains("%美%孚%C%F%4%升%"));
+        assertTrue(hasRegex(query,"美孚", "CF", "4L"));
+        assertTrue(hasRegex(query,"美[^[:space:]]*孚", "C[^[:space:]]*F", "4L"));
+        assertTrue(hasRegex(query,"美孚", "CF", "4升"));
+        assertTrue(hasRegex(query,"美[^[:space:]]*孚", "C[^[:space:]]*F", "4升"));
+        assertFalse(parametersContain(query,"4[^[:space:]]*L"));
         assertFalse(query.getParameters().contains("%美孚%"));
         assertFalse(query.getParameters().contains("%CF%"));
         assertFalse(query.getParameters().contains("%4L%"));
@@ -114,13 +114,13 @@ class AssistantEntitySqlTest {
 
         AssistantEntitySql.Query query=AssistantEntitySql.select(context);String sql=query.getSql();
 
-        assertTrue(sql.contains("UPPER(COALESCE(e.name,'')) LIKE UPPER(?)"),sql);
+        assertTrue(sql.contains("UPPER(COALESCE(e.name,'')) REGEXP UPPER(?)"),sql);
         assertFalse(sql.contains("UPPER(COALESCE(e.code,'')) LIKE UPPER(?)"),sql);
         assertFalse(sql.contains("UPPER(COALESCE(e.factory_code,'')) LIKE UPPER(?)"),sql);
         assertFalse(sql.contains("UPPER(COALESCE(e.bar_code,'')) LIKE UPPER(?)"),sql);
         assertTrue(query.getParameters().contains("QTF60"));
-        assertTrue(query.getParameters().contains("%Q%T%F%6%0%"));
-        assertFalse(query.getParameters().contains("%6%0%Q%T%F%"));
+        assertTrue(parametersContain(query,"Q[^[:space:]]*T[^[:space:]]*F[^[:space:]]*6[^[:space:]]*0"));
+        assertFalse(parametersContain(query,"6[^[:space:]]*0[^[:space:]]*Q"));
     }
 
     @Test void productTokenKeywordKeepsUnitAliasesInTheSameOrderedSequence() {
@@ -130,11 +130,13 @@ class AssistantEntitySqlTest {
 
         AssistantEntitySql.Query query=AssistantEntitySql.select(context);String sql=query.getSql();
 
-        assertTrue(query.getParameters().contains("%经典表现%530%4升%"));
-        assertTrue(query.getParameters().contains("%经%典%表%现%5%3%0%4%升%"));
-        assertTrue(query.getParameters().contains("%经典表现%530%4L%"));
-        assertTrue(query.getParameters().contains("%经%典%表%现%5%3%0%4L%"));
-        assertFalse(query.getParameters().contains("%经%典%表%现%5%3%0%4%L%"));
+        assertTrue(hasRegex(query,"经典表现", "530", "4升"));
+        assertTrue(hasRegex(query,"经[^[:space:]]*典[^[:space:]]*表[^[:space:]]*现",
+                "5[^[:space:]]*3[^[:space:]]*0", "4升"));
+        assertTrue(hasRegex(query,"经典表现", "530", "4L"));
+        assertTrue(hasRegex(query,"经[^[:space:]]*典[^[:space:]]*表[^[:space:]]*现",
+                "5[^[:space:]]*3[^[:space:]]*0", "4L"));
+        assertFalse(parametersContain(query,"4[^[:space:]]*L"));
         assertFalse(query.getParameters().contains("%经典表现%"));
         assertFalse(query.getParameters().contains("%530%"));
         assertFalse(query.getParameters().contains("%4L%"));
@@ -147,15 +149,16 @@ class AssistantEntitySqlTest {
         fuzzyContext.put("entityKeyword","145988");fuzzyContext.put("searchCode",true);
         AssistantEntitySql.Query fuzzyQuery=AssistantEntitySql.select(fuzzyContext);
         assertTrue(fuzzyQuery.getParameters().contains("145988"));
-        assertTrue(fuzzyQuery.getParameters().contains("%1%4%5%9%8%8%"));
+        assertTrue(parametersContain(fuzzyQuery,"1[^[:space:]]*4[^[:space:]]*5[^[:space:]]*9[^[:space:]]*8[^[:space:]]*8"));
         assertFalse(fuzzyQuery.getSql().contains("COALESCE(e.code,''))"));
         assertFalse(fuzzyQuery.getSql().contains("COALESCE(e.vehicle_model,''))"));
 
         Map<String,Object> tokenContext=base("PRODUCT","TOKEN_FUZZY");tokenContext.put("entityAll",true);
         tokenContext.put("entityKeyword","经典 145988");tokenContext.put("searchCode",true);
         AssistantEntitySql.Query tokenQuery=AssistantEntitySql.select(tokenContext);
-        assertTrue(tokenQuery.getParameters().contains("%经典%145988%"));
-        assertTrue(tokenQuery.getParameters().contains("%经%典%1%4%5%9%8%8%"));
+        assertTrue(hasRegex(tokenQuery,"经典", "145988"));
+        assertTrue(hasRegex(tokenQuery,"经[^[:space:]]*典",
+                "1[^[:space:]]*4[^[:space:]]*5[^[:space:]]*9[^[:space:]]*8[^[:space:]]*8"));
         assertFalse(tokenQuery.getParameters().contains("%145988%"));
         assertFalse(tokenQuery.getSql().contains("COALESCE(e.code,''))"));
         assertFalse(tokenQuery.getSql().contains("COALESCE(e.vehicle_model,''))"));
@@ -181,8 +184,9 @@ class AssistantEntitySqlTest {
         AssistantEntitySql.Query productQuery=AssistantEntitySql.select(product);
         assertTrue(productQuery.getParameters().contains("%20公斤%"));
         assertTrue(productQuery.getParameters().contains("%20kg%"));
-        assertTrue(productQuery.getParameters().contains("%2%0%千%克%"));
-        assertFalse(productQuery.getParameters().contains("%2%0%k%g%"));
+        assertTrue(parametersContain(productQuery,"20千克"));
+        assertFalse(parametersContain(productQuery,"2[^[:space:]]*0[^[:space:]]*千"));
+        assertFalse(parametersContain(productQuery,"2[^[:space:]]*0[^[:space:]]*k"));
         assertFalse(productQuery.getSql().contains("20kg"),"Unit aliases must remain bound parameters");
 
         Map<String,Object> customer=base("CUSTOMER","FUZZY");customer.put("entityAll",true);
@@ -227,16 +231,34 @@ class AssistantEntitySqlTest {
 
             AssistantEntitySql.Query query=AssistantEntitySql.select(context);
 
-            assertTrue(query.getParameters().contains("%k40%18升%"),delimiter);
-            assertTrue(query.getParameters().contains("%k%4%0%1%8%升%"),delimiter);
-            assertTrue(query.getParameters().contains("%k40%18L%"),delimiter);
-            assertTrue(query.getParameters().contains("%k%4%0%18L%"),delimiter);
-            assertFalse(query.getParameters().contains("%k%4%0%1%8%L%"),delimiter);
+            assertTrue(hasRegex(query,"k40", "18升"),delimiter);
+            assertTrue(hasRegex(query,"k[^[:space:]]*4[^[:space:]]*0", "18升"),delimiter);
+            assertTrue(hasRegex(query,"k40", "18L"),delimiter);
+            assertTrue(hasRegex(query,"k[^[:space:]]*4[^[:space:]]*0", "18L"),delimiter);
+            assertFalse(parametersContain(query,"1[^[:space:]]*8[^[:space:]]*L"),delimiter);
             assertFalse(query.getParameters().contains("%k40%"),delimiter);
             assertFalse(query.getParameters().contains("%18升%"),delimiter);
             assertFalse(query.getParameters().contains("%18L%"),delimiter);
             assertFalse(query.getParameters().contains("%1%8%L%k%4%0%"),delimiter);
         }
+    }
+
+    @Test void productTokenRegexUsesDistinctOrderedNameSegmentsAndEscapesUserRegex() {
+        Map<String,Object> context=base("PRODUCT","TOKEN_FUZZY");context.put("entityAll",true);
+        context.put("entityKeyword","美孚 530 1升");
+
+        AssistantEntitySql.Query query=AssistantEntitySql.select(context);
+
+        assertTrue(hasRegex(query,"美[^[:space:]]*孚", "5[^[:space:]]*3[^[:space:]]*0", "1L"));
+        assertTrue(parametersContain(query,"[[:space:]]+([^[:space:]]+[[:space:]]+)*"));
+        assertFalse(parametersContain(query,".*美孚.*530"));
+
+        Map<String,Object> escaped=base("PRODUCT","TOKEN_FUZZY");escaped.put("entityAll",true);
+        escaped.put("entityKeyword","A(1) B[2]");
+        AssistantEntitySql.Query escapedQuery=AssistantEntitySql.select(escaped);
+        assertTrue(parametersContain(escapedQuery,"A\\(1\\)"));
+        assertTrue(parametersContain(escapedQuery,"B\\[2\\]"));
+        assertFalse(escapedQuery.getSql().contains("A(1)"));
     }
 
     @Test void salespersonSearchUsesNicknameAndAuthorizedDepartmentScope() {
@@ -271,6 +293,20 @@ class AssistantEntitySqlTest {
         assertFalse(sql.contains("e.mobile"));
         assertFalse(sql.contains("e.avatar"));
         assertFalse(sql.contains("e.username"));
+    }
+
+    private static boolean hasRegex(AssistantEntitySql.Query query,String... fragments) {
+        for(Object parameter:query.getParameters()) {
+            String value=String.valueOf(parameter);
+            boolean matches=true;
+            for(String fragment:fragments) matches&=value.contains(fragment);
+            if(matches) return true;
+        }
+        return false;
+    }
+
+    private static boolean parametersContain(AssistantEntitySql.Query query,String fragment) {
+        return query.getParameters().stream().map(String::valueOf).anyMatch(value->value.contains(fragment));
     }
 
     private static Map<String,Object> base(String type,String match) {

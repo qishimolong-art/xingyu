@@ -2,6 +2,17 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock;
 
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockItemPriceReferenceFiller;
 import cn.hutool.core.collection.CollUtil;
+import cn.idev.excel.FastExcelFactory;
+import cn.idev.excel.ExcelWriter;
+import cn.idev.excel.write.metadata.WriteSheet;
+import cn.idev.excel.converters.longconverter.LongStringConverter;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckExportRespVO;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
@@ -341,20 +352,100 @@ public class ErpStockCheckController {
         return success(dataPermissionDeptService.getDeptSimpleList(FIELD_PERMISSION_MODULE));
     }
 
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得库存盘点导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getStockCheckExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpStockCheckExportRespVO.class,
+                ErpStockCheckExportSupport.GROUPS, getStockCheckExportHiddenFields(), Collections.emptyMap()));
+    }
+
+    private Set<String> getStockCheckExportHiddenFields() {
+        return ErpStockCheckExportSupport.hiddenFields(fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE));
+    }
+
+    /** Retain the Java call contract as well as the HTTP contract. */
+    public void exportStockCheckExcel(ErpStockCheckPageReqVO req, HttpServletResponse response) throws IOException {
+        exportStockCheckExcel(req, null, response);
+    }
+
     @GetMapping("/export-excel")
     @Operation(summary = "Export stock check")
     @PreAuthorize("@ss.hasPermission('erp:stock-check:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportStockCheckExcel(@Valid ErpStockCheckPageReqVO pageReqVO,
+                                      @RequestParam(value = "fields", required = false) String fields,
                                       HttpServletResponse response) throws IOException {
-        pageReqVO.setPageNo(1);
-        pageReqVO.setPageSize(EXPORT_MAX_COUNT);
-        PageResult<ErpStockCheckDO> pageResult = stockCheckService.getStockCheckPage(pageReqVO);
-        if (pageResult.getTotal() > EXPORT_MAX_COUNT) {
-            throw exception(EXPORT_COUNT_EXCEEDED);
+        boolean legacy = fields == null;
+        Class<?> head = legacy ? ErpStockCheckRespVO.class : ErpStockCheckExportRespVO.class;
+        if (!legacy && ErpExportFieldUtils.parseFieldParam(fields).isEmpty()) {
+            throw exception(new ErrorCode(1_030_000_001, "请至少选择一个导出字段"));
         }
-        List<ErpStockCheckRespVO> list = buildStockCheckVOPageResult(pageResult).getList();
-        ExcelUtils.write(response, "stock-check.xls", "data", ErpStockCheckRespVO.class, list);
+        Set<String> selected = ErpExportFieldUtils.resolveIncludeFields(head,
+                ErpExportFieldUtils.parseFieldParam(fields), getStockCheckExportHiddenFields(), Collections.emptyMap());
+        boolean detail = !legacy && ErpStockCheckExportSupport.hasDetail(selected);
+        pageReqVO.setPageNo(1);
+        pageReqVO.setPageSize(100);
+        PageResult<ErpStockCheckDO> page = stockCheckService.getStockCheckPage(pageReqVO);
+        if (page.getTotal() > EXPORT_MAX_COUNT) throw exception(EXPORT_COUNT_EXCEEDED);
+
+        // Stage to disk so a failed query cannot return a partly written workbook; memory stays bounded.
+        Path temp = Files.createTempFile("erp-stock-check-export-", ".xlsx");
+        try {
+            cn.idev.excel.write.builder.ExcelWriterBuilder builder = FastExcelFactory.write(temp.toFile(), head)
+                    .registerConverter(new LongStringConverter());
+            if (selected != null) builder.includeColumnFieldNames(selected);
+            try (ExcelWriter writer = builder.build()) {
+                WriteSheet sheet = FastExcelFactory.writerSheet("数据").build();
+                writer.write(Collections.emptyList(), sheet);
+                while (!page.getList().isEmpty()) {
+                    List<ErpStockCheckRespVO> headers = buildStockCheckVOPageResultWithoutItems(page).getList();
+                    if (legacy) {
+                        writer.write(headers, sheet);
+                    } else if (!detail) {
+                        List<ErpStockCheckExportRespVO> rows = new ArrayList<>();
+                        headers.forEach(main -> rows.add(ErpStockCheckExportSupport.row(main, null)));
+                        writer.write(rows, sheet);
+                    } else {
+                        writeStockCheckDetailExport(writer, sheet, headers);
+                    }
+                    if (page.getList().size() < 100 || pageReqVO.getPageNo() * 100L >= page.getTotal()) break;
+                    pageReqVO.setPageNo(pageReqVO.getPageNo() + 1);
+                    page = stockCheckService.getStockCheckPage(pageReqVO);
+                    if (page.getTotal() > EXPORT_MAX_COUNT) throw exception(EXPORT_COUNT_EXCEEDED);
+                }
+            }
+            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            response.setHeader("Content-Disposition", "attachment;filename=stock-check.xlsx");
+            Files.copy(temp, response.getOutputStream());
+        } finally {
+            Files.deleteIfExists(temp);
+        }
+    }
+
+    private void writeStockCheckDetailExport(ExcelWriter writer, WriteSheet sheet, List<ErpStockCheckRespVO> headers) {
+        Map<Long, ErpStockCheckRespVO> mains = new LinkedHashMap<>();
+        headers.forEach(main -> mains.put(main.getId(), main));
+        Set<Long> written = new HashSet<>();
+        for (int pageNo = 1; ; pageNo++) {
+            List<ErpStockCheckItemDO> items = stockCheckItemMapper.selectExportPageByCheckIds(mains.keySet(), pageNo).getList();
+            if (items.isEmpty()) break;
+            List<ErpStockCheckRespVO.Item> displayItems = buildStockCheckItemVOList(items);
+            List<ErpStockCheckExportRespVO> rows = new ArrayList<>(items.size());
+            for (int index = 0; index < items.size(); index++) {
+                Long checkId = items.get(index).getCheckId();
+                ErpStockCheckRespVO main = mains.get(checkId);
+                if (main == null) continue;
+                written.add(checkId);
+                rows.add(ErpStockCheckExportSupport.row(main, displayItems.get(index)));
+            }
+            writer.write(rows, sheet);
+            if (items.size() < 500) break;
+        }
+        List<ErpStockCheckExportRespVO> emptyDrafts = new ArrayList<>();
+        headers.stream().filter(main -> !written.contains(main.getId()))
+                .forEach(main -> emptyDrafts.add(ErpStockCheckExportSupport.row(main, null)));
+        if (!emptyDrafts.isEmpty()) writer.write(emptyDrafts, sheet);
     }
 
     @GetMapping("/get-import-template")

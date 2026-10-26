@@ -28,6 +28,27 @@ public class AssistantEngineRouter {
         result.setTenantId(tenantId);
         result.setUserId(SecurityFrameworkUtils.getLoginUserId());
         result.setDepartmentId(SecurityFrameworkUtils.getLoginUserDeptId());
+        if (source.getUnderstanding() != null) {
+            AssistantUnderstandingResult understanding = source.getUnderstanding();
+            AssistantUnderstandingResult.Subtask task = understanding.getTasks().get(0);
+            result.setUnderstanding(understanding); result.setQueryMode(understanding.getQueryMode());
+            String capability = understanding.getTasks().size() > 1 ? AssistantMixedQuery.TOOL_NAME : task.getCapability();
+            if (!registry.find(capability).isPresent()) capability = "model_routed";
+            result.setCapabilityId(capability);
+            // 入口关闭在模型调用前由执行入口检查；具体能力逐任务检查，保留其他成功结果。
+            if (containsIgnoreCase(properties.getV2().getDisabledEntries(), result.getSource().name()))
+                throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "当前入口的智能问数已临时关闭");
+            result.setDomain(understanding.getQueryMode().name()); result.setIntentId(task.getCapability());
+            result.setRoutingReason("DEEPSEEK_UNDERSTANDING"); result.setEntityMentions(task.getEntities());
+            result.setMetric(task.getConditions().getMetric() == null ? null : task.getConditions().getMetric().name());
+            result.setDimensions(Collections.singletonList(task.getConditions().getGroup()));
+            AssistantSemanticRequest.TimeRange time = new AssistantSemanticRequest.TimeRange();
+            time.setPeriod(task.getConditions().getPeriod()); time.setStartDate(task.getConditions().getStartDate());
+            time.setEndDate(task.getConditions().getEndDate()); time.setSource("DEEPSEEK_VALIDATED"); result.setTimeRange(time);
+            result.getContext().setMode(understanding.getTasks().stream().anyMatch(t -> "INHERIT".equals(t.getContextMode())) ? "INHERIT" : "NEW_TOPIC");
+            result.getContext().setReason("DEEPSEEK_UNDERSTANDING");
+            return result;
+        }
         semanticAnalyzer.analyzeFrame(result, previous, source.getQuestion());
         String capability = previewCapability(source.getQuestion(), previous);
         AssistantCapability registered = registry.getRequired(capability);

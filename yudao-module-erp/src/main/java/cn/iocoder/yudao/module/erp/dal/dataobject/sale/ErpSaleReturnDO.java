@@ -69,6 +69,13 @@ public class ErpSaleReturnDO extends BaseDO {
     /** 审核通过时间。 */
     private LocalDateTime approveTime;
 
+    /** 下单确认人。 */
+    private Long confirmUserId;
+    /** 下单确认时间。 */
+    private LocalDateTime confirmTime;
+    /** 按库存退货在下单确认时冻结的成本基准签名。 */
+    private String frozenCostBasisSignature;
+
     /**
      * 销售订单编号
      *

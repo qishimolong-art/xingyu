@@ -11,7 +11,7 @@ public enum ErpPrintModuleEnum {
     PURCHASE_IN("purchase_in", "采购入库", "purchase_in", "erp:purchase-in"),
     PURCHASE_RETURN("purchase_return", "采购退货", "purchase_return", "erp:purchase-return"),
     PURCHASE_INVOICE("purchase_invoice", "采购发票", "purchase_invoice", "erp:purchase-invoice"),
-    PURCHASE_PRICE_ADJUST("purchase_price_adjust", "采购调价", "purchase_price_adjust",
+    PURCHASE_PRICE_ADJUST("purchase_price_adjust", "采购调价", "erp_purchase_price_adjust",
             "erp:purchase-price-adjust"),
     SALE_ORDER("sale_order", "销售订单", "erp_sale_order", "erp:sale-order"),
     SALE_OUT("sale_out", "销售出库", "erp_sale_out", "erp:sale-out"),

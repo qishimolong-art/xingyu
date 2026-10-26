@@ -60,9 +60,9 @@ public class ErpAccountLedgerReportRepository {
         String ledger = withBalance
                 ? "ledger_rows AS (SELECT s.*,ROUND(SUM(COALESCE(s.income_amount,0)-COALESCE(s.expense_amount,0))"
                     + " OVER(PARTITION BY s.account_id ORDER BY s.business_date ASC,s.create_time ASC,"
-                    + "s.source_rank ASC,s.source_id ASC,s.leg_rank ASC ROWS UNBOUNDED PRECEDING),2) balance"
+                    + "s.source_rank ASC,s.source_id ASC,s.leg_rank ASC ROWS UNBOUNDED PRECEDING),6) balance"
                     + " FROM scoped_rows s)"
-                : "ledger_rows AS (SELECT s.*,CAST(NULL AS DECIMAL(24,2)) balance FROM scoped_rows s)";
+                : "ledger_rows AS (SELECT s.*,CAST(NULL AS DECIMAL(24,6)) balance FROM scoped_rows s)";
         sql.cte = "WITH source_rows AS (" + sourceRowsSql() + ")," + scoped + "," + ledger + " ";
         sql.fromWhere = " FROM ledger_rows q"
                 + " LEFT JOIN system_users ru ON ru.id=q.receiver_id AND ru.tenant_id=q.tenant_id AND ru.deleted=b'0'"
@@ -78,7 +78,7 @@ public class ErpAccountLedgerReportRepository {
         return "SELECT r.tenant_id,'receipt' source_type,10 source_rank,r.id source_id,1 leg_rank,"
                 + "CONCAT('receipt:',r.id) row_key,r.account_id,r.receipt_time business_date,r.create_time,"
                 + text("r.no") + " business_no," + literal("收款单") + " document_type,'debit' direction,"
-                + "ROUND(r.receipt_price,2) income_amount,CAST(NULL AS DECIMAL(24,2)) expense_amount,"
+                + "ROUND(r.receipt_price,6) income_amount,CAST(NULL AS DECIMAL(24,6)) expense_amount,"
                 + text("c.name") + " party_name," + text("c.code") + " party_code,"
                 + String.format(creator, "r", "r", "r") + " receiver_id,NULL payer_id," + text("r.remark")
                 + " remark," + text("r.payment_voucher_no")
@@ -87,7 +87,7 @@ public class ErpAccountLedgerReportRepository {
                 + " AND r.account_id IS NOT NULL"
                 + " UNION ALL SELECT p.tenant_id,'payment',20,p.id,1,CONCAT('payment:',p.id),p.account_id,"
                 + "p.payment_time,p.create_time," + text("p.no") + "," + literal("付款单") + ",'credit',"
-                + "CAST(NULL AS DECIMAL(24,2)),ROUND(p.payment_price,2)," + text("s.name") + ","
+                + "CAST(NULL AS DECIMAL(24,6)),ROUND(p.payment_price,6)," + text("s.name") + ","
                 + text("s.code") + ",NULL," + String.format(creator, "p", "p", "p") + "," + text("p.remark")
                 + "," + text("p.payment_voucher_no")
                 + " FROM erp_finance_payment p LEFT JOIN erp_supplier s ON s.id=p.supplier_id"
@@ -95,7 +95,7 @@ public class ErpAccountLedgerReportRepository {
                 + " AND p.account_id IS NOT NULL"
                 + " UNION ALL SELECT oi.tenant_id,'other_income',30,oi.id,1,CONCAT('other_income:',oi.id),"
                 + "oi.account_id,oi.biz_time,oi.create_time," + text("oi.no") + "," + literal("其他收入")
-                + ",'debit',ROUND(oi.total_amount,2),CAST(NULL AS DECIMAL(24,2))," + text("oi.party")
+                + ",'debit',ROUND(oi.total_amount,6),CAST(NULL AS DECIMAL(24,6))," + text("oi.party")
                 + ",CAST(NULL AS CHAR CHARACTER SET utf8mb4),"
                 + String.format(creator, "oi", "oi", "oi") + ",NULL," + text("oi.remark")
                 + "," + text("oi.voucher_no")
@@ -104,7 +104,7 @@ public class ErpAccountLedgerReportRepository {
                 + " AND oi.account_id IS NOT NULL"
                 + " UNION ALL SELECT e.tenant_id,'expense',40,e.id,1,CONCAT('expense:',e.id),e.account_id,"
                 + "CAST(e.biz_time AS DATETIME),e.create_time," + text("e.no") + "," + literal("费用支出")
-                + ",'credit',CAST(NULL AS DECIMAL(24,2)),ROUND(e.total_amount,2)," + text("e.party")
+                + ",'credit',CAST(NULL AS DECIMAL(24,6)),ROUND(e.total_amount,6)," + text("e.party")
                 + ",CAST(NULL AS CHAR CHARACTER SET utf8mb4),NULL,"
                 + String.format(creator, "e", "e", "e") + "," + text("e.remark")
                 + "," + text("e.voucher_no")
@@ -113,7 +113,7 @@ public class ErpAccountLedgerReportRepository {
                 + " AND e.account_id IS NOT NULL"
                 + " UNION ALL SELECT t.tenant_id,'transfer',50,t.id,1,CONCAT('transfer:',t.id,':out'),"
                 + "t.out_account_id,t.transfer_time,t.create_time," + text("t.no") + "," + literal("银行转账")
-                + ",'credit',CAST(NULL AS DECIMAL(24,2)),ROUND(COALESCE(t.transfer_price,0)+COALESCE(t.fee_price,0),2),"
+                + ",'credit',CAST(NULL AS DECIMAL(24,6)),ROUND(COALESCE(t.transfer_price,0)+COALESCE(t.fee_price,0),6),"
                 + text("ia.name") + "," + text("ia.no") + ",NULL,"
                 + String.format(creator, "t", "t", "t") + "," + text("t.remark")
                 + ",CAST(NULL AS CHAR CHARACTER SET utf8mb4)"
@@ -122,7 +122,7 @@ public class ErpAccountLedgerReportRepository {
                 + " AND t.out_account_id IS NOT NULL"
                 + " UNION ALL SELECT t.tenant_id,'transfer',50,t.id,2,CONCAT('transfer:',t.id,':in'),"
                 + "t.in_account_id,t.transfer_time,t.create_time," + text("t.no") + "," + literal("银行转账")
-                + ",'debit',ROUND(COALESCE(t.transfer_price,0),2),CAST(NULL AS DECIMAL(24,2)),"
+                + ",'debit',ROUND(COALESCE(t.transfer_price,0),6),CAST(NULL AS DECIMAL(24,6)),"
                 + text("oa.name") + "," + text("oa.no") + ","
                 + String.format(creator, "t", "t", "t") + ",NULL," + text("t.remark")
                 + ",CAST(NULL AS CHAR CHARACTER SET utf8mb4)"

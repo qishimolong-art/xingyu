@@ -17,6 +17,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomer
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportTaskStartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaleDeptRespVO;
@@ -34,6 +36,9 @@ import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerBusinessLicenseOcrService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerQueryService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerExportTaskService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerImportTaskService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerCreditStatusBO;
 import cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerSaleStatsBO;
@@ -63,6 +68,20 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerExportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerExportTaskStartReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerExportTaskStartRespVO;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.base.ErpBaseDataService;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+
+import cn.iocoder.yudao.module.erp.controller.admin.base.vo.ErpBaseDataRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.base.vo.ErpBaseDataPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.base.ErpBaseDataDO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.hutool.core.collection.CollUtil;
 
 @Tag(name = "管理后台 - ERP 客户")
@@ -77,6 +96,12 @@ public class ErpCustomerController {
 
     @Resource
     private ErpCustomerService customerService;
+    @Resource
+    private ErpCustomerQueryService customerQueryService;
+    @Resource
+    private ErpCustomerExportTaskService customerExportTaskService;
+    @Resource
+    private ErpCustomerImportTaskService customerImportTaskService;
     @Resource
     private ErpCustomerBusinessLicenseOcrService customerBusinessLicenseOcrService;
 
@@ -93,6 +118,12 @@ public class ErpCustomerController {
     @Resource
     private DeptApi deptApi;
 
+    @Resource private cn.iocoder.yudao.module.erp.dal.mysql.base.ErpBaseDataMapper baseDataMapper;
+    @Resource private AdminUserApi adminUserApi;
+    @Resource private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource private ErpBaseDataService baseDataService;
+    @Resource private ErpImportExportRecordService importExportRecordService;
+
     @PostMapping("/create")
     @Operation(summary = "创建客户")
     @PreAuthorize("@ss.hasPermission('erp:customer:create')")
@@ -102,7 +133,7 @@ public class ErpCustomerController {
 
     @PostMapping("/business-license/recognize")
     @Operation(summary = "识别客户营业执照")
-    @PreAuthorize("@ss.hasPermission('erp:customer:update')")
+    @PreAuthorize("@ss.hasPermission('erp:customer:create') or @ss.hasPermission('erp:customer:update')")
     public CommonResult<ErpCustomerBusinessLicenseOcrRespVO> recognizeBusinessLicense(
             @Valid @RequestBody ErpCustomerBusinessLicenseOcrReqVO reqVO) {
         return success(customerBusinessLicenseOcrService.recognize(reqVO));
@@ -181,10 +212,11 @@ public class ErpCustomerController {
     @PreAuthorize("@ss.hasPermission('erp:customer:query')")
     public CommonResult<ErpCustomerRespVO> getCustomer(@RequestParam("id") Long id) {
         ErpCustomerDO customer = customerService.getCustomer(id);
+        if (customer == null) throw cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception(cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS);
         ErpCustomerRespVO respVO = BeanUtils.toBean(customer, ErpCustomerRespVO.class);
         fillCustomerExtra(Collections.singletonList(respVO));
         applyCreditStatus(respVO, customerService.getCustomerCreditStatus(id));
-        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, respVO);
+        maskCustomerFields(Collections.singletonList(respVO));
         fillBusinessInfoSynced(Collections.singletonList(respVO));
         return success(respVO);
     }
@@ -202,32 +234,7 @@ public class ErpCustomerController {
     @Operation(summary = "获得客户分页")
     @PreAuthorize("@ss.hasPermission('erp:customer:query')")
     public CommonResult<PageResult<ErpCustomerRespVO>> getCustomerPage(@Valid ErpCustomerPageReqVO pageReqVO) {
-        PageResult<ErpCustomerDO> pageResult = customerService.getCustomerPage(pageReqVO);
-        PageResult<ErpCustomerRespVO> respResult = BeanUtils.toBean(pageResult, ErpCustomerRespVO.class);
-        fillCustomerExtra(respResult.getList());
-        // 批量聚合销售统计（最近销售日期 / 累计销售额 / 应收余额）
-        if (CollUtil.isNotEmpty(respResult.getList())) {
-            java.util.Collection<Long> customerIds = convertList(respResult.getList(), ErpCustomerRespVO::getId);
-            java.util.Map<Long, ErpCustomerSaleStatsBO> statsMap = convertMap(
-                    saleOutMapper.selectSaleStatsByCustomerIds(customerIds),
-                    ErpCustomerSaleStatsBO::getCustomerId);
-            respResult.getList().forEach(vo -> {
-                ErpCustomerSaleStatsBO stats = statsMap.get(vo.getId());
-                if (stats != null) {
-                    if (stats.getLastSaleTime() != null) {
-                        vo.setLastSaleDate(stats.getLastSaleTime().toLocalDate());
-                    }
-                    vo.setTotalSaleAmount(stats.getTotalSaleAmount());
-                    vo.setReceivableBalance(stats.getReceivableBalance());
-                }
-            });
-            java.util.Map<Long, ErpCustomerCreditStatusBO> creditStatusMap =
-                    customerService.getCustomerCreditStatusMap(customerIds);
-            respResult.getList().forEach(vo -> applyCreditStatus(vo, creditStatusMap.get(vo.getId())));
-        }
-        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respResult.getList());
-        fillBusinessInfoSynced(respResult.getList());
-        return success(respResult);
+        return success(customerQueryService.buildCustomerPage(customerService.getCustomerPage(pageReqVO)));
     }
 
     @GetMapping("/simple-list")
@@ -236,7 +243,7 @@ public class ErpCustomerController {
         List<ErpCustomerDO> list = customerService.getCustomerListByStatus(CommonStatusEnum.ENABLE.getStatus());
         List<ErpCustomerRespVO> respList = convertList(list, this::buildCustomerSimpleRespVO);
         fillCustomerExtra(respList);
-        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respList);
+        maskCustomerFields(respList);
         return success(respList);
     }
 
@@ -247,7 +254,7 @@ public class ErpCustomerController {
                 pageReqVO, CommonStatusEnum.ENABLE.getStatus());
         List<ErpCustomerRespVO> respList = convertList(pageResult.getList(), this::buildCustomerSimpleRespVO);
         fillCustomerExtra(respList);
-        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respList);
+        maskCustomerFields(respList);
         return success(new PageResult<>(respList, pageResult.getTotal()));
     }
 
@@ -260,7 +267,7 @@ public class ErpCustomerController {
                 .setCreditLimit(customer.getCreditLimit()).setCreditTermDays(customer.getCreditTermDays()));
         fillCustomerExtra(respList);
         fillSaleCustomerCreditStatus(respList);
-        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respList);
+        maskCustomerFields(respList);
         return success(respList);
     }
 
@@ -274,7 +281,7 @@ public class ErpCustomerController {
                 .setCreditLimit(customer.getCreditLimit()).setCreditTermDays(customer.getCreditTermDays()));
         fillCustomerExtra(respList);
         fillSaleCustomerCreditStatus(respList);
-        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respList);
+        maskCustomerFields(respList);
         return success(new PageResult<>(respList, pageResult.getTotal()));
     }
 
@@ -330,24 +337,83 @@ public class ErpCustomerController {
               @RequestParam(value = "fields", required = false) String fields,
               HttpServletResponse response) throws IOException {
         exportCaptchaService.validate(captchaCode, verifyCode);
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpCustomerDO> list = customerService.getCustomerPage(pageReqVO).getList();
-        List<ErpCustomerRespVO> rows = BeanUtils.toBean(list, ErpCustomerRespVO.class);
-        fillCustomerExtra(rows);
-        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, rows);
-        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpCustomerRespVO.class,
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpCustomerExportRespVO.class,
                 ErpExportFieldUtils.parseFieldParam(fields),
                 fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
-        // 导出 Excel
-        ExcelUtils.write(response, "客户.xls", "数据", ErpCustomerRespVO.class, rows, includeFields);
+        ErpCustomerPageReqVO query = BeanUtils.toBean(pageReqVO, ErpCustomerPageReqVO.class);
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            query = new ErpCustomerPageReqVO();
+            query.setIds(pageReqVO.getIds());
+            query.setOrderField(pageReqVO.getOrderField());
+            query.setOrderDirection(pageReqVO.getOrderDirection());
+        }
+        final ErpCustomerPageReqVO exportQuery = query;
+        ErpCustomerExportSupport.write(response, includeFields, pageNo -> {
+            exportQuery.setPageNo(pageNo);
+            exportQuery.setPageSize(500);
+            List<ErpCustomerRespVO> rows = customerQueryService.buildCustomerExportList(
+                    customerService.getCustomerPage(exportQuery).getList());
+            return convertList(rows, ErpCustomerExportSupport::toExportRow);
+        });
     }
 
     @GetMapping("/export-fields")
     @Operation(summary = "Get customer export fields")
     @PreAuthorize("@ss.hasPermission('erp:customer:export')")
     public CommonResult<List<ErpExportFieldRespVO>> getCustomerExportFields() {
-        return success(ErpExportFieldUtils.listFields(ErpCustomerRespVO.class, EXPORT_FIELD_GROUP_MAP,
+        return success(ErpExportFieldUtils.listFields(ErpCustomerExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
                 fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
+    }
+
+    @PostMapping("/export-task/start")
+    @Operation(summary = "创建客户异步导出任务")
+    @PreAuthorize("@ss.hasPermission('erp:customer:export')")
+    public CommonResult<ErpCustomerExportTaskStartRespVO> startExportTask(
+            @Valid @RequestBody ErpCustomerExportTaskStartReqVO reqVO) {
+        exportCaptchaService.validate(reqVO.getCaptchaCode(), reqVO.getVerifyCode());
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpCustomerExportRespVO.class,
+                reqVO.getFields(), fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE),
+                EXPORT_FIELD_PERMISSION_MAP);
+        ErpCustomerPageReqVO query = BeanUtils.toBean(reqVO, ErpCustomerPageReqVO.class);
+        if (CollUtil.isNotEmpty(reqVO.getIds())) {
+            query = new ErpCustomerPageReqVO();
+            query.setIds(new java.util.ArrayList<>(new java.util.LinkedHashSet<>(reqVO.getIds())));
+            query.setOrderField(reqVO.getOrderField());
+            query.setOrderDirection(reqVO.getOrderDirection());
+        }
+        query.setPageNo(1);
+        query.setPageSize(500);
+        return success(customerExportTaskService.startTask(query, includeFields));
+    }
+
+    @GetMapping("/export-task/active")
+    @Operation(summary = "获得当前用户正在执行的客户导出任务")
+    @PreAuthorize("@ss.hasPermission('erp:customer:export')")
+    public CommonResult<ErpCustomerExportTaskRespVO> getActiveExportTask() {
+        return success(customerExportTaskService.getActiveTask());
+    }
+
+    @GetMapping("/export-task/get")
+    @Operation(summary = "获得客户导出任务进度")
+    @PreAuthorize("@ss.hasPermission('erp:customer:export')")
+    public CommonResult<ErpCustomerExportTaskRespVO> getExportTask(@RequestParam("id") Long id) {
+        return success(customerExportTaskService.getTask(id));
+    }
+
+    @GetMapping("/export-task/history")
+    @Operation(summary = "获得当前用户的客户导出记录")
+    @PreAuthorize("@ss.hasPermission('erp:customer:export')")
+    public CommonResult<PageResult<ErpCustomerExportTaskRespVO>> getExportTaskHistory(
+            @RequestParam(value = "pageNo", defaultValue = "1") Integer pageNo,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
+        return success(customerExportTaskService.getHistory(pageNo, pageSize));
+    }
+
+    @GetMapping("/export-task/download")
+    @Operation(summary = "下载客户异步导出文件")
+    @PreAuthorize("@ss.hasPermission('erp:customer:export')")
+    public void downloadExportTask(@RequestParam("id") Long id, HttpServletResponse response) throws IOException {
+        customerExportTaskService.downloadTask(id, response);
     }
 
     @GetMapping("/get-import-template")
@@ -375,6 +441,28 @@ public class ErpCustomerController {
     public CommonResult<ErpCustomerImportRespVO> importCustomer(@RequestParam("file") MultipartFile file) throws Exception {
         List<ErpCustomerImportExcelVO> list = ExcelUtils.read(file, ErpCustomerImportExcelVO.class);
         return success(customerService.importCustomerList(list));
+    }
+
+    @PostMapping("/import-task/start")
+    @Operation(summary = "创建客户异步导入任务")
+    @PreAuthorize("@ss.hasPermission('erp:customer:import')")
+    public CommonResult<ErpCustomerImportTaskStartRespVO> startImportTask(
+            @RequestParam("file") MultipartFile file) throws IOException {
+        return success(customerImportTaskService.startTask(file));
+    }
+
+    @GetMapping("/import-task/active")
+    @Operation(summary = "获得当前用户正在执行的客户导入任务")
+    @PreAuthorize("@ss.hasPermission('erp:customer:import')")
+    public CommonResult<ErpCustomerImportTaskRespVO> getActiveImportTask() {
+        return success(customerImportTaskService.getActiveTask());
+    }
+
+    @GetMapping("/import-task/get")
+    @Operation(summary = "获得客户导入任务进度")
+    @PreAuthorize("@ss.hasPermission('erp:customer:import')")
+    public CommonResult<ErpCustomerImportTaskRespVO> getImportTask(@RequestParam("id") Long id) {
+        return success(customerImportTaskService.getTask(id));
     }
 
     @PutMapping("/batch-update")
@@ -444,6 +532,45 @@ public class ErpCustomerController {
         if (CollUtil.isEmpty(list)) {
             return;
         }
+        Set<Long> userIds = new java.util.HashSet<>();
+        list.forEach(row -> {
+            if (row.getSaleUserId() != null) userIds.add(row.getSaleUserId());
+            if (row.getDeveloperUserId() != null) userIds.add(row.getDeveloperUserId());
+            for (String id : java.util.Arrays.asList(row.getCreator(), row.getUpdater())) {
+                if (id != null && id.matches("[0-9]+")) userIds.add(Long.valueOf(id));
+            }
+        });
+        Map<Long, AdminUserRespDTO> users = userIds.isEmpty() ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
+        list.forEach(row -> {
+            AdminUserRespDTO saleUser = users.get(row.getSaleUserId());
+            AdminUserRespDTO developer = users.get(row.getDeveloperUserId());
+            row.setSaleUserName(saleUser == null ? null : saleUser.getNickname());
+            row.setDeveloperUserName(developer == null ? null : developer.getNickname());
+            AdminUserRespDTO creator = row.getCreator() != null && row.getCreator().matches("[0-9]+") ? users.get(Long.valueOf(row.getCreator())) : null;
+            AdminUserRespDTO updater = row.getUpdater() != null && row.getUpdater().matches("[0-9]+") ? users.get(Long.valueOf(row.getUpdater())) : null;
+            row.setCreatorName(creator == null ? row.getCreator() : creator.getNickname());
+            row.setUpdaterName(updater == null ? row.getUpdater() : updater.getNickname());
+        });
+        Set<Long> optionIds = new java.util.HashSet<>();
+        list.forEach(row -> { if (row.getRouteId() != null) optionIds.add(row.getRouteId()); if (row.getAreaId() != null) optionIds.add(row.getAreaId()); if (row.getFreightExplainId() != null) optionIds.add(row.getFreightExplainId()); });
+        Map<Long, ErpBaseDataDO> optionMap = optionIds.isEmpty() ? Collections.emptyMap() : convertMap(baseDataMapper.selectByIds(optionIds), ErpBaseDataDO::getId);
+        Map<String, Integer> typeCodes = new LinkedHashMap<>();
+        typeCodes.put("car_owner", 1); typeCodes.put("repair_factory", 2); typeCodes.put("terminal_customer", 3); typeCodes.put("customer_supplier", 4); typeCodes.put("supplier", 5); typeCodes.put("store", 6); typeCodes.put("dealer", 7);
+        Map<String, Integer> settleCodes = new LinkedHashMap<>();
+        settleCodes.put("cash", 1); settleCodes.put("credit", 2); settleCodes.put("remittance", 3); settleCodes.put("online_payment", 4);
+        Set<String> codes = new java.util.HashSet<>(typeCodes.keySet()); codes.addAll(settleCodes.keySet());
+        Map<Integer, String> types = new LinkedHashMap<>(); Map<Integer, String> settlements = new LinkedHashMap<>();
+        baseDataMapper.selectList(new cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX<ErpBaseDataDO>()
+                .in(ErpBaseDataDO::getType, java.util.Arrays.asList("customer_type", "settle_method")).in(ErpBaseDataDO::getCode, codes))
+                .forEach(option -> {
+                    Integer value = ("customer_type".equals(option.getType()) ? typeCodes : settleCodes).get(option.getCode());
+                    if (value != null) ("customer_type".equals(option.getType()) ? types : settlements).put(value, option.getName());
+                });
+        list.forEach(row -> {
+            ErpBaseDataDO route = optionMap.get(row.getRouteId()); ErpBaseDataDO area = optionMap.get(row.getAreaId());
+            row.setRouteName(route == null ? null : route.getName()); row.setAreaName(area == null ? null : area.getName());
+            row.setCustomerTypeName(types.get(row.getCustomerType())); row.setSettleMethodName(settlements.get(row.getSettleMethod()));
+        });
         Map<Long, List<Long>> customerDeptMap =
                 customerService.getCustomerDeptMap(convertList(list, ErpCustomerRespVO::getId));
         Set<Long> deptIds = new java.util.HashSet<>();
@@ -497,4 +624,102 @@ public class ErpCustomerController {
         list.forEach(customer -> customer.setBusinessInfoSynced(syncedCustomerIds.contains(customer.getId())));
     }
 
+
+    private void maskCustomerFields(List<ErpCustomerRespVO> rows) {
+        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, rows);
+        rows.forEach(row -> {
+            if (row.getSaleUserId() == null) row.setSaleUserName(null);
+            if (row.getDeveloperUserId() == null) row.setDeveloperUserName(null);
+            if (row.getRouteId() == null) row.setRouteName(null);
+            if (row.getAreaId() == null) row.setAreaName(null);
+            if (row.getCustomerType() == null) row.setCustomerTypeName(null);
+            if (row.getSettleMethod() == null) row.setSettleMethodName(null);
+            if (row.getCreator() == null) row.setCreatorName(null);
+            if (row.getUpdater() == null) row.setUpdaterName(null);
+        });
+    }
+    private static void boundSelectorPageSize(PageParam reqVO) {
+        if (reqVO.getPageSize() == null || reqVO.getPageSize() <= 0 || reqVO.getPageSize() > 100) reqVO.setPageSize(100);
+    }
+
+    @GetMapping("/form-dept-simple-page")
+    @PreAuthorize("@ss.hasPermission('erp:customer:create') or @ss.hasPermission('erp:customer:update') or @ss.hasPermission('erp:customer:query')")
+    public CommonResult<PageResult<DeptRespDTO>> getFormDeptSimplePage(@Valid PageParam reqVO,
+            @RequestParam(value = "selectedId", required = false) Long selectedId) {
+        boundSelectorPageSize(reqVO);
+        return success(deptApi.getDeptSimplePage(CommonStatusEnum.ENABLE.getStatus(), reqVO.getKeyword(),
+                selectedId == null ? null : Collections.singleton(selectedId), reqVO));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @PreAuthorize("@ss.hasPermission('erp:customer:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam reqVO) {
+        boundSelectorPageSize(reqVO);
+        return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, reqVO));
+    }
+
+    @GetMapping("/assignable-users-page")
+    @PreAuthorize("@ss.hasPermission('erp:customer:create') or @ss.hasPermission('erp:customer:update') or @ss.hasPermission('erp:customer:query')")
+    public CommonResult<PageResult<AdminUserRespDTO>> getAssignableUsersPage(@Valid PageParam reqVO) {
+        boundSelectorPageSize(reqVO);
+        return success(adminUserApi.getUserSimplePage(CommonStatusEnum.ENABLE.getStatus(), reqVO.getKeyword(), reqVO));
+    }
+
+    @GetMapping("/merge-simple-page")
+    @PreAuthorize("@ss.hasPermission('erp:customer:merge')")
+    public CommonResult<PageResult<ErpCustomerRespVO>> getMergeSimplePage(@Valid ErpCustomerPageReqVO reqVO) {
+        boundSelectorPageSize(reqVO);
+        // The old merge selector used simple-list: keep enabled-only candidates.
+        PageResult<ErpCustomerDO> page = customerService.getCustomerPageByStatus(reqVO, CommonStatusEnum.ENABLE.getStatus());
+        return success(new PageResult<>(BeanUtils.toBean(page.getList(), ErpCustomerRespVO.class), page.getTotal()));
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @PreAuthorize("@ss.hasPermission('erp:customer:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
+    }
+
+    @GetMapping("/form-dept-options")
+    @PreAuthorize("@ss.hasPermission('erp:customer:create') or @ss.hasPermission('erp:customer:update') or @ss.hasPermission('erp:customer:query') or @ss.hasPermission('erp:customer:dept-distribute')")
+    public CommonResult<List<DeptRespDTO>> getFormDeptOptions() {
+        return success(deptApi.getDeptListByStatus(null));
+    }
+
+    @GetMapping("/base-options-page")
+    @PreAuthorize("@ss.hasPermission('erp:customer:create') or @ss.hasPermission('erp:customer:update') or @ss.hasPermission('erp:customer:query')")
+    public CommonResult<PageResult<ErpBaseDataRespVO>> getBaseOptionsPage(@Valid PageParam reqVO,
+            @RequestParam("type") @javax.validation.constraints.Pattern(regexp = "sales_area|customer_category|customer_type|relation_type|settle_method|transport_method|freight_type|freight_explain|route|invoice_type|delivery_method|price_level") String type) {
+        boundSelectorPageSize(reqVO);
+        ErpBaseDataPageReqVO query = BeanUtils.toBean(reqVO, ErpBaseDataPageReqVO.class);
+        query.setType(type);
+        query.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        query.setName(reqVO.getKeyword());
+        query.setKeyword(null);
+        java.util.List<String> codes = customerOptionCodes(type);
+        PageResult<ErpBaseDataDO> page = codes.isEmpty() ? baseDataService.getBaseDataPage(query)
+                : baseDataMapper.selectPage(query, new cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX<ErpBaseDataDO>()
+                    .eq(ErpBaseDataDO::getType, type).eq(ErpBaseDataDO::getStatus, CommonStatusEnum.ENABLE.getStatus())
+                    .likeIfPresent(ErpBaseDataDO::getName, reqVO.getKeyword()).in(ErpBaseDataDO::getCode, codes)
+                    .orderByAsc(ErpBaseDataDO::getSort).orderByDesc(ErpBaseDataDO::getId));
+        return success(new PageResult<>(convertList(page.getList(), item -> {
+            ErpBaseDataRespVO option = new ErpBaseDataRespVO().setId(item.getId()).setName(item.getName()).setCode(item.getCode());
+
+            option.setCode(item.getCode());
+            return option;
+        }), page.getTotal()));
+    }
+
+    private java.util.List<String> customerOptionCodes(String type) {
+        switch (type) {
+            case "customer_category": return java.util.Arrays.asList("customer", "customer_supplier");
+            case "customer_type": return java.util.Arrays.asList("car_owner", "customer_supplier", "dealer", "repair_factory", "store", "supplier", "terminal_customer");
+            case "settle_method": return java.util.Arrays.asList("cash", "credit", "remittance", "online_payment");
+            case "invoice_type": return java.util.Arrays.asList("receipt", "normal_invoice", "vat_invoice");
+            case "freight_type": return java.util.Arrays.asList("pay_for_customer", "other", "self_pay", "customer_pay", "delivery_subsidy");
+            case "delivery_method": return java.util.Arrays.asList("customer_pickup", "delivery_service", "logistics_consignment", "door_delivery");
+            default: return Collections.emptyList();
+        }
+    }
 }

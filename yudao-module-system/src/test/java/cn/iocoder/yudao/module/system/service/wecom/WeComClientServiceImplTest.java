@@ -26,6 +26,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 public class WeComClientServiceImplTest extends BaseMockitoUnitTest {
@@ -211,6 +212,43 @@ public class WeComClientServiceImplTest extends BaseMockitoUnitTest {
 
         assertServiceException(() -> weComClientService.getUserMobileByCode("auth-code"),
                 AUTH_WECOM_API_ERROR, "企业微信未返回 user_ticket，请确认授权 scope 为 snsapi_privateinfo");
+        mockServer.verify();
+    }
+
+    @Test
+    public void testGetUserIdByMobile() {
+        mockValueOperations();
+        when(valueOperations.get(eq(SALE_PICK_ACCESS_TOKEN_KEY))).thenReturn("pick-access-token");
+        mockServer.expect(requestTo(
+                        "https://qyapi.weixin.qq.com/cgi-bin/user/getuserid?access_token=pick-access-token"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("{\"mobile\":\"13800138000\"}"))
+                .andRespond(withSuccess("{\"errcode\":0,\"userid\":\"zhangsan\"}",
+                        MediaType.APPLICATION_JSON));
+
+        String userId = weComClientService.getUserIdByMobile(" 13800138000 ", "sale-pick");
+
+        assertEquals("zhangsan", userId);
+        mockServer.verify();
+    }
+
+    @Test
+    public void testSendTextCardMessage() {
+        mockValueOperations();
+        when(valueOperations.get(eq(SALE_PICK_ACCESS_TOKEN_KEY))).thenReturn("pick-access-token");
+        mockServer.expect(requestTo(
+                        "https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=pick-access-token"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("{\"touser\":\"zhangsan\",\"msgtype\":\"textcard\","
+                        + "\"agentid\":1000085,\"textcard\":{\"title\":\"新的拣货任务\","
+                        + "\"description\":\"仓库：成都仓\",\"url\":\"https://example.com/pick?taskId=1\","
+                        + "\"btntxt\":\"进入拣货\"}}"))
+                .andRespond(withSuccess("{\"errcode\":0,\"errmsg\":\"ok\",\"msgid\":\"msg-1\"}",
+                        MediaType.APPLICATION_JSON));
+
+        weComClientService.sendTextCardMessage("zhangsan", "新的拣货任务", "仓库：成都仓",
+                "https://example.com/pick?taskId=1", "进入拣货", "sale-pick");
+
         mockServer.verify();
     }
 

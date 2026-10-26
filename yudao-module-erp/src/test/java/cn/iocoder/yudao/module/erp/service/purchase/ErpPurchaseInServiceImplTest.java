@@ -139,6 +139,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mockStatic;
@@ -1874,6 +1875,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         Map<Long, BigDecimal> returnedMap = new HashMap<>();
         returnedMap.put(100L, new BigDecimal("3"));
         when(purchaseReturnItemMapper.selectReturnedCountMapBySourceInItemIds(any())).thenReturn(returnedMap);
+        when(purchaseReturnItemMapper.selectProcessingAndApprovedReturnedCountMapBySourceInItemIdsExcludeReturn(
+                any(), isNull())).thenReturn(returnedMap);
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setName("螺丝").setCode("P001")));
 
@@ -1903,6 +1906,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         Map<Long, BigDecimal> returnedMap = new HashMap<>();
         returnedMap.put(100L, new BigDecimal("8"));
         when(purchaseReturnItemMapper.selectReturnedCountMapBySourceInItemIds(any())).thenReturn(returnedMap);
+        when(purchaseReturnItemMapper.selectProcessingAndApprovedReturnedCountMapBySourceInItemIdsExcludeReturn(
+                any(), isNull())).thenReturn(returnedMap);
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L)));
 

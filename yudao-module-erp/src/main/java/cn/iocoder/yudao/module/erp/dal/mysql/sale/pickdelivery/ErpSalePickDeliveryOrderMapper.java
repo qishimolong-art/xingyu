@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSaleDeliveryPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.pickdelivery.ErpSalePickDeliveryOrderDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import org.apache.ibatis.annotations.Mapper;
 import org.springframework.util.StringUtils;
 
@@ -69,6 +70,12 @@ public interface ErpSalePickDeliveryOrderMapper extends BaseMapperX<ErpSalePickD
                 .betweenIfPresent(ErpSalePickDeliveryOrderDO::getCreateTime, reqVO.getCreateTime())
                 .betweenIfPresent(ErpSalePickDeliveryOrderDO::getDeliveryCompleteTime, reqVO.getDeliveryCompleteTime())
                 .orderByDesc(ErpSalePickDeliveryOrderDO::getId);
+        wrapper.and(query -> query.notIn(ErpSalePickDeliveryOrderDO::getSourceType,
+                        ErpSaleBizSourceTypeEnum.SALE_RETURN.getType(),
+                        ErpSaleBizSourceTypeEnum.WAREHOUSE_MOVE.getType(),
+                        ErpSaleBizSourceTypeEnum.STOCK_IN.getType(),
+                        ErpSaleBizSourceTypeEnum.STOCK_OUT.getType())
+                .or().isNull(ErpSalePickDeliveryOrderDO::getSourceType));
         if (StringUtils.hasText(reqVO.getSaleOutNo())) {
             wrapper.and(query -> query.like(ErpSalePickDeliveryOrderDO::getSaleOutNo, reqVO.getSaleOutNo())
                     .or().like(ErpSalePickDeliveryOrderDO::getSourceNo, reqVO.getSaleOutNo()));

@@ -19,6 +19,7 @@ public interface ErpProductBrandMapper extends BaseMapperX<ErpProductBrandDO> {
 
     default PageResult<ErpProductBrandDO> selectPage(ErpProductBrandPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpProductBrandDO> wrapper = new LambdaQueryWrapperX<ErpProductBrandDO>()
+                .inIfPresent(ErpProductBrandDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpProductBrandDO::getName, fuzzyKeyword(reqVO.getName()))
                 .eqIfPresent(ErpProductBrandDO::getStatus, reqVO.getStatus());
         ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(), ErpProductBrandDO::getName);

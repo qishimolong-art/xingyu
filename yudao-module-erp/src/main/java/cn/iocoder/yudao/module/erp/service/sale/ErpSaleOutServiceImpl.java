@@ -7,7 +7,7 @@ import cn.hutool.core.util.ObjectUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
+
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSummaryRespVO;
@@ -155,6 +155,22 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleOut(ErpSaleOutSaveReqVO createReqVO) {
+        ErpSaleDecimalUtils.requireScale(createReqVO.getDiscountPercent(), "优惠率，百分比");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getFeeAmount(), "费用金额，单位：元");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getOtherPrice(), "其它金额，单位：元");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getExtraFee(), "额外费用");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getFreight(), "运费");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getTotalWeight(), "总重");
+        if (createReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < createReqVO.getItems().size(); decimalRow++) {
+                ErpSaleOutSaveReqVO.Item decimalItem = createReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getProductPrice(), "第" + (decimalRow + 1) + "行产品单价");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getCount(), "第" + (decimalRow + 1) + "行产品数量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getTaxPercent(), "第" + (decimalRow + 1) + "行税率，百分比");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getUnitWeight(), "第" + (decimalRow + 1) + "行单重");
+            }
+        }
         // 1.1 校验销售订单已审核
         ErpSaleOrderDO saleOrder = saleOrderService.validateSaleOrder(createReqVO.getOrderId());
         createReqVO.setCustomerId(saleOrder.getCustomerId());
@@ -258,6 +274,22 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleOut(ErpSaleOutSaveReqVO updateReqVO) {
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getDiscountPercent(), "优惠率，百分比");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getFeeAmount(), "费用金额，单位：元");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getOtherPrice(), "其它金额，单位：元");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getExtraFee(), "额外费用");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getFreight(), "运费");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getTotalWeight(), "总重");
+        if (updateReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < updateReqVO.getItems().size(); decimalRow++) {
+                ErpSaleOutSaveReqVO.Item decimalItem = updateReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getProductPrice(), "第" + (decimalRow + 1) + "行产品单价");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getCount(), "第" + (decimalRow + 1) + "行产品数量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getTaxPercent(), "第" + (decimalRow + 1) + "行税率，百分比");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getUnitWeight(), "第" + (decimalRow + 1) + "行单重");
+            }
+        }
         // 1.1 校验存在
         ErpSaleOutDO saleOut = validateSaleOutForUpdate(updateReqVO.getId());
         if (ErpAuditStatus.APPROVE.getStatus().equals(saleOut.getStatus())) {
@@ -408,7 +440,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         saleOut.setFeeAmount(feeAmount);
         saleOut.setOtherPrice(feeAmount);
         saleOut.setExtraFee(feeAmount);
-        saleOut.setDiscountPrice(MoneyUtils.priceMultiplyPercent(saleOut.getTotalPrice(), saleOut.getDiscountPercent()));
+        saleOut.setDiscountPrice(ErpSaleDecimalUtils.multiplyPercent(saleOut.getTotalPrice(), saleOut.getDiscountPercent()));
         saleOut.setTotalPrice(saleOut.getTotalPrice().subtract(saleOut.getDiscountPrice()).add(feeAmount));
         saleOut.setTotalWeight(getSumValue(saleOutItems, ErpSaleOutItemDO::getTotalWeight, BigDecimal::add, BigDecimal.ZERO));
     }
@@ -504,15 +536,21 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Override
     public void updateSaleInReceiptPrice(Long id, BigDecimal receiptPrice) {
         ErpSaleOutDO saleOut = saleOutMapper.selectById(id);
-        if (saleOut.getReceiptPrice().equals(receiptPrice)) {
-            return;
-        }
+        BigDecimal normalizedReceiptPrice = receiptPrice != null ? receiptPrice : BigDecimal.ZERO;
         BigDecimal settlementTotalPrice = ErpOriginalSettlementAmountUtils.calculateSaleOut(
                 saleOut, saleOutItemMapper.selectListByOutId(id));
-        if (receiptPrice.compareTo(settlementTotalPrice) > 0) {
-            throw exception(SALE_OUT_FAIL_RECEIPT_PRICE_EXCEED, receiptPrice, settlementTotalPrice);
+        if (normalizedReceiptPrice.compareTo(settlementTotalPrice) > 0) {
+            throw exception(SALE_OUT_FAIL_RECEIPT_PRICE_EXCEED, normalizedReceiptPrice, settlementTotalPrice);
         }
-        saleOutMapper.updateById(new ErpSaleOutDO().setId(id).setReceiptPrice(receiptPrice));
+        Integer settleStatus = ErpOriginalSettlementAmountUtils.calculateSaleOutSettlementStatus(
+                settlementTotalPrice, normalizedReceiptPrice);
+        if ((saleOut.getReceiptPrice() != null ? saleOut.getReceiptPrice() : BigDecimal.ZERO)
+                .compareTo(normalizedReceiptPrice) == 0
+                && Objects.equals(saleOut.getSettleStatus(), settleStatus)) {
+            return;
+        }
+        saleOutMapper.updateById(new ErpSaleOutDO().setId(id)
+                .setReceiptPrice(normalizedReceiptPrice).setSettleStatus(settleStatus));
     }
 
     private List<ErpSaleOutItemDO> validateSaleOutItems(List<ErpSaleOutSaveReqVO.Item> list) {
@@ -558,13 +596,13 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
                 item.setTotalPrice(BigDecimal.ZERO);
                 item.setTaxPercent(null);
                 item.setTaxPrice(BigDecimal.ZERO);
-                item.setTotalWeight(MoneyUtils.priceMultiply(item.getUnitWeight(), item.getCount()));
+                item.setTotalWeight(ErpSaleDecimalUtils.multiply(item.getUnitWeight(), item.getCount()));
                 return;
             }
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
-            item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
-            item.setTotalWeight(MoneyUtils.priceMultiply(item.getUnitWeight(), item.getCount()));
+            item.setTotalPrice(ErpSaleDecimalUtils.multiply(item.getProductPrice(), item.getCount()));
+            item.setTotalWeight(ErpSaleDecimalUtils.multiply(item.getUnitWeight(), item.getCount()));
         }));
     }
 
@@ -792,15 +830,19 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         Set<Long> saleOutIds = convertSet(pageResult.getList(), ErpSaleOutDO::getId);
         Map<Long, BigDecimal> receiptPriceMap = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
                 saleOutIds, ErpBizTypeEnum.SALE_OUT.getType());
-        pageResult.getList().forEach(item -> item.setReceiptPrice(
-                receiptPriceMap.getOrDefault(item.getId(), BigDecimal.ZERO)));
-        if (Boolean.TRUE.equals(pageReqVO.getReceiptEnable()) && CollUtil.isNotEmpty(saleOutIds)) {
-            Map<Long, List<ErpSaleOutItemDO>> itemMap = convertMultiMap(
-                    saleOutItemMapper.selectListByOutIds(saleOutIds), ErpSaleOutItemDO::getOutId);
-            pageResult.getList().forEach(item -> item.setTotalPrice(
-                    ErpOriginalSettlementAmountUtils.calculateSaleOut(
-                            item, itemMap.getOrDefault(item.getId(), Collections.emptyList()))));
-        }
+        Map<Long, BigDecimal> originalProductPriceMap = saleOutItemMapper
+                .selectOriginalSettlementProductPriceMap(saleOutIds);
+        pageResult.getList().forEach(item -> {
+            BigDecimal receiptPrice = receiptPriceMap.getOrDefault(item.getId(), BigDecimal.ZERO);
+            BigDecimal settlementTotalPrice = ErpOriginalSettlementAmountUtils.calculateSaleOut(
+                    item, originalProductPriceMap.get(item.getId()));
+            item.setReceiptPrice(receiptPrice);
+            item.setSettleStatus(ErpOriginalSettlementAmountUtils.calculateSaleOutSettlementStatus(
+                    settlementTotalPrice, receiptPrice));
+            if (Boolean.TRUE.equals(pageReqVO.getReceiptEnable())) {
+                item.setTotalPrice(settlementTotalPrice);
+            }
+        });
         return pageResult;
     }
 
@@ -890,9 +932,16 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         }
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(
                 () -> productService.getProductVOMap(convertSet(items, ErpSaleOutItemDO::getProductId)));
+        Set<Long> returnWarehouseIds = items.stream()
+                .map(this::resolveSaleReturnWarehouseId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
         Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(
-                () -> warehouseService.getWarehouseMap(convertSet(items, ErpSaleOutItemDO::getWarehouseId)));
-        List<Long> deptIds = convertList(items, ErpSaleOutItemDO::getDeptId);
+                () -> warehouseService.getWarehouseMap(returnWarehouseIds));
+        List<Long> deptIds = items.stream()
+                .map(item -> resolveSaleReturnDeptId(item, warehouseMap.get(resolveSaleReturnWarehouseId(item))))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
         deptIds.addAll(convertList(warehouseMap.values(), ErpWarehouseDO::getDeptId));
         deptIds.remove(null);
         Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
@@ -912,16 +961,18 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             vo.setProductUnitId(item.getProductUnitId());
             vo.setWeight(item.getUnitWeight());
             vo.setPackageQty(item.getPackageQty());
-            vo.setWarehouseId(item.getWarehouseId());
-            MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
+            Long returnWarehouseId = resolveSaleReturnWarehouseId(item);
+            vo.setWarehouseId(returnWarehouseId);
+            MapUtils.findAndThen(warehouseMap, returnWarehouseId, warehouse -> {
                 vo.setWarehouseName(warehouse.getName());
                 vo.setWarehouseDeptId(warehouse.getDeptId());
                 MapUtils.findAndThen(deptMap, warehouse.getDeptId(),
                         dept -> vo.setWarehouseDeptName(dept.getName()));
             });
-            vo.setDeptId(item.getDeptId());
+            Long returnDeptId = resolveSaleReturnDeptId(item, warehouseMap.get(returnWarehouseId));
+            vo.setDeptId(returnDeptId);
             vo.setBatchNo(item.getBatchNo());
-            MapUtils.findAndThen(deptMap, item.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+            MapUtils.findAndThen(deptMap, returnDeptId, dept -> vo.setDeptName(dept.getName()));
             vo.setProductPrice(item.getProductPrice());
             vo.setTaxPercent(item.getTaxPercent());
             vo.setOutCount(item.getCount());
@@ -933,6 +984,20 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             vo.setRemark(item.getRemark());
             return vo;
         }).collect(Collectors.toList());
+    }
+
+    /** 跨部门销售退回调拨前原仓；同部门及历史无快照数据退回实际销售出库仓。 */
+    private Long resolveSaleReturnWarehouseId(ErpSaleOutItemDO item) {
+        return item.getSourceWarehouseId() != null ? item.getSourceWarehouseId() : item.getWarehouseId();
+    }
+
+    private Long resolveSaleReturnDeptId(ErpSaleOutItemDO item, ErpWarehouseDO returnWarehouse) {
+        if (item.getSourceWarehouseId() != null) {
+            return item.getSourceDeptId() != null ? item.getSourceDeptId()
+                    : returnWarehouse == null ? null : returnWarehouse.getDeptId();
+        }
+        return item.getDeptId() != null ? item.getDeptId()
+                : returnWarehouse == null ? null : returnWarehouse.getDeptId();
     }
 
     private void clearHiddenFields(Object target) {

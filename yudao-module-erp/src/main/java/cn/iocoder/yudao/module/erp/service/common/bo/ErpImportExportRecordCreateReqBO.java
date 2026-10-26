@@ -13,8 +13,11 @@ public class ErpImportExportRecordCreateReqBO {
     private String templateKey;
     private String fileName;
     private String fileType;
+    private String stage;
+    private Integer processedCount;
     private String queryParams;
     private String exportFields;
     private LocalDateTime startTime;
+    private LocalDateTime heartbeatTime;
 
 }

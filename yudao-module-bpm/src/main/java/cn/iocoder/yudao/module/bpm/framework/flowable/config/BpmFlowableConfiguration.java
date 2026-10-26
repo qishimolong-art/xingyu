@@ -15,7 +15,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.List;
@@ -35,7 +34,8 @@ public class BpmFlowableConfiguration {
      */
     @Bean(name = "applicationTaskExecutor")
     @ConditionalOnMissingBean(name = "applicationTaskExecutor")
-    public AsyncTaskExecutor taskExecutor() {
+    // 显式暴露具体类型，保证 Flowable 在 Bean 实例化前能按 AsyncListenableTaskExecutor 匹配。
+    public ThreadPoolTaskExecutor taskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(8);
         executor.setMaxPoolSize(8);

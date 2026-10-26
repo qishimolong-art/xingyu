@@ -45,6 +45,10 @@ public class ErpFinancePaymentDO extends BaseDO {
      */
     private LocalDateTime paymentTime;
     /**
+     * 审批生效时间
+     */
+    private LocalDateTime approveTime;
+    /**
      * 财务人员编号
      *
      * 关联 AdminUserDO 的 id 字段

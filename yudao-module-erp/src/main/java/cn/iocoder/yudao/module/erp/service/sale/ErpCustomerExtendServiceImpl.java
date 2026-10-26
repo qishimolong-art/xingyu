@@ -34,7 +34,10 @@ public class ErpCustomerExtendServiceImpl implements ErpCustomerExtendService {
 
     @Override
     public void updateExtend(ErpCustomerExtendSaveReqVO updateReqVO) {
-        validateExtendExists(updateReqVO.getId());
+        ErpCustomerExtendDO existing = validateExtendExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getCustomerId(), updateReqVO.getCustomerId())) {
+            throw exception(CUSTOMER_EXTEND_NOT_EXISTS);
+        }
         customerService.validateCustomer(updateReqVO.getCustomerId());
         extendMapper.updateById(BeanUtils.toBean(updateReqVO, ErpCustomerExtendDO.class));
     }
@@ -45,25 +48,36 @@ public class ErpCustomerExtendServiceImpl implements ErpCustomerExtendService {
         extendMapper.deleteById(id);
     }
 
-    private void validateExtendExists(Long id) {
-        if (extendMapper.selectById(id) == null) {
-            throw exception(CUSTOMER_EXTEND_NOT_EXISTS);
+    private ErpCustomerExtendDO validateExtendExists(Long id) {
+        ErpCustomerExtendDO existing = extendMapper.selectById(id);
+        if (existing == null) throw exception(CUSTOMER_EXTEND_NOT_EXISTS);
+        validateVisibleCustomer(existing.getCustomerId());
+        return existing;
+    }
+
+    private void validateVisibleCustomer(Long customerId) {
+        if (customerId == null || customerService.getCustomer(customerId) == null) {
+            throw exception(cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS);
         }
     }
 
     @Override
     public ErpCustomerExtendDO getExtend(Long id) {
-        return extendMapper.selectById(id);
+        ErpCustomerExtendDO existing = extendMapper.selectById(id);
+        if (existing != null) validateVisibleCustomer(existing.getCustomerId());
+        return existing;
     }
 
     @Override
     public PageResult<ErpCustomerExtendDO> getExtendPage(ErpCustomerExtendPageReqVO pageReqVO) {
+        validateVisibleCustomer(pageReqVO.getCustomerId());
+        if (pageReqVO.getPageSize() <= 0 || pageReqVO.getPageSize() > 100) pageReqVO.setPageSize(100);
         return extendMapper.selectPage(pageReqVO);
     }
 
     @Override
     public List<ErpCustomerExtendDO> getExtendListByCustomerId(Long customerId) {
-        customerService.validateCustomer(customerId);
+        validateVisibleCustomer(customerId);
         return extendMapper.selectListByCustomerId(customerId);
     }
 

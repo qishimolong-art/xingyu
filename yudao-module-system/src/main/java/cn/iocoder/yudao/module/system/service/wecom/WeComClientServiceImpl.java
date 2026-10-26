@@ -31,6 +31,8 @@ public class WeComClientServiceImpl implements WeComClientService {
     private static final String GET_TOKEN_URL = "https://qyapi.weixin.qq.com/cgi-bin/gettoken";
     private static final String GET_USER_INFO_URL = "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo";
     private static final String GET_USER_DETAIL_URL = "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserdetail";
+    private static final String GET_USER_ID_BY_MOBILE_URL = "https://qyapi.weixin.qq.com/cgi-bin/user/getuserid";
+    private static final String SEND_MESSAGE_URL = "https://qyapi.weixin.qq.com/cgi-bin/message/send";
 
     private static final String ACCESS_TOKEN_KEY = "wecom_access_token:%s:%s";
 
@@ -91,6 +93,55 @@ public class WeComClientServiceImpl implements WeComClientService {
             throw exception(AUTH_WECOM_API_ERROR, "企业微信成员身份不一致");
         }
         return new WeComUserIdentity(userInfo.getUserId(), user.getMobile());
+    }
+
+    @Override
+    public String getUserIdByMobile(String mobile, String clientKey) {
+        if (StrUtil.isBlank(mobile)) {
+            throw exception(AUTH_WECOM_API_ERROR, "查询企业微信 UserID 的手机号不能为空");
+        }
+        WeComClientConfig config = resolveConfig(clientKey);
+        String accessToken = getAccessToken(config);
+        WeComUserIdByMobileRespDTO response = postForObject(UriComponentsBuilder
+                        .fromHttpUrl(GET_USER_ID_BY_MOBILE_URL)
+                        .queryParam("access_token", accessToken)
+                        .build()
+                        .encode(StandardCharsets.UTF_8)
+                        .toUri(),
+                new WeComUserIdByMobileReqDTO(StrUtil.trim(mobile)),
+                WeComUserIdByMobileRespDTO.class, "根据手机号查询企业微信成员");
+        if (StrUtil.isBlank(response.getUserId())) {
+            throw exception(AUTH_WECOM_API_ERROR, "企业微信未返回成员 UserID");
+        }
+        return response.getUserId();
+    }
+
+    @Override
+    public void sendTextCardMessage(String userId, String title, String description, String url,
+                                    String buttonText, String clientKey) {
+        if (StrUtil.hasBlank(userId, title, description, url)) {
+            throw exception(AUTH_WECOM_API_ERROR, "企业微信文本卡片消息参数不完整");
+        }
+        WeComClientConfig config = resolveConfig(clientKey);
+        long agentId;
+        try {
+            agentId = Long.parseLong(config.getAgentId());
+        } catch (NumberFormatException exception) {
+            throw cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil
+                    .exception(AUTH_WECOM_CONFIG_ERROR);
+        }
+        String accessToken = getAccessToken(config);
+        WeComTextCardMessageReqDTO request = new WeComTextCardMessageReqDTO(
+                userId, agentId, new WeComTextCardDTO(title, description, url,
+                StrUtil.blankToDefault(buttonText, "查看详情")));
+        WeComSendMessageRespDTO response = postForObject(UriComponentsBuilder.fromHttpUrl(SEND_MESSAGE_URL)
+                        .queryParam("access_token", accessToken)
+                        .build()
+                        .encode(StandardCharsets.UTF_8)
+                        .toUri(), request, WeComSendMessageRespDTO.class, "发送企业微信应用消息");
+        if (StrUtil.isNotBlank(response.getInvalidUser())) {
+            throw exception(AUTH_WECOM_API_ERROR, "企业微信应用消息收件人无效");
+        }
     }
 
     private String getAccessToken(WeComClientConfig config) {
@@ -246,6 +297,84 @@ public class WeComClientServiceImpl implements WeComClientService {
 
         @JsonProperty("mobile")
         private String mobile;
+
+    }
+
+    @Data
+    @NoArgsConstructor
+    private static class WeComUserIdByMobileReqDTO {
+
+        private String mobile;
+
+        public WeComUserIdByMobileReqDTO(String mobile) {
+            this.mobile = mobile;
+        }
+
+    }
+
+    @Data
+    @NoArgsConstructor
+    private static class WeComUserIdByMobileRespDTO extends WeComBaseRespDTO {
+
+        @JsonProperty("userid")
+        private String userId;
+
+    }
+
+    @Data
+    @NoArgsConstructor
+    private static class WeComTextCardMessageReqDTO {
+
+        @JsonProperty("touser")
+        private String toUser;
+
+        @JsonProperty("msgtype")
+        private String messageType;
+
+        @JsonProperty("agentid")
+        private Long agentId;
+
+        @JsonProperty("textcard")
+        private WeComTextCardDTO textCard;
+
+        public WeComTextCardMessageReqDTO(String toUser, Long agentId, WeComTextCardDTO textCard) {
+            this.toUser = toUser;
+            this.messageType = "textcard";
+            this.agentId = agentId;
+            this.textCard = textCard;
+        }
+
+    }
+
+    @Data
+    @NoArgsConstructor
+    private static class WeComTextCardDTO {
+
+        private String title;
+        private String description;
+        private String url;
+
+        @JsonProperty("btntxt")
+        private String buttonText;
+
+        public WeComTextCardDTO(String title, String description, String url, String buttonText) {
+            this.title = title;
+            this.description = description;
+            this.url = url;
+            this.buttonText = buttonText;
+        }
+
+    }
+
+    @Data
+    @NoArgsConstructor
+    private static class WeComSendMessageRespDTO extends WeComBaseRespDTO {
+
+        @JsonProperty("invaliduser")
+        private String invalidUser;
+
+        @JsonProperty("msgid")
+        private String messageId;
 
     }
 

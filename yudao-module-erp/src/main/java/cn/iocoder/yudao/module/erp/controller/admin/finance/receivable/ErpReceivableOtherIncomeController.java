@@ -13,6 +13,7 @@ import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeImportExcelVO;
@@ -25,6 +26,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
@@ -358,6 +360,7 @@ public class ErpReceivableOtherIncomeController {
     @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportExcel(@Valid ErpReceivableOtherIncomePageReqVO pageReqVO,
+                            @RequestParam(value = "fields", required = false) String fields,
                             HttpServletResponse response) throws IOException {
         if (CollUtil.isEmpty(pageReqVO.getIds())) {
             pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
@@ -374,7 +377,25 @@ public class ErpReceivableOtherIncomeController {
                 rows.add(buildExportRow(income, items.get(i), i == 0));
             }
         }
-        ExcelUtils.write(response, "其他收入.xls", "数据", ErpReceivableOtherIncomeExportRespVO.class, rows);
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(
+                ErpReceivableOtherIncomeExportRespVO.class, ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFields(FIELD_PERMISSION_MODULE), Collections.emptyMap());
+        ExcelUtils.write(response, "其他收入.xls", "数据", ErpReceivableOtherIncomeExportRespVO.class,
+                rows, includeFields);
+    }
+
+    public void exportExcel(ErpReceivableOtherIncomePageReqVO pageReqVO,
+                            HttpServletResponse response) throws IOException {
+        exportExcel(pageReqVO, null, response);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得其他收入导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpReceivableOtherIncomeExportRespVO.class,
+                Collections.emptyMap(), fieldPermissionMasker.getHiddenFields(FIELD_PERMISSION_MODULE),
+                Collections.emptyMap()));
     }
 
     @GetMapping("/get-import-template")
@@ -447,12 +468,14 @@ public class ErpReceivableOtherIncomeController {
         row.setItemAmount(item.getAmount());
         row.setItemInvoiceNo(item.getInvoiceNo());
         row.setItemParty(item.getCustomerName() != null ? item.getCustomerName() : item.getParty());
+        row.setItemCustomerName(item.getCustomerName());
         row.setItemDeptName(item.getDeptName());
         row.setItemBizDate(item.getBizDate());
         row.setItemHandlerName(item.getHandlerName());
         row.setItemQty(item.getQty());
         row.setItemFreightType(item.getFreightType());
         row.setItemRemark(item.getRemark());
+        row.setItemFileUrl(item.getFileUrl());
         return row;
     }
 

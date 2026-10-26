@@ -44,6 +44,16 @@ public class ErpCustomerMemberControllerTest extends BaseMockitoUnitTest {
     @Mock
     private MemberUserApi memberUserApi;
 
+    @org.junit.jupiter.api.BeforeEach
+    void visibleParentFixture() {
+        org.mockito.Mockito.lenient().when(customerService.getCustomer(org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> new ErpCustomerDO().setId(invocation.getArgument(0)));
+        org.mockito.Mockito.lenient().when(customerService.getCustomerList(org.mockito.ArgumentMatchers.anyCollection()))
+                .thenAnswer(invocation -> ((java.util.Collection<Long>) invocation.getArgument(0)).stream().map(id -> new ErpCustomerDO().setId(id)).collect(java.util.stream.Collectors.toList()));
+        org.mockito.Mockito.lenient().when(customerMemberService.getCustomerMember(org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> new ErpCustomerMemberDO().setId(invocation.getArgument(0)).setCustomerId(1L));
+    }
+
     @Test
     public void testCreateCustomerMember_paramPassThrough() {
         ErpCustomerMemberCreateReqVO reqVO = new ErpCustomerMemberCreateReqVO();
@@ -220,4 +230,12 @@ public class ErpCustomerMemberControllerTest extends BaseMockitoUnitTest {
         assertTrue(anno.value().contains("erp:customer-member:query"));
     }
 
+
+    @Test
+    void hiddenParentRejectsBindingMutationAndPageRead() {
+        when(customerService.getCustomer(1L)).thenReturn(null);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> controller.deleteCustomerMember(9L));
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> controller.getCustomerMemberPage(new cn.iocoder.yudao.framework.common.pojo.PageParam(), 1L));
+        verify(customerMemberService, never()).deleteCustomerMember(9L);
+    }
 }

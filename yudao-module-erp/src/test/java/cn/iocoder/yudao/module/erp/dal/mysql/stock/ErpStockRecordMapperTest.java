@@ -5,6 +5,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.record.ErpStockReco
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -14,6 +16,7 @@ class ErpStockRecordMapperTest {
 
     @Test
     void testGetOrderExpression_supportsReportColumns() {
+        assertEquals("erp_stock_record.create_time", ErpStockRecordMapper.getOrderExpression("approveTime"));
         assertEquals("erp_stock_record.biz_date", ErpStockRecordMapper.getOrderExpression("bizDate"));
         assertTrue(ErpStockRecordMapper.getOrderExpression("productName").contains("erp_product"));
         assertTrue(ErpStockRecordMapper.getOrderExpression("warehouseName").contains("erp_warehouse"));
@@ -21,6 +24,26 @@ class ErpStockRecordMapperTest {
         assertTrue(ErpStockRecordMapper.getOrderExpression("inCount").contains("count > 0"));
         assertTrue(ErpStockRecordMapper.getOrderExpression("outAmount").contains("ABS"));
         assertEquals("erp_stock_record.cost_amount", ErpStockRecordMapper.getOrderExpression("costAmount"));
+    }
+
+    @Test
+    void testAppendDateFilters_supportsBusinessAndApprovalDates() {
+        ErpStockRecordPageReqVO reqVO = new ErpStockRecordPageReqVO();
+        reqVO.setBizDate(new LocalDateTime[]{
+                LocalDateTime.of(2026, 10, 1, 0, 0),
+                LocalDateTime.of(2026, 10, 31, 23, 59, 59)
+        });
+        reqVO.setApproveTime(new LocalDateTime[]{
+                LocalDateTime.of(2026, 10, 10, 0, 0),
+                LocalDateTime.of(2026, 10, 20, 23, 59, 59)
+        });
+        QueryWrapperX<ErpStockRecordDO> wrapper = new QueryWrapperX<>();
+
+        ErpStockRecordMapper.appendDateFilters(wrapper, reqVO);
+
+        String sql = wrapper.getSqlSegment();
+        assertTrue(sql.contains("biz_date BETWEEN"));
+        assertTrue(sql.contains("create_time BETWEEN"));
     }
 
     @Test
@@ -43,6 +66,29 @@ class ErpStockRecordMapperTest {
         assertTrue(sql.contains("erp_product"));
         assertTrue(sql.contains("ASC"));
         assertTrue(sql.contains("id DESC"));
+    }
+
+    @Test
+    void testOrderByIfPresent_supportsApprovalTimeAndStableOrder() {
+        ErpStockRecordPageReqVO reqVO = new ErpStockRecordPageReqVO();
+        reqVO.setOrderField("approveTime");
+        reqVO.setOrderDirection("desc");
+        QueryWrapperX<ErpStockRecordDO> descWrapper = new QueryWrapperX<>();
+
+        ErpStockRecordMapper.orderByIfPresent(descWrapper, reqVO);
+
+        String descSql = descWrapper.getSqlSegment();
+        assertTrue(descSql.contains("create_time DESC"));
+        assertTrue(descSql.contains("id DESC"));
+
+        reqVO.setOrderDirection("asc");
+        QueryWrapperX<ErpStockRecordDO> ascWrapper = new QueryWrapperX<>();
+
+        ErpStockRecordMapper.orderByIfPresent(ascWrapper, reqVO);
+
+        String ascSql = ascWrapper.getSqlSegment();
+        assertTrue(ascSql.contains("create_time ASC"));
+        assertTrue(ascSql.contains("id DESC"));
     }
 
     @Test

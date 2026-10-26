@@ -32,6 +32,8 @@ public class ErpSaleOrderRespVO {
     @Schema(description = "客户名称", example = "芋道")
     @ExcelProperty("客户名称")
     private String customerName;
+    @Schema(description = "客户编码")
+    private String customerCode;
 
     @Schema(description = "结算账户编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "311.89")
     @ExcelProperty("结算账户编号")
@@ -39,6 +41,8 @@ public class ErpSaleOrderRespVO {
 
     @Schema(description = "销售员编号", example = "1888")
     private Long saleUserId;
+    @Schema(description = "销售员名称")
+    private String saleUserName;
 
     private Long deptId;
     private String deptName;

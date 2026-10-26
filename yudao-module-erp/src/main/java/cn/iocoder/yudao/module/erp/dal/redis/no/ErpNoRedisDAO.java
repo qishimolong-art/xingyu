@@ -28,6 +28,8 @@ public class ErpNoRedisDAO {
     public static final String STOCK_TRANSFER_IN_NO_PREFIX = "QDRK";
     public static final String WAREHOUSE_MOVE_NO_PREFIX = "YH";
     public static final String STOCK_CHECK_NO_PREFIX = "QCPD";
+    public static final String ASSEMBLY_RECIPE_NO_PREFIX = "ZZPF";
+    public static final String ASSEMBLY_ORDER_NO_PREFIX = "ZZD";
     public static final String SALE_ORDER_NO_PREFIX = "XSDD";
     public static final String SALE_QUOTE_NO_PREFIX = "XSBJ";
     public static final String SALE_CART_NO_PREFIX = "XSST";

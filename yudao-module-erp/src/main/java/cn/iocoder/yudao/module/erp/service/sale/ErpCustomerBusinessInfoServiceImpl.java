@@ -40,7 +40,10 @@ public class ErpCustomerBusinessInfoServiceImpl implements ErpCustomerBusinessIn
 
     @Override
     public void updateBusinessInfo(ErpCustomerBusinessInfoSaveReqVO updateReqVO) {
-        validateBusinessInfoExists(updateReqVO.getId());
+        ErpCustomerBusinessInfoDO existing = validateBusinessInfoExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getCustomerId(), updateReqVO.getCustomerId())) {
+            throw exception(CUSTOMER_BUSINESS_INFO_NOT_EXISTS);
+        }
         customerService.validateCustomer(updateReqVO.getCustomerId());
         businessInfoMapper.updateById(BeanUtils.toBean(updateReqVO, ErpCustomerBusinessInfoDO.class));
     }
@@ -51,25 +54,36 @@ public class ErpCustomerBusinessInfoServiceImpl implements ErpCustomerBusinessIn
         businessInfoMapper.deleteById(id);
     }
 
-    private void validateBusinessInfoExists(Long id) {
-        if (businessInfoMapper.selectById(id) == null) {
-            throw exception(CUSTOMER_BUSINESS_INFO_NOT_EXISTS);
+    private ErpCustomerBusinessInfoDO validateBusinessInfoExists(Long id) {
+        ErpCustomerBusinessInfoDO existing = businessInfoMapper.selectById(id);
+        if (existing == null) throw exception(CUSTOMER_BUSINESS_INFO_NOT_EXISTS);
+        validateVisibleCustomer(existing.getCustomerId());
+        return existing;
+    }
+
+    private void validateVisibleCustomer(Long customerId) {
+        if (customerId == null || customerService.getCustomer(customerId) == null) {
+            throw exception(cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS);
         }
     }
 
     @Override
     public ErpCustomerBusinessInfoDO getBusinessInfo(Long id) {
-        return businessInfoMapper.selectById(id);
+        ErpCustomerBusinessInfoDO existing = businessInfoMapper.selectById(id);
+        if (existing != null) validateVisibleCustomer(existing.getCustomerId());
+        return existing;
     }
 
     @Override
     public PageResult<ErpCustomerBusinessInfoDO> getBusinessInfoPage(ErpCustomerBusinessInfoPageReqVO pageReqVO) {
+        validateVisibleCustomer(pageReqVO.getCustomerId());
+        if (pageReqVO.getPageSize() <= 0 || pageReqVO.getPageSize() > 100) pageReqVO.setPageSize(100);
         return businessInfoMapper.selectPage(pageReqVO);
     }
 
     @Override
     public List<ErpCustomerBusinessInfoDO> getBusinessInfoListByCustomerId(Long customerId) {
-        customerService.validateCustomer(customerId);
+        validateVisibleCustomer(customerId);
         return businessInfoMapper.selectListByCustomerId(customerId);
     }
 

@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplierbusinessinfo.ErpSupplierBusinessInfoSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierBusinessInfoDO;
@@ -33,7 +35,10 @@ public class ErpSupplierBusinessInfoServiceImpl implements ErpSupplierBusinessIn
     @Override
     public void updateSupplierBusinessInfo(ErpSupplierBusinessInfoSaveReqVO updateReqVO) {
         validateSupplierExists(updateReqVO.getSupplierId());
-        validateSupplierBusinessInfoExists(updateReqVO.getId());
+        ErpSupplierBusinessInfoDO existing = validateSupplierBusinessInfoExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getSupplierId(), updateReqVO.getSupplierId())) {
+            throw exception(SUPPLIER_BUSINESS_INFO_NOT_EXISTS);
+        }
         supplierBusinessInfoMapper.updateById(BeanUtils.toBean(updateReqVO, ErpSupplierBusinessInfoDO.class));
     }
 
@@ -43,10 +48,11 @@ public class ErpSupplierBusinessInfoServiceImpl implements ErpSupplierBusinessIn
         supplierBusinessInfoMapper.deleteById(id);
     }
 
-    private void validateSupplierBusinessInfoExists(Long id) {
-        if (supplierBusinessInfoMapper.selectById(id) == null) {
-            throw exception(SUPPLIER_BUSINESS_INFO_NOT_EXISTS);
-        }
+    private ErpSupplierBusinessInfoDO validateSupplierBusinessInfoExists(Long id) {
+        ErpSupplierBusinessInfoDO existing = supplierBusinessInfoMapper.selectById(id);
+        if (existing == null) throw exception(SUPPLIER_BUSINESS_INFO_NOT_EXISTS);
+        validateSupplierExists(existing.getSupplierId());
+        return existing;
     }
 
     private void validateSupplierExists(Long supplierId) {
@@ -57,7 +63,7 @@ public class ErpSupplierBusinessInfoServiceImpl implements ErpSupplierBusinessIn
 
     @Override
     public ErpSupplierBusinessInfoDO getSupplierBusinessInfo(Long id) {
-        return supplierBusinessInfoMapper.selectById(id);
+        return validateSupplierBusinessInfoExists(id);
     }
 
     @Override
@@ -66,4 +72,11 @@ public class ErpSupplierBusinessInfoServiceImpl implements ErpSupplierBusinessIn
         return supplierBusinessInfoMapper.selectListBySupplierId(supplierId);
     }
 
+
+    @Override
+    public PageResult<ErpSupplierBusinessInfoDO> getSupplierBusinessInfoPage(ErpSupplierItemPageReqVO reqVO) {
+        validateSupplierExists(reqVO.getSupplierId());
+        reqVO.boundPageSize();
+        return supplierBusinessInfoMapper.selectPage(reqVO);
+    }
 }

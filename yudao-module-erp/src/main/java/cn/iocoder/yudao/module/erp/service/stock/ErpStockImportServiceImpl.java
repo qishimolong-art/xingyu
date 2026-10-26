@@ -3,7 +3,6 @@ package cn.iocoder.yudao.module.erp.service.stock;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
@@ -192,7 +191,7 @@ public class ErpStockImportServiceImpl implements ErpStockImportService {
                     item.setCount(BigDecimal.ZERO);
                     item.setTotalPrice(row.getTotalPrice() != null
                             ? requireNotNegative(row.getTotalPrice(), "盘点金额")
-                            : MoneyUtils.priceMultiply(productPrice, stockCount));
+                            : StockDecimalMath.multiply(productPrice, stockCount));
                 } else {
                     BigDecimal actualCount = requireNotNull(row.getActualCount(), "实际库存");
                     item.setActualCount(actualCount);

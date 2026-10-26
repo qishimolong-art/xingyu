@@ -26,6 +26,17 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Mapper
 public interface ErpStockOutItemMapper extends BaseMapperX<ErpStockOutItemDO> {
 
+    default PageResult<ErpStockOutItemDO> selectExportPageByOutIds(Collection<Long> ids, int pageNo) {
+        if (CollUtil.isEmpty(ids)) return PageResult.empty();
+        cn.iocoder.yudao.framework.common.pojo.PageParam page = new cn.iocoder.yudao.framework.common.pojo.PageParam();
+        page.setPageNo(pageNo); page.setPageSize(500);
+        StringBuilder order = new StringBuilder("CASE out_id ");
+        int position = 0;
+        for (Long id : ids) order.append("WHEN ").append(id.longValue()).append(" THEN ").append(position++).append(' ');
+        order.append("END");
+        return selectPage(page, new QueryWrapper<ErpStockOutItemDO>().in("out_id", ids).orderByAsc(order.toString(), "id"));
+    }
+
     default List<ErpStockOutItemDO> selectListByOutId(Long outId) {
         return selectList(buildSortedQuery(outId, null, null, null));
     }

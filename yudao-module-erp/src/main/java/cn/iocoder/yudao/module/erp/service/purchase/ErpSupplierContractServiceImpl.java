@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.suppliercontract.ErpSupplierContractSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierContractDO;
@@ -33,7 +35,10 @@ public class ErpSupplierContractServiceImpl implements ErpSupplierContractServic
     @Override
     public void updateSupplierContract(ErpSupplierContractSaveReqVO updateReqVO) {
         validateSupplierExists(updateReqVO.getSupplierId());
-        validateSupplierContractExists(updateReqVO.getId());
+        ErpSupplierContractDO existing = validateSupplierContractExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getSupplierId(), updateReqVO.getSupplierId())) {
+            throw exception(SUPPLIER_CONTRACT_NOT_EXISTS);
+        }
         supplierContractMapper.updateById(BeanUtils.toBean(updateReqVO, ErpSupplierContractDO.class));
     }
 
@@ -43,10 +48,11 @@ public class ErpSupplierContractServiceImpl implements ErpSupplierContractServic
         supplierContractMapper.deleteById(id);
     }
 
-    private void validateSupplierContractExists(Long id) {
-        if (supplierContractMapper.selectById(id) == null) {
-            throw exception(SUPPLIER_CONTRACT_NOT_EXISTS);
-        }
+    private ErpSupplierContractDO validateSupplierContractExists(Long id) {
+        ErpSupplierContractDO existing = supplierContractMapper.selectById(id);
+        if (existing == null) throw exception(SUPPLIER_CONTRACT_NOT_EXISTS);
+        validateSupplierExists(existing.getSupplierId());
+        return existing;
     }
 
     private void validateSupplierExists(Long supplierId) {
@@ -57,7 +63,7 @@ public class ErpSupplierContractServiceImpl implements ErpSupplierContractServic
 
     @Override
     public ErpSupplierContractDO getSupplierContract(Long id) {
-        return supplierContractMapper.selectById(id);
+        return validateSupplierContractExists(id);
     }
 
     @Override
@@ -66,4 +72,11 @@ public class ErpSupplierContractServiceImpl implements ErpSupplierContractServic
         return supplierContractMapper.selectListBySupplierId(supplierId);
     }
 
+
+    @Override
+    public PageResult<ErpSupplierContractDO> getSupplierContractPage(ErpSupplierItemPageReqVO reqVO) {
+        validateSupplierExists(reqVO.getSupplierId());
+        reqVO.boundPageSize();
+        return supplierContractMapper.selectPage(reqVO);
+    }
 }

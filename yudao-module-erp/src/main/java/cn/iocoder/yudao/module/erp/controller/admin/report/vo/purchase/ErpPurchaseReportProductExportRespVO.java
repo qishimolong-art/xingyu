@@ -42,18 +42,20 @@ public class ErpPurchaseReportProductExportRespVO {
     private Long docCount;
 
     @ExcelProperty("入库数量")
+    @cn.idev.excel.annotation.format.NumberFormat("0.######")
     private BigDecimal purchaseCount;
 
-    @ExcelProperty("入库金额")
+    @ExcelProperty(value = "入库金额", converter = cn.iocoder.yudao.module.erp.framework.excel.ErpTradeAmountExcelConverter.class)
     private String purchaseAmount;
 
     @ExcelProperty("退货数量")
+    @cn.idev.excel.annotation.format.NumberFormat("0.######")
     private BigDecimal returnCount;
 
-    @ExcelProperty("退货金额")
+    @ExcelProperty(value = "退货金额", converter = cn.iocoder.yudao.module.erp.framework.excel.ErpTradeAmountExcelConverter.class)
     private String returnAmount;
 
-    @ExcelProperty("采购净额")
+    @ExcelProperty(value = "采购净额", converter = cn.iocoder.yudao.module.erp.framework.excel.ErpTradeAmountExcelConverter.class)
     private String netAmount;
 
     @ExcelProperty("最近业务时间")

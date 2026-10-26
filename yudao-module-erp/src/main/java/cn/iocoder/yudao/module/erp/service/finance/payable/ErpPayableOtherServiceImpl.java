@@ -69,6 +69,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPayableOther(ErpPayableOtherSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         validatePayableAmountNonZero(createReqVO.getPayableAmount(), false);
         ErpSupplierDO supplier = supplierService.validateSupplier(createReqVO.getSupplierId());
         String no = noRedisDAO.generate("QTFK");
@@ -92,6 +93,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPayableOtherDraft(ErpPayableOtherDraftSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         validateDraftForSave(createReqVO.getSupplierId());
         String no = noRedisDAO.generate("QTFK");
@@ -114,6 +116,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createAndSubmitPayableOther(ErpPayableOtherSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         return createPayableOther(createReqVO);
     }
 
@@ -139,6 +142,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
         ErpPayableOtherDO doObj = new ErpPayableOtherDO()
                 .setNo(no)
                 .setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setApproveTime(payment.getApproveTime())
                 .setBizTime(payment.getPaymentTime() == null ? null : payment.getPaymentTime().toLocalDate())
                 .setSupplierId(payment.getSupplierId())
                 .setVoucherNo("")
@@ -161,6 +165,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePayableOther(ErpPayableOtherSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpPayableOtherDO db = validatePayableOtherExists(updateReqVO.getId());
         if (ErpPayableOtherStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_PAYABLE_DRAFT_UPDATE_FAIL, db.getNo());
@@ -193,6 +198,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePayableOtherDraft(ErpPayableOtherDraftSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpPayableOtherDO db = validatePayableOtherExists(updateReqVO.getId());
         if (!ErpPayableOtherStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_PAYABLE_DRAFT_UPDATE_FAIL, db.getNo());
@@ -222,6 +228,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateAndSubmitPayableOther(ErpPayableOtherSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         updatePayableOtherDraft(BeanUtils.toBean(updateReqVO, ErpPayableOtherDraftSaveReqVO.class));
         submitPayableOther(updateReqVO.getId());
     }
@@ -247,6 +254,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
 
     @Override
     public void updatePayableOtherRemark(ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpPayableOtherDO db = validatePayableOtherExists(updateReqVO.getId());
         payableOtherMapper.updateById(new ErpPayableOtherDO()
                 .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
@@ -263,7 +271,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
         }
         validateSupplierDept(db.getSupplierId(), db.getDeptId(), false);
         int affected = payableOtherMapper.updateByIdAndStatus(id, db.getStatus(),
-                ErpPayableOtherDO.builder().status(status).build());
+                ErpPayableOtherDO.builder().status(status).approveTime(java.time.LocalDateTime.now()).build());
         if (affected == 0) {
             throw exception(OTHER_PAYABLE_APPROVE_FAIL);
         }

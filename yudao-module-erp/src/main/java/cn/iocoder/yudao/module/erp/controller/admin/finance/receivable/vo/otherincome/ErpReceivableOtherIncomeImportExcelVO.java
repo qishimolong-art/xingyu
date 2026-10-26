@@ -57,6 +57,7 @@ public class ErpReceivableOtherIncomeImportExcelVO {
 
     @ExcelRequired
     @ExcelProperty("金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal amount;
 
     @ExcelProperty("发票号")

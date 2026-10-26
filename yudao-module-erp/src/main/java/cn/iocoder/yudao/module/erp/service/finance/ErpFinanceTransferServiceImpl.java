@@ -69,6 +69,7 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createFinanceTransfer(ErpFinanceTransferSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         ErpFinanceTransferDO transfer = BeanUtils.toBean(createReqVO, ErpFinanceTransferDO.class);
         permissionFieldFiller.fillCreateFields(transfer);
         validateFinanceTransferForSubmit(transfer);
@@ -87,17 +88,17 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createFinanceTransferDraft(ErpFinanceTransferDraftSaveReqVO createReqVO) {
-        validateDraftReferences(createReqVO.getOutAccountId(), createReqVO.getInAccountId(),
-                createReqVO.getFinanceUserId());
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
+        ErpFinanceTransferDO transfer = BeanUtils.toBean(createReqVO, ErpFinanceTransferDO.class);
+        permissionFieldFiller.fillCreateFields(transfer);
+        validateFinanceTransferForSubmit(transfer);
         String no = noRedisDAO.generateMonthSequence(ErpNoRedisDAO.FINANCE_TRANSFER_NO_PREFIX);
         if (financeTransferMapper.selectByNo(no) != null) {
             throw exception(FINANCE_TRANSFER_NO_EXISTS);
         }
-        ErpFinanceTransferDO transfer = BeanUtils.toBean(createReqVO, ErpFinanceTransferDO.class, in -> in
-                .setId(null)
-                .setNo(no)
-                .setStatus(ErpFinanceTransferStatusEnum.DRAFT.getStatus()));
-        permissionFieldFiller.fillCreateFields(transfer);
+        transfer.setId(null);
+        transfer.setNo(no);
+        transfer.setStatus(ErpFinanceTransferStatusEnum.DRAFT.getStatus());
         financeTransferMapper.insert(transfer);
         recordCreate(transfer);
         return transfer.getId();
@@ -106,12 +107,14 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createFinanceTransferAndSubmit(ErpFinanceTransferSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         return createFinanceTransfer(createReqVO);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateFinanceTransfer(ErpFinanceTransferSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpFinanceTransferDO transfer = validateFinanceTransferExists(updateReqVO.getId());
         if (ErpAuditStatus.APPROVE.getStatus().equals(transfer.getStatus())) {
             throw exception(FINANCE_TRANSFER_UPDATE_FAIL_APPROVE, transfer.getNo());
@@ -135,13 +138,12 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateFinanceTransferDraft(ErpFinanceTransferDraftSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpFinanceTransferDO transfer = validateFinanceTransferExists(updateReqVO.getId());
         if (!ErpFinanceTransferStatusEnum.DRAFT.getStatus().equals(transfer.getStatus())) {
             throw exception(FINANCE_TRANSFER_DRAFT_UPDATE_FAIL, transfer.getNo());
         }
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, transfer);
-        validateDraftReferences(updateReqVO.getOutAccountId(), updateReqVO.getInAccountId(),
-                updateReqVO.getFinanceUserId());
         ErpFinanceTransferDO updateObj = BeanUtils.toBean(updateReqVO, ErpFinanceTransferDO.class);
         updateObj.setId(transfer.getId());
         updateObj.setNo(transfer.getNo());
@@ -149,6 +151,7 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(transfer.getDeptId());
         }
+        validateFinanceTransferForSubmit(updateObj);
         if (financeTransferMapper.updateByIdAndStatus(transfer.getId(),
                 ErpFinanceTransferStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
             throw exception(FINANCE_TRANSFER_DRAFT_UPDATE_FAIL, transfer.getNo());
@@ -159,6 +162,7 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateFinanceTransferDraftAndSubmit(ErpFinanceTransferDraftSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         updateFinanceTransferDraft(updateReqVO);
         submitFinanceTransfer(updateReqVO.getId());
     }
@@ -184,6 +188,7 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
 
     @Override
     public void updateFinanceTransferRemark(ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpFinanceTransferDO transfer = validateFinanceTransferExists(updateReqVO.getId());
         financeTransferMapper.updateById(new ErpFinanceTransferDO()
                 .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
@@ -274,19 +279,6 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         if (financeUserId != null) {
             adminUserApi.validateUser(financeUserId);
         }
-    }
-
-    private void validateDraftReferences(Long outAccountId, Long inAccountId, Long financeUserId) {
-        if (outAccountId != null && inAccountId != null && ObjectUtil.equal(outAccountId, inAccountId)) {
-            throw exception(FINANCE_TRANSFER_ACCOUNTS_SAME);
-        }
-        if (outAccountId != null) {
-            accountService.validateAccount(outAccountId);
-        }
-        if (inAccountId != null) {
-            accountService.validateAccount(inAccountId);
-        }
-        validateFinanceUser(financeUserId);
     }
 
     private void normalizeFinanceTransfer(ErpFinanceTransferDO transfer) {

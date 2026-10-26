@@ -14,14 +14,17 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
@@ -34,6 +37,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
@@ -67,10 +71,12 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.Comparator;
@@ -91,6 +97,24 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 public class ErpSaleOrderController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_sale_order";
+    private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
+    private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
+    private static final Map<String, String> ORDER_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
+            "customerId", "customerName",
+            "customerName", "customerName",
+            "productId", "productIdentity",
+            "productCode", "productIdentity",
+            "productName", "productIdentity",
+            "factoryCode", "productIdentity",
+            "warehouseId", "warehouseName",
+            "warehouseName", "warehouseName",
+            "warehouse_name", "warehouseName",
+            "count", "itemCount",
+            "item_count", "itemCount",
+            "itemCount", "itemCount",
+            "productPrice", "productPrice",
+            "giftFlag", "giftFlag",
+            "remark", "itemRemark");
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
             "productId", "productIdentity",
             "productCode", "productIdentity",
@@ -214,6 +238,7 @@ public class ErpSaleOrderController {
                 }
                 if (customer != null) {
                     saleOrderVO.setCustomerName(customer.getName());
+                    saleOrderVO.setCustomerCode(customer.getCode());
                 }
                 saleOrderVO.setItems(BeanUtils.toBean(saleOrderItemList, ErpSaleOrderRespVO.Item.class, item -> {
                     BigDecimal stockCount = getStockCountIgnoreDataPermission(item.getProductId());
@@ -373,13 +398,25 @@ public class ErpSaleOrderController {
     @PreAuthorize("@ss.hasPermission('erp:sale-order:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportSaleOrderExcel(@Valid ErpSaleOrderPageReqVO pageReqVO,
+                                    @RequestParam(value = "fields", required = false) String fields,
                                     HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleOrderRespVO> list = buildSaleOrderVOPageResult(saleOrderService.getSaleOrderPage(pageReqVO)).getList();
         fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, list);
         List<ErpSaleOrderExportRespVO> rows = buildSaleOrderExportList(list);
         fieldPermissionMasker.maskSaleDetailExportRows(FIELD_PERMISSION_MODULE, rows);
-        ExcelUtils.write(response, "销售订单.xls", "数据", ErpSaleOrderExportRespVO.class, rows);
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpSaleOrderExportRespVO.class,
+                ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE, false), EXPORT_FIELD_PERMISSION_MAP);
+        ExcelUtils.write(response, "销售订单.xls", "数据", ErpSaleOrderExportRespVO.class, rows, includeFields);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得销售订单导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getSaleOrderExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpSaleOrderExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE, false), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     @GetMapping("/export-import-template")
@@ -392,11 +429,40 @@ public class ErpSaleOrderController {
         example.setProductPrice(new BigDecimal("100.00"));
         example.setTaxPercent(BigDecimal.ZERO);
         example.setRemark("备注");
-        ExcelUtils.writeImportTemplate(response, "销售订单导入模板.xls", "销售订单",
+        ExcelUtils.writeImportTemplate(response, "销售订单明细导入模板.xls", "销售订单明细",
                 ErpSaleOrderImportExcelVO.class, Collections.singletonList(example), null,
                 ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
                         ErpFieldConfigModuleEnum.SALE_ORDER, ErpSaleOrderImportExcelVO.class,
                         DETAIL_IMPORT_FIELD_ALIAS_MAP));
+    }
+
+    @GetMapping("/get-order-import-template")
+    @Operation(summary = "获得销售订单整单导入模板")
+    public void getOrderImportTemplate(HttpServletResponse response) throws IOException {
+        ErpSaleOrderOrderImportExcelVO example = new ErpSaleOrderOrderImportExcelVO();
+        example.setImportNo("ORDER-001");
+        example.setCustomerName("示例客户");
+        example.setOrderTime("2026-10-22");
+        example.setRemark("整单备注");
+        example.setProductCode("P0001");
+        example.setProductName("示例配件一");
+        example.setWarehouseName("默认仓库");
+        example.setItemCount(BigDecimal.ONE);
+        example.setProductPrice(new BigDecimal("100.00"));
+        example.setGiftFlag(Boolean.FALSE);
+        example.setItemRemark("明细备注");
+        ErpSaleOrderOrderImportExcelVO secondItem = new ErpSaleOrderOrderImportExcelVO();
+        secondItem.setProductCode("P0002");
+        secondItem.setProductName("示例配件二");
+        secondItem.setWarehouseName("默认仓库");
+        secondItem.setItemCount(BigDecimal.ONE);
+        secondItem.setProductPrice(new BigDecimal("50.00"));
+        secondItem.setGiftFlag(Boolean.FALSE);
+        ExcelUtils.writeImportTemplate(response, "销售订单整单导入模板.xls", "销售订单整单",
+                ErpSaleOrderOrderImportExcelVO.class, Arrays.asList(example, secondItem), null,
+                ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
+                        ErpFieldConfigModuleEnum.SALE_ORDER, ErpSaleOrderOrderImportExcelVO.class,
+                        ORDER_IMPORT_FIELD_ALIAS_MAP));
     }
 
     @PostMapping("/import")
@@ -405,6 +471,15 @@ public class ErpSaleOrderController {
     public CommonResult<ErpSaleOrderImportRespVO> importSaleOrder(@RequestParam("file") MultipartFile file) throws Exception {
         List<ErpSaleOrderImportExcelVO> list = ExcelUtils.read(file, ErpSaleOrderImportExcelVO.class);
         return success(saleOrderService.parseImportData(list));
+    }
+
+    @PostMapping("/import-order")
+    @Operation(summary = "导入销售订单整单")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:create')")
+    public CommonResult<ErpSaleImportResultRespVO> importSaleOrderList(
+            @RequestParam("file") MultipartFile file) throws Exception {
+        return success(saleOrderService.importSaleOrderList(
+                ExcelUtils.read(file, ErpSaleOrderOrderImportExcelVO.class)));
     }
 
     @GetMapping("/import-failure-details/download")
@@ -430,6 +505,8 @@ public class ErpSaleOrderController {
                 convertSet(saleOrderItemList, ErpSaleOrderItemDO::getWarehouseId));
         Map<Long, SaleOrderItemCost> itemCostMap = getSaleOrderItemCostMap(
                 convertSet(saleOrderItemList, ErpSaleOrderItemDO::getId));
+        Map<Long, BigDecimal> stockCountMap = getStockCountMapIgnoreDataPermission(
+                convertSet(saleOrderItemList, ErpSaleOrderItemDO::getProductId));
         // 1.3 客户信息
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpSaleOrderDO::getCustomerId));
@@ -445,6 +522,7 @@ public class ErpSaleOrderController {
         return BeanUtils.toBean(pageResult, ErpSaleOrderRespVO.class, saleOrder -> {
             saleOrder.setItems(BeanUtils.toBean(saleOrderItemMap.get(saleOrder.getId()), ErpSaleOrderRespVO.Item.class,
                     item -> {
+                        item.setStockCount(stockCountMap.getOrDefault(item.getProductId(), BigDecimal.ZERO));
                         MapUtils.findAndThen(productMap, item.getProductId(),
                                 product -> item.setProductName(product.getName())
                                         .setProductBarCode(product.getBarCode())
@@ -462,7 +540,10 @@ public class ErpSaleOrderController {
                             }));
             itemPriceReferenceFiller.fill(saleOrder.getItems());
             saleOrder.setProductNames(CollUtil.join(saleOrder.getItems(), "，", ErpSaleOrderRespVO.Item::getProductName));
-            MapUtils.findAndThen(customerMap, saleOrder.getCustomerId(), supplier -> saleOrder.setCustomerName(supplier.getName()));
+            MapUtils.findAndThen(customerMap, saleOrder.getCustomerId(), customer -> {
+                saleOrder.setCustomerName(customer.getName());
+                saleOrder.setCustomerCode(customer.getCode());
+            });
             fillAuditNames(saleOrder, userMap);
             MapUtils.findAndThen(deptMap, saleOrder.getDeptId(), dept -> saleOrder.setDeptName(dept.getName()));
         });
@@ -512,7 +593,7 @@ public class ErpSaleOrderController {
         }
         item.setSaleCostAmount(cost.getAmount());
         if (cost.getCount().compareTo(BigDecimal.ZERO) > 0) {
-            item.setSaleCostPrice(cost.getAmount().divide(cost.getCount(), 2, RoundingMode.HALF_UP));
+            item.setSaleCostPrice(cost.getAmount().divide(cost.getCount(), 6, RoundingMode.HALF_UP));
         }
     }
 
@@ -558,7 +639,10 @@ public class ErpSaleOrderController {
         return BeanUtils.toBean(pageResult, ErpSaleOrderRespVO.class, saleOrder -> {
             saleOrder.setProductNames(productNamesMap.get(saleOrder.getId()));
             MapUtils.findAndThen(customerMap, saleOrder.getCustomerId(),
-                    customer -> saleOrder.setCustomerName(customer.getName()));
+                    customer -> {
+                        saleOrder.setCustomerName(customer.getName());
+                        saleOrder.setCustomerCode(customer.getCode());
+                    });
             fillAuditNames(saleOrder, userMap);
             MapUtils.findAndThen(deptMap, saleOrder.getDeptId(), dept -> saleOrder.setDeptName(dept.getName()));
         });
@@ -574,7 +658,8 @@ public class ErpSaleOrderController {
 
     private Set<Long> convertUserIds(List<ErpSaleOrderDO> saleOrders) {
         Set<Long> userIds = convertSetByFlatMap(saleOrders, saleOrder -> {
-            List<Long> ids = new ArrayList<>(2);
+            List<Long> ids = new ArrayList<>(3);
+            ids.add(saleOrder.getSaleUserId());
             parseUserId(saleOrder.getCreator(), ids);
             parseUserId(saleOrder.getUpdater(), ids);
             return ids.stream();
@@ -609,6 +694,8 @@ public class ErpSaleOrderController {
     }
 
     private void fillAuditNames(ErpSaleOrderRespVO saleOrder, Map<Long, AdminUserRespDTO> userMap) {
+        MapUtils.findAndThen(userMap, saleOrder.getSaleUserId(),
+                user -> saleOrder.setSaleUserName(user.getNickname()));
         Long creatorId = parseUserId(saleOrder.getCreator());
         if (creatorId != null) {
             MapUtils.findAndThen(userMap, creatorId, user -> saleOrder.setCreatorName(user.getNickname()));
@@ -666,14 +753,73 @@ public class ErpSaleOrderController {
         row.setProductUnitName(item.getProductUnitName());
         row.setWeight(item.getWeight());
         row.setPackageQty(item.getPackageQty());
+        if (item.getCount() != null && item.getPackageQty() != null && item.getPackageQty() > 0) {
+            row.setPieceCount(item.getCount().divide(BigDecimal.valueOf(item.getPackageQty()),
+                    3, RoundingMode.HALF_UP).stripTrailingZeros());
+        }
         row.setBatchNo(item.getBatchNo());
         row.setItemCount(item.getCount());
         row.setProductPrice(item.getProductPrice());
+        row.setLastSalePrice(item.getLastSalePrice());
         row.setItemTotalPrice(item.getTotalPrice());
         row.setItemTaxPercent(item.getTaxPercent());
         row.setItemTaxPrice(item.getTaxPrice());
+        row.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()) ? "是" : "否");
+        row.setWarehouseName(item.getWarehouseName());
+        row.setItemDeptName(item.getWarehouseDeptName());
+        row.setStockCount(item.getStockCount());
+        row.setItemOutCount(item.getOutCount());
+        row.setItemReturnCount(item.getReturnCount());
+        row.setProductBarCode(item.getProductBarCode());
         row.setItemRemark(item.getRemark());
         return row;
+    }
+
+    private static Map<String, String> buildExportFieldGroupMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        for (String field : Arrays.asList("no", "customerName", "status", "saleUserName", "deptName",
+                "orderTime", "totalCount", "outCount", "returnCount", "totalProductPrice", "totalPrice",
+                "discountPrice", "feeAmount", "depositPrice", "remark")) {
+            map.put(field, "main");
+        }
+        for (String field : Arrays.asList("creatorName", "createTime", "updaterName", "updateTime")) {
+            map.put(field, "system");
+        }
+        for (String field : Arrays.asList("productCode", "productName", "productUnitName", "weight",
+                "packageQty", "pieceCount", "batchNo", "itemCount", "productPrice", "lastSalePrice",
+                "itemTotalPrice", "itemTaxPercent", "itemTaxPrice", "giftFlag", "warehouseName",
+                "itemDeptName", "stockCount", "itemOutCount", "itemReturnCount", "productBarCode",
+                "itemRemark")) {
+            map.put(field, "detail");
+        }
+        return map;
+    }
+
+    private static Map<String, String> buildExportFieldPermissionMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("customerName", "customerId");
+        map.put("saleUserName", "saleUserId");
+        map.put("deptName", "deptId");
+        map.put("productCode", "item_productCode");
+        map.put("productName", "item_productId");
+        map.put("productUnitName", "item_productUnitName");
+        map.put("weight", "item_weight");
+        map.put("packageQty", "item_packageQty");
+        map.put("pieceCount", "item_count");
+        map.put("itemCount", "item_count");
+        map.put("productPrice", "item_productPrice");
+        map.put("lastSalePrice", "item_lastSalePrice");
+        map.put("itemTotalPrice", "item_totalPrice");
+        map.put("itemTaxPercent", "item_taxPercent");
+        map.put("itemTaxPrice", "item_taxPrice");
+        map.put("giftFlag", "item_giftFlag");
+        map.put("warehouseName", "item_warehouseId");
+        map.put("itemDeptName", "item_deptId");
+        map.put("stockCount", "item_stockCount");
+        map.put("batchNo", "item_batchNo");
+        map.put("productBarCode", "item_productBarCode");
+        map.put("itemRemark", "item_remark");
+        return map;
     }
 
 }

@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplierimage.ErpSupplierImageSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierImageDO;
 
@@ -12,5 +14,7 @@ public interface ErpSupplierImageService {
     void deleteSupplierImage(Long id);
     ErpSupplierImageDO getSupplierImage(Long id);
     List<ErpSupplierImageDO> getSupplierImageList(Long supplierId);
+
+    PageResult<ErpSupplierImageDO> getSupplierImagePage(ErpSupplierItemPageReqVO reqVO);
 
 }

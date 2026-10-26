@@ -5,6 +5,8 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnOrderImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
@@ -57,6 +59,15 @@ public interface ErpSaleReturnService {
     void batchUpdateSaleReturnItems(@Valid ErpSaleReturnItemBatchUpdateReqVO updateReqVO);
 
     void submitSaleReturn(Long id);
+
+    /** 下单确认并生成销售退货拣货任务。 */
+    void confirmSaleReturn(Long id, String expectedCostBasisSignature);
+
+    /** 撤销尚未开始拣货的下单确认。 */
+    void cancelConfirmSaleReturn(Long id);
+
+    /** 整单拣货完成后自动审批；仅供拣货完成事件调用。 */
+    void autoApproveAfterPick(Long id, Long pickUserId);
 
     void updateSaleReturnRemark(@Valid ErpSaleUpdateRemarkReqVO updateReqVO);
 
@@ -155,5 +166,8 @@ public interface ErpSaleReturnService {
             @Valid ErpSaleReturnCreatePurchaseReturnReqVO reqVO);
 
     ErpSaleReturnImportRespVO parseImportData(List<ErpSaleReturnImportExcelVO> list);
+
+    ErpSaleImportResultRespVO importSaleReturnOrderList(
+            List<ErpSaleReturnOrderImportExcelVO> list);
 
 }

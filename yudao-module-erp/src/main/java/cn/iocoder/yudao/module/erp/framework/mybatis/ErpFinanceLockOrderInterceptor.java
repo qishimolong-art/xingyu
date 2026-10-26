@@ -5,18 +5,26 @@ import com.baomidou.mybatisplus.extension.plugins.inner.InnerInterceptor;
 import org.apache.ibatis.executor.statement.StatementHandler;
 
 import java.sql.Connection;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * JSqlParser 4.9 会把收付款明细的 FOR UPDATE 输出到 ORDER BY 前面。
- * 仅在 JDBC prepare 前修复这两处已知查询，避免后续权限解析再次改变顺序。
+ * JSqlParser 4.9 会把部分 ERP 明细锁定查询的 FOR UPDATE 输出到 ORDER BY 前面。
+ * 仅在 JDBC prepare 前修复已知查询，避免后续租户或数据权限解析再次改变顺序。
  */
 public class ErpFinanceLockOrderInterceptor implements InnerInterceptor {
 
-    private static final String MAPPER_PREFIX = "cn.iocoder.yudao.module.erp.dal.mysql.finance.";
-    private static final String PAYMENT_SELECT = MAPPER_PREFIX + "ErpFinancePaymentItemMapper.selectList";
-    private static final String RECEIPT_SELECT = MAPPER_PREFIX + "ErpFinanceReceiptItemMapper.selectList";
+    private static final String FINANCE_MAPPER_PREFIX = "cn.iocoder.yudao.module.erp.dal.mysql.finance.";
+    private static final String PURCHASE_MAPPER_PREFIX = "cn.iocoder.yudao.module.erp.dal.mysql.purchase.";
+    private static final Set<String> LOCK_SELECTS = Set.of(
+            FINANCE_MAPPER_PREFIX + "ErpFinancePaymentItemMapper.selectList",
+            FINANCE_MAPPER_PREFIX + "ErpFinanceReceiptItemMapper.selectList",
+            FINANCE_MAPPER_PREFIX + "receivable.ErpReceivableOtherIncomeItemMapper.selectList",
+            FINANCE_MAPPER_PREFIX + "payable.ErpPayableExpenseItemMapper.selectList",
+            PURCHASE_MAPPER_PREFIX + "ErpPurchaseInItemMapper.selectList",
+            PURCHASE_MAPPER_PREFIX + "ErpPurchasePriceAdjustItemMapper.selectList",
+            PURCHASE_MAPPER_PREFIX + "ErpPurchaseReturnItemMapper.selectList");
     private static final Pattern INVALID_TAIL = Pattern.compile(
             "\\s+FOR\\s+UPDATE\\s+ORDER\\s+BY\\s+id\\s+ASC\\s*\\z", Pattern.CASE_INSENSITIVE);
 
@@ -24,7 +32,7 @@ public class ErpFinanceLockOrderInterceptor implements InnerInterceptor {
     public void beforePrepare(StatementHandler statementHandler, Connection connection, Integer transactionTimeout) {
         PluginUtils.MPStatementHandler handler = PluginUtils.mpStatementHandler(statementHandler);
         String statementId = handler.mappedStatement().getId();
-        if (!PAYMENT_SELECT.equals(statementId) && !RECEIPT_SELECT.equals(statementId)) {
+        if (!LOCK_SELECTS.contains(statementId)) {
             return;
         }
         PluginUtils.MPBoundSql boundSql = handler.mPBoundSql();

@@ -68,19 +68,15 @@ public final class ErpWarehouseMoveDetailReportModels {
         private String originPlace;
         @ExcelProperty(value = "单位", index = 7)
         private String unitName;
-        @ExcelProperty(value = "移动数", index = 8)
+        @ExcelProperty(value = "移动数", index = 8, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
         private BigDecimal count;
-        @ExcelProperty(value = "单价", index = 9)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "单价", index = 9, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal costPrice;
-        @ExcelProperty(value = "金额", index = 10)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "金额", index = 10, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal costAmount;
-        @ExcelProperty(value = "移货单价", index = 11)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "移货单价", index = 11, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal movePrice;
-        @ExcelProperty(value = "移货金额", index = 12)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "移货金额", index = 12, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal moveAmount;
         @ExcelProperty(value = "移出仓库", index = 13)
         private String fromWarehouseName;
@@ -100,7 +96,7 @@ public final class ErpWarehouseMoveDetailReportModels {
         private String drawingNo;
         @ExcelProperty(value = "特征码", index = 21)
         private String featureCode;
-        @ExcelProperty(value = "明细备注", index = 22)
+        @ExcelProperty(value = "明细备注", index = 22, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
         private String itemRemark;
 
         private Boolean costVisible;

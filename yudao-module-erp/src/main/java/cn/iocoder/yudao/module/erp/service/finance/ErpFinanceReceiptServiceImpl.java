@@ -146,6 +146,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Long createFinanceReceipt(ErpFinanceReceiptSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         // 1.1 校验订单项的有效性
@@ -190,10 +191,14 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Long createFinanceReceiptDraft(ErpFinanceReceiptDraftSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         List<ErpFinanceReceiptItemDO> receiptItems = buildFinanceReceiptDraftItems(createReqVO.getItems());
-        if (CollUtil.isEmpty(receiptItems) && createReqVO.getSourceReceivableMiscId() == null) {
+        if (CollUtil.isEmpty(receiptItems) && createReqVO.getSourceReceivableMiscId() == null
+                && !ErpFinanceSettlementDraftHelper.hasHeaderContent(createReqVO.getCustomerId(),
+                        createReqVO.getTotalPrice(), createReqVO.getDiscountPrice(),
+                        createReqVO.getPaymentVoucherNo(), createReqVO.getRemark())) {
             throw exception(FINANCE_RECEIPT_DRAFT_ITEMS_REQUIRED);
         }
         String no = noRedisDAO.generate(ErpNoRedisDAO.FINANCE_RECEIPT_NO_PREFIX);
@@ -220,12 +225,14 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Long createAndSubmitFinanceReceipt(ErpFinanceReceiptSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         return createFinanceReceipt(createReqVO);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void updateFinanceReceipt(ErpFinanceReceiptSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         // 1.1 校验存在
         ErpFinanceReceiptDO receipt = financeReceiptMapper.selectByIdForUpdate(updateReqVO.getId());
         if (receipt == null) throw exception(FINANCE_RECEIPT_NOT_EXISTS);
@@ -294,6 +301,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void updateFinanceReceiptDraft(ErpFinanceReceiptDraftSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpFinanceReceiptDO receipt = financeReceiptMapper.selectByIdForUpdate(updateReqVO.getId());
         if (receipt == null) throw exception(FINANCE_RECEIPT_NOT_EXISTS);
         if (!ErpFinanceReceiptStatusEnum.DRAFT.getStatus().equals(receipt.getStatus())) {
@@ -350,6 +358,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void updateAndSubmitFinanceReceipt(ErpFinanceReceiptSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpFinanceReceiptDraftSaveReqVO draftReqVO =
                 BeanUtils.toBean(updateReqVO, ErpFinanceReceiptDraftSaveReqVO.class);
         updateFinanceReceiptDraft(draftReqVO);
@@ -393,6 +402,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
 
     @Override
     public void updateFinanceReceiptRemark(ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpFinanceReceiptDO receipt = validateFinanceReceiptExists(updateReqVO.getId());
         financeReceiptMapper.updateById(new ErpFinanceReceiptDO()
                 .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
@@ -499,6 +509,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         if (updateCount == 0) {
             throw exception(FINANCE_RECEIPT_APPROVE_FAIL);
         }
+        receipt.setApproveTime(now);
         Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
         pendingItems.forEach(item -> item.setWriteOffStatus(ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus())
                 .setWriteOffTime(now).setWriteOffUserId(loginUserId));
@@ -1384,6 +1395,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void writeOffFinanceReceipt(ErpFinanceReceiptWriteOffReqVO reqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(reqVO);
         ErpFinanceReceiptDO receipt = financeReceiptMapper.selectByIdForUpdate(reqVO.getReceiptId());
         if (receipt == null) {
             throw exception(FINANCE_RECEIPT_NOT_EXISTS);

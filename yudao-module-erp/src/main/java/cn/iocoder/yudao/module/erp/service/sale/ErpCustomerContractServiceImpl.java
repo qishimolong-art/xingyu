@@ -34,7 +34,10 @@ public class ErpCustomerContractServiceImpl implements ErpCustomerContractServic
 
     @Override
     public void updateContract(ErpCustomerContractSaveReqVO updateReqVO) {
-        validateContractExists(updateReqVO.getId());
+        ErpCustomerContractDO existing = validateContractExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getCustomerId(), updateReqVO.getCustomerId())) {
+            throw exception(CUSTOMER_CONTRACT_NOT_EXISTS);
+        }
         customerService.validateCustomer(updateReqVO.getCustomerId());
         contractMapper.updateById(BeanUtils.toBean(updateReqVO, ErpCustomerContractDO.class));
     }
@@ -45,25 +48,36 @@ public class ErpCustomerContractServiceImpl implements ErpCustomerContractServic
         contractMapper.deleteById(id);
     }
 
-    private void validateContractExists(Long id) {
-        if (contractMapper.selectById(id) == null) {
-            throw exception(CUSTOMER_CONTRACT_NOT_EXISTS);
+    private ErpCustomerContractDO validateContractExists(Long id) {
+        ErpCustomerContractDO existing = contractMapper.selectById(id);
+        if (existing == null) throw exception(CUSTOMER_CONTRACT_NOT_EXISTS);
+        validateVisibleCustomer(existing.getCustomerId());
+        return existing;
+    }
+
+    private void validateVisibleCustomer(Long customerId) {
+        if (customerId == null || customerService.getCustomer(customerId) == null) {
+            throw exception(cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS);
         }
     }
 
     @Override
     public ErpCustomerContractDO getContract(Long id) {
-        return contractMapper.selectById(id);
+        ErpCustomerContractDO existing = contractMapper.selectById(id);
+        if (existing != null) validateVisibleCustomer(existing.getCustomerId());
+        return existing;
     }
 
     @Override
     public PageResult<ErpCustomerContractDO> getContractPage(ErpCustomerContractPageReqVO pageReqVO) {
+        validateVisibleCustomer(pageReqVO.getCustomerId());
+        if (pageReqVO.getPageSize() <= 0 || pageReqVO.getPageSize() > 100) pageReqVO.setPageSize(100);
         return contractMapper.selectPage(pageReqVO);
     }
 
     @Override
     public List<ErpCustomerContractDO> getContractListByCustomerId(Long customerId) {
-        customerService.validateCustomer(customerId);
+        validateVisibleCustomer(customerId);
         return contractMapper.selectListByCustomerId(customerId);
     }
 

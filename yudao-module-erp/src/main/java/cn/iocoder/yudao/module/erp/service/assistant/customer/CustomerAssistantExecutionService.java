@@ -23,6 +23,9 @@ public class CustomerAssistantExecutionService {
     @Resource private CustomerAssistantToolRegistry tools;
     @Resource private CustomerAssistantQueryService queries;
     @Resource private AssistantModelClient model;
+    @Resource private AssistantUnderstandingService understandingService;
+    @Resource private CustomerAssistantSemanticExecutor semanticExecutor;
+    @Resource private AssistantProperties properties;
 
     private final ExecutorService workers=new ThreadPoolExecutor(2,4,60,TimeUnit.SECONDS,new ArrayBlockingQueue<>(16),new ThreadPoolExecutor.AbortPolicy());
     private final ScheduledExecutorService deadlines=Executors.newSingleThreadScheduledExecutor();
@@ -32,7 +35,7 @@ public class CustomerAssistantExecutionService {
     @Data public static class Request {private String conversationId;private String question;private String choiceField;private Long choiceId;}
     public interface EventSink {void emit(String event,Object data)throws Exception;void complete();}
     @AllArgsConstructor public class Handle {private final String requestId;public String getRequestId(){return requestId;}public void stop(boolean timeout){stopInternal(requestId,timeout);}}
-    private static class Running {final String conversationId;final CustomerAssistantPrincipal principal;final AtomicBoolean stopped=new AtomicBoolean();volatile Future<?> future;Running(String id,CustomerAssistantPrincipal p){conversationId=id;principal=p;}}
+    private static class Running {final String conversationId;final CustomerAssistantPrincipal principal;final AssistantTask task=new AssistantTask();final AtomicBoolean stopped=new AtomicBoolean();volatile Future<?> future;Running(String id,CustomerAssistantPrincipal p){conversationId=id;principal=p;}}
 
     public Handle execute(Request request,EventSink sink){CustomerAssistantPrincipal principal=contextService.current();store.owner(request.getConversationId(),principal);if(!busy.add(request.getConversationId()))throw new AssistantFailure("BUSY","当前会话正在查询，请稍后重试");
         SecurityContext security=SecurityContextHolder.createEmptyContext();security.setAuthentication(SecurityContextHolder.getContext().getAuthentication());String requestId=UUID.randomUUID().toString();Running running=new Running(request.getConversationId(),principal);active.put(requestId,running);
@@ -42,10 +45,31 @@ public class CustomerAssistantExecutionService {
     public boolean isConversationBusy(String id){return busy.contains(id);}
 
     private void run(Request request,EventSink sink,String requestId,Running running,SecurityContext security,ScheduledFuture<?> deadline){SecurityContextHolder.setContext(security);TenantContextHolder.setTenantId(running.principal.getTenantId());TenantContextHolder.setIgnore(false);long start=System.currentTimeMillis();String messageId=null,status="FAILED",capability=null;Object saved=null;model.beginRequest();
+        AssistantTask.attach(running.task);
         try{CustomerAssistantPrincipal current=contextService.current();
             if(!Objects.equals(current.getMemberUserId(),running.principal.getMemberUserId())||!Objects.equals(current.getCustomerId(),running.principal.getCustomerId()))
                 throw new AssistantFailure("CUSTOMER_BINDING_CHANGED","客户绑定已变化，请重新进入智能客服");
             store.owner(request.getConversationId(),current);checkStopped(running,false);messageId=store.begin(request.getConversationId(),AssistantModelClient.redact(request.getQuestion()),current);emit(sink,"started",Collections.singletonMap("requestId",requestId),running);emit(sink,"progress",Collections.singletonMap("text","正在理解问题"),running);
+            if (understandingService != null && properties.isSemanticUnderstandingEnabled()) {
+                Map<String,Object> previous = store.previousExecution(request.getConversationId(), current);
+                if (request.getChoiceId() != null && (request.getChoiceField() == null || !request.getChoiceField().startsWith("task:")))
+                    throw new AssistantFailure("INVALID_CHOICE", "候选项已失效，请重新提问");
+                Map<String,Object> context = previous.get("understanding") == null ? Collections.emptyMap()
+                        : Collections.singletonMap("understanding", previous.get("understanding"));
+                AssistantUnderstandingResult understanding = request.getChoiceId() == null
+                        ? understandingService.understand(request.getQuestion(), context, tools.definitions(), true)
+                        : semanticExecutor.savedUnderstanding(previous);
+                emit(sink,"progress",Collections.singletonMap("text","正在核对客户范围并查询"),running);
+                Map<String,Object> result = semanticExecutor.execute(understanding, previous, current, request.getChoiceField(), request.getChoiceId());
+                Object execution = result.remove("_execution");
+                capability = understanding.getTasks().size() == 1 ? understanding.getTasks().get(0).getCapability() : "CUSTOMER_MULTI_TASK";
+                status = String.valueOf(result.get("status"));
+                Map<String,Object> response = "CLARIFY".equals(status) ? AssistantEntryProtocol.clarification(result)
+                        : AssistantEntryProtocol.result(result, null, messageId);
+                saved = new LinkedHashMap<>(response); ((Map<String,Object>)saved).put("_execution", execution);
+                emit(sink,"CLARIFY".equals(status)?"clarification":"result",response,running);
+                emit(sink,"done",AssistantEntryProtocol.done(status),running); sink.complete(); return;
+            }
             if(FORBIDDEN.matcher(request.getQuestion()).find())throw new AssistantFailure("CAPABILITY_FORBIDDEN","该问题不在客户智能客服开放范围内，请转人工客服");
             AssistantToolCall call=model.chooseTool(request.getQuestion(),Collections.singletonMap("channel","CUSTOMER_APP"),tools.definitions(),SYSTEM);capability=call.getName();Map<String,Object> args=new LinkedHashMap<>(call.getArguments());if(request.getChoiceId()!=null)args.put("productId",request.getChoiceId());
             if(!tools.isAllowed(call.getName()))throw new AssistantFailure("CAPABILITY_FORBIDDEN","该能力未向客户开放");
@@ -54,11 +78,11 @@ public class CustomerAssistantExecutionService {
             saved=AssistantEntryProtocol.result(result,null,messageId);status=String.valueOf(result.get("status"));emit(sink,"result",saved,running);emit(sink,"done",AssistantEntryProtocol.done(status),running);sink.complete();
         }catch(CustomerAssistantQueryService.ProductChoice choice){status="CLARIFY";saved=AssistantEntryProtocol.clarification(choice.getResponse());safeEmit(sink,"clarification",saved);safeEmit(sink,"done",AssistantEntryProtocol.done(status));sink.complete();
         }catch(Exception e){boolean timeout=running.stopped.get()&&System.currentTimeMillis()-start>=59_000;status=timeout?"TIMEOUT":running.stopped.get()?"CANCELLED":e instanceof AssistantFailure?((AssistantFailure)e).getCode():"QUERY_FAILED";String text=timeout?"查询超时，请缩小范围后重试":running.stopped.get()?"查询已停止":e instanceof AssistantFailure?e.getMessage():"查询未完成，请稍后重试";saved=AssistantEntryProtocol.error(status,text);safeEmit(sink,"error",saved);sink.complete();
-        }finally{try{if(messageId!=null)store.finish(messageId,running.principal,status,saved,System.currentTimeMillis()-start,model.takeTokens(),capability);}catch(Exception ignored){}deadline.cancel(false);active.remove(requestId);busy.remove(request.getConversationId());TenantContextHolder.clear();SecurityContextHolder.clearContext();model.takeTokens();}}
+        }finally{try{if(messageId!=null)store.finish(messageId,running.principal,status,saved,System.currentTimeMillis()-start,model.takeTokens(),capability);}catch(Exception ignored){}deadline.cancel(false);active.remove(requestId);busy.remove(request.getConversationId());TenantContextHolder.clear();SecurityContextHolder.clearContext();model.takeTokens();AssistantTask.clear();}}
     private void emit(EventSink sink,String event,Object data,Running running)throws Exception{checkStopped(running,false);sink.emit(event,data);}
     private void safeEmit(EventSink sink,String event,Object data){try{sink.emit(event,data);}catch(Exception ignored){}}
     private void checkStopped(Running r,boolean timeout){if(r.stopped.get())throw new AssistantFailure(timeout?"TIMEOUT":"CANCELLED",timeout?"查询超时":"查询已停止");}
-    private void stopInternal(String id,boolean timeout){Running r=active.get(id);if(r==null)return;r.stopped.set(true);Future<?> f=r.future;if(f!=null)f.cancel(true);}
+    private void stopInternal(String id,boolean timeout){Running r=active.get(id);if(r==null)return;r.stopped.set(true);if(timeout)r.task.timeout();else r.task.cancel();Future<?> f=r.future;if(f!=null)f.cancel(true);}
     private String string(Object value,String fallback){return value==null||String.valueOf(value).trim().isEmpty()?fallback:String.valueOf(value);}
     @PreDestroy public void shutdown(){active.keySet().forEach(id->stopInternal(id,false));workers.shutdownNow();deadlines.shutdownNow();}
 }

@@ -59,9 +59,21 @@ public class ErpStockInDO extends BaseDO {
     /**
      * 状态
      *
-     * 枚举 {@link cn.iocoder.yudao.module.erp.enums.ErpAuditStatus}
+     * 枚举 {@link cn.iocoder.yudao.module.erp.enums.stock.ErpStockInStatusEnum}
      */
     private Integer status;
+    /**
+     * 下单确认人
+     */
+    private Long confirmUserId;
+    /**
+     * 下单确认时间
+     */
+    private LocalDateTime confirmTime;
+    /**
+     * 审批人
+     */
+    private Long approveUserId;
     /**
      * 审核时间
      */

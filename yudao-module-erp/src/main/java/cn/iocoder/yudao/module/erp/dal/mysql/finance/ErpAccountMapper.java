@@ -46,6 +46,15 @@ public interface ErpAccountMapper extends BaseMapperX<ErpAccountDO> {
                         ErpAccountDocumentStatusEnum.SUBMITTED.getStatus()));
     }
 
+    default ErpAccountDO selectEnabledDefaultAccount() {
+        return selectOne(new LambdaQueryWrapperX<ErpAccountDO>()
+                .eq(ErpAccountDO::getDefaultStatus, true)
+                .eq(ErpAccountDO::getStatus, 0)
+                .eq(ErpAccountDO::getDocumentStatus,
+                        ErpAccountDocumentStatusEnum.SUBMITTED.getStatus())
+                .last("LIMIT 1"));
+    }
+
     default List<ErpAccountDO> selectListByStatus(Integer status) {
         return selectList(new LambdaQueryWrapperX<ErpAccountDO>()
                 .eq(ErpAccountDO::getStatus, status)

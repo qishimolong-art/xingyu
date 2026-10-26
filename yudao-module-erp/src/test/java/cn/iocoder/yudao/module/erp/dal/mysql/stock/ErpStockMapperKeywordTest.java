@@ -135,6 +135,21 @@ class ErpStockMapperKeywordTest {
     }
 
     @Test
+    void buildStockQueryWrapper_limitsSelectedStockIds() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setIds(Arrays.asList(101L, 202L));
+
+        ErpStockMapper mapper = org.mockito.Mockito.mock(
+                ErpStockMapper.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        QueryWrapperX<ErpStockDO> wrapper = mapper.buildStockQueryWrapper(
+                reqVO, null, null, null, null, null, null, null, null, null, null);
+
+        assertTrue(wrapper.getCustomSqlSegment().contains("id IN"));
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(101L));
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(202L));
+    }
+
+    @Test
     void appendStockKeyCondition_rejectsEmptyStrictBatchResult() {
         QueryWrapperX<ErpStockDO> wrapper = new QueryWrapperX<>();
 

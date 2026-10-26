@@ -14,6 +14,9 @@ public class ErpImportExportRecordFailureDetailExportRespVO {
     @ExcelProperty("业务标识")
     private String bizKey;
 
+    /** 分组标识，仅用于恢复整单导入的失败上下文，不额外增加通用错误表列。 */
+    private String groupKey;
+
     @ExcelProperty("业务名称")
     private String bizName;
 

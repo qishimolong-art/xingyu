@@ -23,12 +23,14 @@ public class ErpPayableOtherDraftSaveReqVO {
     private String voucherNo;
 
     @Schema(description = "已结金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal settledAmount;
 
     @Schema(description = "部门编号")
     private Long deptId;
 
     @Schema(description = "应付金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal payableAmount;
 
     @Schema(description = "调账项目")

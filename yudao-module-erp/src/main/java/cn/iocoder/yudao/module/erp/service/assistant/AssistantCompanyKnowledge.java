@@ -201,6 +201,22 @@ public class AssistantCompanyKnowledge {
         }
     }
 
+    /** 语义识别只接收有限主题元数据，正文仍由正式知识检索链路获取。 */
+    public List<Map<String,Object>> understandingTopics(String question) {
+        List<Map<String,Object>> result = new ArrayList<>();
+        Map<String,Object> topics = new LinkedHashMap<>();
+        topics.put("topics", Arrays.asList("公司概况与发展", "组织人员与职责", "品牌与产品知识", "渠道与区域", "选型与标准认证", "销售话术", "培训", "经营方法"));
+        result.add(topics);
+        for (Map<String,Object> match : retrieve(question)) {
+            Map<String,Object> metadata = new LinkedHashMap<>();
+            for (String key : Arrays.asList("title", "section", "domain", "aliases", "verificationStatus"))
+                if (match.containsKey(key)) metadata.put(key, match.get(key));
+            result.add(metadata);
+            if (result.size() >= 5) break;
+        }
+        return result;
+    }
+
     public boolean available() { return !entries.isEmpty(); }
     public String version() { return version; }
     public String unavailableReason() { return unavailableReason; }

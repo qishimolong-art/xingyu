@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.E
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpensePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseItemDO;
@@ -31,9 +32,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -135,6 +139,18 @@ class ErpPayableExpenseControllerTest extends BaseMockitoUnitTest {
         assertEquals(1, result.getData().getSuccessCount());
         assertEquals(LocalDate.now(), captor.getValue().getBizTime());
         assertEquals(1, captor.getValue().getItems().size());
+    }
+
+    @Test
+    void exportFields_includeFlatDetailFieldsAndApplyPermission() {
+        when(fieldPermissionMasker.getHiddenFields("erp_finance_payable_expense"))
+                .thenReturn(Collections.singleton("itemFileUrl"));
+
+        CommonResult<List<ErpExportFieldRespVO>> result = controller.getExportFields();
+
+        assertTrue(result.getData().stream().anyMatch(item -> "sourceNo".equals(item.getField())));
+        assertTrue(result.getData().stream().anyMatch(item -> "auditorName".equals(item.getField())));
+        assertFalse(result.getData().stream().anyMatch(item -> "itemFileUrl".equals(item.getField())));
     }
 
     private MockMultipartFile excelFile(String[] headers, Object[] values) throws Exception {

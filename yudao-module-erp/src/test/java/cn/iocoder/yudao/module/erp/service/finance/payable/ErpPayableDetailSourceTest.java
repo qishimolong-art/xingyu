@@ -34,6 +34,7 @@ import static org.mockito.Mockito.when;
 
 class ErpPayableDetailSourceTest {
 
+
     private final ErpPayableAccountServiceImpl service = new ErpPayableAccountServiceImpl();
     private final LocalDateTime time = LocalDateTime.of(2026, 9, 27, 10, 0);
 
@@ -85,6 +86,7 @@ class ErpPayableDetailSourceTest {
         when(apiService.getPayableDetailList(req)).thenReturn(rows);
         ErpPayableAccountController controller = new ErpPayableAccountController();
         ReflectionTestUtils.setField(controller, "payableAccountService", apiService);
+        ReflectionTestUtils.setField(controller, "fieldPermissionMasker", mock(cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker.class));
         MockHttpServletResponse response = new MockHttpServletResponse();
         controller.exportPayableDetail(req, response);
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(response.getContentAsByteArray()))) {

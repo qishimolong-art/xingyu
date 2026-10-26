@@ -13,6 +13,7 @@ import lombok.ToString;
 public class ErpCustomerContactPageReqVO extends PageParam {
 
     @Schema(description = "客户编号")
+    @javax.validation.constraints.NotNull
     private Long customerId;
 
     @Schema(description = "联系人姓名")

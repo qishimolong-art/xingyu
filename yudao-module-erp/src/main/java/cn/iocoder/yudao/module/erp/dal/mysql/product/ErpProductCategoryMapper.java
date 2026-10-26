@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.product;
 
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryListReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
@@ -19,10 +20,20 @@ public interface ErpProductCategoryMapper extends BaseMapperX<ErpProductCategory
 
     default List<ErpProductCategoryDO> selectList(ErpProductCategoryListReqVO reqVO) {
         LambdaQueryWrapperX<ErpProductCategoryDO> wrapper = new LambdaQueryWrapperX<ErpProductCategoryDO>()
+                .inIfPresent(ErpProductCategoryDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpProductCategoryDO::getName, reqVO.getName())
                 .eqIfPresent(ErpProductCategoryDO::getStatus, reqVO.getStatus());
         orderByIfPresent(wrapper, reqVO);
         return selectList(wrapper);
+    }
+
+    default PageResult<ErpProductCategoryDO> selectPage(ErpProductCategoryListReqVO reqVO) {
+        LambdaQueryWrapperX<ErpProductCategoryDO> wrapper = new LambdaQueryWrapperX<ErpProductCategoryDO>()
+                .inIfPresent(ErpProductCategoryDO::getId, reqVO.getIds())
+                .likeIfPresent(ErpProductCategoryDO::getName, reqVO.getName())
+                .eqIfPresent(ErpProductCategoryDO::getStatus, reqVO.getStatus());
+        orderByIfPresent(wrapper, reqVO);
+        return selectPage(reqVO, wrapper);
     }
 
     static void orderByIfPresent(LambdaQueryWrapperX<ErpProductCategoryDO> wrapper, ErpProductCategoryListReqVO reqVO) {

@@ -41,7 +41,8 @@ public interface ErpCustomerBusinessInfoMapper extends BaseMapperX<ErpCustomerBu
             return Collections.emptyList();
         }
         return selectList(new LambdaQueryWrapperX<ErpCustomerBusinessInfoDO>()
-                .in(ErpCustomerBusinessInfoDO::getCustomerId, customerIds));
+                .select(ErpCustomerBusinessInfoDO::getCustomerId)
+                .in(ErpCustomerBusinessInfoDO::getCustomerId, customerIds).groupBy(ErpCustomerBusinessInfoDO::getCustomerId));
     }
 
 }

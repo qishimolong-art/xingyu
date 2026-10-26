@@ -76,9 +76,9 @@ public final class ErpPaymentDetailReportModels {
         private String businessNo;
         @ExcelProperty(value = "业务类型", index = 4)
         private String businessType;
-        @ExcelProperty(value = "结算金额", index = 5)
+        @ExcelProperty(value = "结算金额", index = 5, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal settlementAmount;
-        @ExcelProperty(value = "实付金额", index = 6)
+        @ExcelProperty(value = "实付金额", index = 6, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal actualPaymentAmount;
         @ExcelProperty(value = "付款账户", index = 7)
         private String accountName;

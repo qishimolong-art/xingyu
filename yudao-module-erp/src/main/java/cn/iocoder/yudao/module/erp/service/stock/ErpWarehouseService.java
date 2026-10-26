@@ -97,6 +97,11 @@ public interface ErpWarehouseService {
      */
     ErpWarehouseImportRespVO importWarehouseList(List<ErpWarehouseImportExcelVO> list);
 
+    default ErpWarehouseImportRespVO importWarehouseList(List<ErpWarehouseImportExcelVO> list,
+                                                         ErpWarehouseImportProgressListener listener) {
+        return importWarehouseList(list);
+    }
+
     /**
      * 获得仓库
      *

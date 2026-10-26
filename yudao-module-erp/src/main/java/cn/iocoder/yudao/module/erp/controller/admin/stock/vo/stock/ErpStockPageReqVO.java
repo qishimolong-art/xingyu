@@ -7,12 +7,18 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Schema(description = "管理后台 - ERP 库存分页 Request VO")
 @Data
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
 public class ErpStockPageReqVO extends PageParam {
+
+    public static final String KEYWORD_SEARCH_MODE_PRODUCT_STOCK_LIST = "PRODUCT_STOCK_LIST";
+
+    @Schema(description = "库存编号集合，用于导出勾选数据")
+    private List<Long> ids;
 
     @Schema(description = "产品编号", example = "19614")
     private Long productId;
@@ -32,8 +38,17 @@ public class ErpStockPageReqVO extends PageParam {
     @Schema(description = "产品关键词，匹配编码、名称、拼音码、五笔码等")
     private String productKeyword;
 
+    @Schema(description = "配件编码或名称组合关键词，仅匹配产品编码和名称")
+    private String productCodeNameKeyword;
+
     @Schema(description = "配件名称组合关键词，仅匹配产品名称")
     private String productNameKeyword;
+
+    @Schema(description = "关键词搜索模式（内部使用）", example = "PRODUCT_STOCK_LIST", hidden = true)
+    private String keywordSearchMode;
+
+    @Schema(description = "关键词完全匹配的配件编号（服务内部排序使用）", hidden = true)
+    private List<Long> exactKeywordProductIds;
 
     @Schema(description = "是否启用库存弹框跨产品、仓库、仓库部门和批次的分隔符组合搜索", example = "false")
     private Boolean crossDimensionKeyword;
@@ -115,6 +130,9 @@ public class ErpStockPageReqVO extends PageParam {
 
     @Schema(description = "是否按批次号展开库存明细", example = "false")
     private Boolean showBatchNo;
+
+    @Schema(description = "是否使用异步导出的有界批次扫描模式", hidden = true)
+    private Boolean streamingExport;
 
     @Schema(description = "排序字段", example = "count")
     private String orderField;

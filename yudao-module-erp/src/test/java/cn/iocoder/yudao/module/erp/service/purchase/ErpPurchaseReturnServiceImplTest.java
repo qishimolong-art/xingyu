@@ -749,7 +749,8 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(returnedMap);
 
         assertServiceException(() -> purchaseReturnService.createPurchaseReturn(reqVO),
-                PURCHASE_RETURN_EXCEED_RETURNABLE, 999L, new BigDecimal("4"), new BigDecimal("5"));
+                PURCHASE_RETURN_EXCEED_RETURNABLE,
+                "商品【未找到商品资料】（商品编码：商品编号 未知，原入库单：入库单编号 未知）", new BigDecimal("4"), new BigDecimal("5"));
         verify(purchaseReturnMapper, never()).insert(any(ErpPurchaseReturnDO.class));
     }
 
@@ -822,7 +823,8 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(Collections.emptyMap());
 
         assertServiceException(() -> purchaseReturnService.createPurchaseReturn(reqVO),
-                PURCHASE_RETURN_EXCEED_RETURNABLE, 999L, new BigDecimal("5"), new BigDecimal("7"));
+                PURCHASE_RETURN_EXCEED_RETURNABLE,
+                "商品【未找到商品资料】（商品编码：商品编号 未知，原入库单：入库单编号 未知）", new BigDecimal("5"), new BigDecimal("7"));
     }
 
     @Test
@@ -1089,7 +1091,8 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
 
         assertServiceException(
                 () -> purchaseReturnService.updatePurchaseReturnStatus(10L, ErpAuditStatus.APPROVE.getStatus()),
-                PURCHASE_RETURN_EXCEED_RETURNABLE, 999L, new BigDecimal("4"), new BigDecimal("5"));
+                PURCHASE_RETURN_EXCEED_RETURNABLE,
+                "商品【未找到商品资料】（商品编码：商品编号 未知，原入库单：入库单编号 未知）", new BigDecimal("4"), new BigDecimal("5"));
         verify(purchaseReturnMapper, never()).updateByIdAndStatus(anyLong(), any(), any());
         verify(stockRecordService, never()).createStockRecord(any());
         verify(voucherService, never()).createVoucherFromBiz(any(), any(), any(), any(), any(), any(), any());

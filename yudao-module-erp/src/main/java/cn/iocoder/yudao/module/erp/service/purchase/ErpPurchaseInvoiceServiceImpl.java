@@ -7,7 +7,6 @@ import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
@@ -794,7 +793,8 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
             if (productVO != null) {
                 invoiceItem.setProductUnitName(productVO.getUnitName());
             }
-            BigDecimal itemAmount = MoneyUtils.priceMultiply(invoiceItem.getProductPrice(), invoiceItem.getCount());
+            BigDecimal itemAmount = ErpPurchaseDecimalUtils.multiply(
+                    invoiceItem.getProductPrice(), invoiceItem.getCount());
             if (cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseInvoiceSourceTypeEnum.PURCHASE_RETURN
                     .getType().equals(invoiceItem.getSourceType())) {
                 itemAmount = itemAmount.negate();

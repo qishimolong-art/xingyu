@@ -554,6 +554,14 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
         item1.setProductName("商品1");
         item1.setCount(java.math.BigDecimal.ONE);
         item1.setProductPrice(new java.math.BigDecimal("10.00"));
+        item1.setLastSalePrice(new java.math.BigDecimal("9.50"));
+        item1.setPackageQty(4);
+        item1.setGiftFlag(Boolean.FALSE);
+        item1.setWarehouseName("销售仓");
+        item1.setDeptName("销售部");
+        item1.setStockCount(new java.math.BigDecimal("12.500"));
+        item1.setAvailableCount(new java.math.BigDecimal("10"));
+        item1.setBatchNo("B-001");
 
         ErpSaleQuoteRespVO.Item item2 = new ErpSaleQuoteRespVO.Item();
         item2.setProductCode("P2");
@@ -572,8 +580,29 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
         assertEquals(2, rows.size());
         assertEquals("Q-001", rows.get(0).getNo());
         assertEquals("P1", rows.get(0).getProductCode());
+        assertEquals("销售仓", rows.get(0).getWarehouseName());
+        assertEquals("销售部", rows.get(0).getItemDeptName());
+        assertEquals(new BigDecimal("0.25"), rows.get(0).getPieceCount());
+        assertEquals(new BigDecimal("9.50"), rows.get(0).getLastSalePrice());
+        assertEquals("否", rows.get(0).getGiftFlag());
+        assertEquals("B-001", rows.get(0).getBatchNo());
         assertNull(rows.get(1).getNo());
         assertEquals("P2", rows.get(1).getProductCode());
+    }
+
+    @Test
+    public void testSaleQuoteExportSchema_containsVisibleBusinessFieldsAndMoneyFormats() throws Exception {
+        for (String field : Arrays.asList("deptName", "customerCode", "totalProductPrice", "discountPrice",
+                "warehouseName", "itemDeptName", "stockCount", "availableCount", "lastSalePrice",
+                "giftFlag", "batchNo", "productBarCode", "drawingNo")) {
+            assertNotNull(ErpSaleQuoteExportRespVO.class.getDeclaredField(field)
+                    .getAnnotation(cn.idev.excel.annotation.ExcelProperty.class), field);
+        }
+        for (String field : Arrays.asList("totalPrice", "totalProductPrice", "discountPrice", "feeAmount",
+                "otherPrice", "productPrice", "lastSalePrice", "itemTotalPrice", "itemTaxPrice")) {
+            assertNotNull(ErpSaleQuoteExportRespVO.class.getDeclaredField(field)
+                    .getAnnotation(cn.idev.excel.annotation.write.style.ContentStyle.class), field);
+        }
     }
 
 }

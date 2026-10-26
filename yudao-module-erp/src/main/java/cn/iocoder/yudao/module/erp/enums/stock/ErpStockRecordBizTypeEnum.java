@@ -27,6 +27,8 @@ public enum ErpStockRecordBizTypeEnum implements ArrayValuable<Integer> {
     MOVE_OUT_CANCEL(33, "调拨出库（作废）"),
     WAREHOUSE_MOVE_IN(34, "仓库移货入库"),
     WAREHOUSE_MOVE_OUT(35, "仓库移货出库"),
+    WAREHOUSE_MOVE_IN_CANCEL(36, "仓库移货入库（作废）"),
+    WAREHOUSE_MOVE_OUT_CANCEL(37, "仓库移货出库（作废）"),
 
     CHECK_MORE_IN(40, "盘盈入库"),
     CHECK_MORE_IN_CANCEL(41, "盘盈入库（作废）"),
@@ -48,6 +50,11 @@ public enum ErpStockRecordBizTypeEnum implements ArrayValuable<Integer> {
     PURCHASE_PRICE_ADJUST(90, "采购调价"),
     PURCHASE_PRICE_ADJUST_CANCEL(91, "采购调价（作废）"),
     SALE_PRICE_ADJUST(92, "销售调价"),
+
+    ASSEMBLY_COMPONENT_OUT(100, "组装配件出库"),
+    ASSEMBLY_COMPONENT_OUT_CANCEL(101, "组装配件出库（作废）"),
+    ASSEMBLY_FINISHED_IN(102, "组装成品入库"),
+    ASSEMBLY_FINISHED_IN_CANCEL(103, "组装成品入库（作废）"),
     ;
 
     public static final Integer[] ARRAYS = Arrays.stream(values()).map(ErpStockRecordBizTypeEnum::getType).toArray(Integer[]::new);

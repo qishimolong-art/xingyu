@@ -1,11 +1,16 @@
 package cn.iocoder.yudao.module.erp.controller.admin.product.vo.category;
 
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 @Schema(description = "管理后台 - ERP 商品分类列表 Request VO")
 @Data
-public class ErpProductCategoryListReqVO {
+public class ErpProductCategoryListReqVO extends PageParam {
+
+    @Schema(description = "指定分类编号")
+    private java.util.Set<Long> ids;
 
     @Schema(description = "分类名称", example = "芋艿")
     private String name;

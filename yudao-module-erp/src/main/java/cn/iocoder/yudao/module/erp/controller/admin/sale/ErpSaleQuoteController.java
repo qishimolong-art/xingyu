@@ -73,6 +73,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.ArrayList;
@@ -122,9 +123,14 @@ public class ErpSaleQuoteController {
             "productCode", "productIdentity",
             "productName", "productIdentity",
             "factoryCode", "productIdentity",
+            "warehouseId", "warehouseName",
+            "warehouseName", "warehouseName",
             "count", "count",
             "productPrice", "productPrice",
-            "giftFlag", "giftFlag");
+            "giftFlag", "giftFlag",
+            "remark", "remark",
+            "item_remark", "remark",
+            "itemRemark", "remark");
 
     @Resource
     private ErpSaleQuoteService saleQuoteService;
@@ -441,10 +447,12 @@ public class ErpSaleQuoteController {
         ErpSaleQuoteImportExcelVO example = new ErpSaleQuoteImportExcelVO();
         example.setProductCode("P0001");
         example.setProductName("示例配件");
+        example.setWarehouseName("默认仓");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
         example.setGiftFlag(Boolean.FALSE);
-        ExcelUtils.writeImportTemplate(response, "报价订单导入模板.xls", "报价订单",
+        example.setRemark("明细备注");
+        ExcelUtils.writeImportTemplate(response, "报价订单明细导入模板.xls", "报价订单明细",
                 ErpSaleQuoteImportExcelVO.class, Collections.singletonList(example), null,
                 ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
                         ErpFieldConfigModuleEnum.SALE_QUOTE, ErpSaleQuoteImportExcelVO.class,
@@ -471,7 +479,7 @@ public class ErpSaleQuoteController {
         secondItem.setItemCount(BigDecimal.ONE);
         secondItem.setProductPrice(new BigDecimal("50.00"));
         secondItem.setGiftFlag(Boolean.FALSE);
-        ExcelUtils.writeImportTemplate(response, "报价订单导入模板.xls", "报价订单",
+        ExcelUtils.writeImportTemplate(response, "报价订单整单导入模板.xls", "报价订单整单",
                 ErpSaleQuoteOrderImportExcelVO.class, Arrays.asList(example, secondItem), null,
                 ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
                         ErpFieldConfigModuleEnum.SALE_QUOTE, ErpSaleQuoteOrderImportExcelVO.class,
@@ -854,12 +862,25 @@ public class ErpSaleQuoteController {
         row.setProductUnitName(item.getProductUnitName());
         row.setWeight(item.getWeight());
         row.setPackageQty(item.getPackageQty());
+        if (item.getCount() != null && item.getPackageQty() != null && item.getPackageQty() > 0) {
+            row.setPieceCount(item.getCount().divide(BigDecimal.valueOf(item.getPackageQty()),
+                    3, RoundingMode.HALF_UP).stripTrailingZeros());
+        }
         row.setItemCount(item.getCount());
         row.setConvertedCount(item.getConvertedCount());
         row.setProductPrice(item.getProductPrice());
+        row.setLastSalePrice(item.getLastSalePrice());
         row.setItemTotalPrice(item.getTotalPrice());
         row.setItemTaxPercent(item.getTaxPercent());
         row.setItemTaxPrice(item.getTaxPrice());
+        row.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()) ? "是" : "否");
+        row.setWarehouseName(item.getWarehouseName());
+        row.setItemDeptName(item.getDeptName());
+        row.setStockCount(item.getStockCount());
+        row.setAvailableCount(item.getAvailableCount());
+        row.setBatchNo(item.getBatchNo());
+        row.setProductBarCode(item.getProductBarCode());
+        row.setDrawingNo(item.getDrawingNo());
         row.setBrand(item.getBrand());
         row.setVehicleModel(item.getVehicleModel());
         row.setStandard(item.getStandard());
@@ -874,23 +895,50 @@ public class ErpSaleQuoteController {
         map.put("no", "main");
         map.put("customerName", "main");
         map.put("status", "main");
+        map.put("orderStatus", "main");
+        map.put("outStatus", "main");
         map.put("saleUserName", "main");
+        map.put("deptName", "main");
+        map.put("customerCode", "main");
         map.put("quoteTime", "main");
         map.put("totalCount", "main");
         map.put("totalPrice", "main");
+        map.put("totalProductPrice", "main");
+        map.put("discountPrice", "main");
         map.put("feeAmount", "main");
+        map.put("otherPrice", "main");
+        map.put("priority", "main");
+        map.put("deliveryMethod", "main");
+        map.put("deliveryAddress", "main");
+        map.put("settleMethod", "main");
+        map.put("expectedDeliveryTime", "main");
+        map.put("internalRemark", "main");
+        map.put("creatorName", "system");
+        map.put("createTime", "system");
+        map.put("updaterName", "system");
+        map.put("updateTime", "system");
         map.put("remark", "main");
         map.put("productCode", "detail");
         map.put("productName", "detail");
         map.put("productUnitName", "detail");
         map.put("weight", "detail");
         map.put("packageQty", "detail");
+        map.put("pieceCount", "detail");
         map.put("itemCount", "detail");
         map.put("convertedCount", "detail");
         map.put("productPrice", "detail");
+        map.put("lastSalePrice", "detail");
         map.put("itemTotalPrice", "detail");
         map.put("itemTaxPercent", "detail");
         map.put("itemTaxPrice", "detail");
+        map.put("giftFlag", "detail");
+        map.put("warehouseName", "detail");
+        map.put("itemDeptName", "detail");
+        map.put("stockCount", "detail");
+        map.put("availableCount", "detail");
+        map.put("batchNo", "detail");
+        map.put("productBarCode", "detail");
+        map.put("drawingNo", "detail");
         map.put("brand", "detail");
         map.put("vehicleModel", "detail");
         map.put("standard", "detail");
@@ -903,18 +951,30 @@ public class ErpSaleQuoteController {
     private static Map<String, String> buildExportFieldPermissionMap() {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("customerName", "customerId");
+        map.put("customerCode", "customerId");
         map.put("saleUserName", "saleUserId");
+        map.put("deptName", "deptId");
         map.put("productCode", "item_productCode");
         map.put("productName", "item_productId");
         map.put("productUnitName", "item_productUnitName");
         map.put("weight", "item_weight");
         map.put("packageQty", "item_packageQty");
+        map.put("pieceCount", "item_count");
         map.put("itemCount", "item_count");
         map.put("convertedCount", "item_convertedCount");
         map.put("productPrice", "item_productPrice");
+        map.put("lastSalePrice", "item_lastSalePrice");
         map.put("itemTotalPrice", "item_totalPrice");
         map.put("itemTaxPercent", "item_taxPercent");
         map.put("itemTaxPrice", "item_taxPrice");
+        map.put("giftFlag", "item_giftFlag");
+        map.put("warehouseName", "item_warehouseId");
+        map.put("itemDeptName", "item_deptId");
+        map.put("stockCount", "item_stockCount");
+        map.put("availableCount", "item_stockCount");
+        map.put("batchNo", "item_batchNo");
+        map.put("productBarCode", "item_productBarCode");
+        map.put("drawingNo", "item_drawingNo");
         map.put("brand", "item_brand");
         map.put("vehicleModel", "item_vehicleModel");
         map.put("standard", "item_standard");

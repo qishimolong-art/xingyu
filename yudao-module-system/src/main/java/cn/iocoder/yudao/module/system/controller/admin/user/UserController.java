@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.framework.security.core.service.SecurityFrameworkService;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.*;
 import cn.iocoder.yudao.module.system.convert.user.UserConvert;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
@@ -21,6 +22,7 @@ import cn.iocoder.yudao.module.system.service.dept.DeptService;
 import cn.iocoder.yudao.module.system.service.permission.MenuService;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.permission.RoleService;
+import cn.iocoder.yudao.module.system.service.tenant.TenantVisitScopeService;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
 import cn.iocoder.yudao.module.system.service.user.UserPriceFieldService;
 import cn.iocoder.yudao.module.system.service.user.dto.UserPriceFieldConfigDTO;
@@ -72,6 +74,10 @@ public class UserController {
     private MenuService menuService;
     @Resource
     private UserPriceFieldService userPriceFieldService;
+    @Resource
+    private TenantVisitScopeService tenantVisitScopeService;
+    @Resource
+    private SecurityFrameworkService securityFrameworkService;
 
     @PostMapping("/create")
     @Operation(summary = "新增用户")
@@ -110,6 +116,10 @@ public class UserController {
     @PreAuthorize("@ss.hasPermission('system:user:update')")
     public CommonResult<Boolean> updateUserBatch(@Valid @RequestBody UserBatchUpdateReqVO reqVO) {
         validateBatchUpdateHiddenFields(reqVO);
+        if (Boolean.TRUE.equals(reqVO.getUpdateTenantVisitScope())
+                && !securityFrameworkService.hasPermission(TenantVisitScopeService.PERMISSION_TENANT_VISIT_SCOPE)) {
+            throw invalidParamException("无权配置租户访问范围");
+        }
         userService.updateUserBatch(reqVO);
         return success(true);
     }
@@ -478,8 +488,12 @@ public class UserController {
         List<RoleDO> roles = CollUtil.isEmpty(roleIds) ? Collections.emptyList() : roleService.getRoleList(roleIds);
         // 3. 查角色对应的菜单ID（聚合取并集）
         Set<Long> menuIds = CollUtil.isEmpty(roleIds) ? Collections.emptySet() : permissionService.getRoleMenuListByRoleId(roleIds);
+        Set<String> storedDeniedPermissions = permissionService.getUserDeniedPermissions(userId);
         Set<String> deniedPermissions = roleService.hasAnySuperAdmin(roleIds)
-                ? Collections.emptySet() : permissionService.getUserDeniedPermissions(userId);
+                ? storedDeniedPermissions.stream()
+                    .filter(TenantVisitScopeService.PERMISSION_TENANT_VISIT::equals)
+                    .collect(Collectors.toSet())
+                : storedDeniedPermissions;
         // 4. 查菜单的 permission 字段（只取 MenuTypeEnum.BUTTON 类型的菜单）
         List<MenuDO> menus = CollUtil.isEmpty(menuIds) ? Collections.emptyList() : menuService.getMenuList(menuIds);
         List<UserRolePermissionRespVO.PermissionInfo> permissions = menus.stream()
@@ -512,12 +526,16 @@ public class UserController {
             UserRolePermissionRespVO.RoleInfo info = new UserRolePermissionRespVO.RoleInfo();
             info.setId(r.getId());
             info.setName(r.getName());
+            info.setCode(r.getCode());
+            info.setManaged(TenantVisitScopeService.ROLE_CODE_TENANT_VISIT_USER.equals(r.getCode()));
             return info;
         }).collect(Collectors.toList()));
         respVO.setAllRoles(allRoleList.stream().map(r -> {
             UserRolePermissionRespVO.RoleInfo info = new UserRolePermissionRespVO.RoleInfo();
             info.setId(r.getId());
             info.setName(r.getName());
+            info.setCode(r.getCode());
+            info.setManaged(TenantVisitScopeService.ROLE_CODE_TENANT_VISIT_USER.equals(r.getCode()));
             return info;
         }).collect(Collectors.toList()));
         respVO.setPermissions(permissions);
@@ -528,10 +546,23 @@ public class UserController {
     @Operation(summary = "保存用户角色")
     @PreAuthorize("@ss.hasPermission('system:user:update')")
     public CommonResult<Boolean> saveUserRolePermissions(@Valid @RequestBody UserRolePermissionSaveReqVO reqVO) {
-        permissionService.assignUserRoleAndDeniedPermissions(reqVO.getUserId(),
+        if (reqVO.getTenantVisitScope() != null
+                && !securityFrameworkService.hasPermission(TenantVisitScopeService.PERMISSION_TENANT_VISIT_SCOPE)) {
+            throw invalidParamException("无权配置租户访问范围");
+        }
+        permissionService.assignUserRoleDeniedPermissionsAndTenantScope(reqVO.getUserId(),
                 reqVO.getRoleIds() != null ? reqVO.getRoleIds() : Collections.emptySet(),
-                reqVO.getDeniedPermissions() != null ? reqVO.getDeniedPermissions() : Collections.emptySet());
+                reqVO.getDeniedPermissions() != null ? reqVO.getDeniedPermissions() : Collections.emptySet(),
+                reqVO.getTenantVisitScope());
         return success(true);
+    }
+
+    @GetMapping("/tenant-visit-scope")
+    @Operation(summary = "查询用户的租户访问范围")
+    @Parameter(name = "userId", description = "用户编号", required = true)
+    @PreAuthorize("@ss.hasPermission('system:tenant:visit-scope')")
+    public CommonResult<TenantVisitScopeRespVO> getUserTenantVisitScope(@RequestParam("userId") Long userId) {
+        return success(tenantVisitScopeService.getUserTenantVisitScope(userId));
     }
 
     // ========== 价格字段配置 ==========

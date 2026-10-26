@@ -64,11 +64,11 @@ public class ErpReceiptDetailReportRepository {
         sql.cte = "WITH raw AS (" + raw + "), allocated AS (SELECT raw.*," +
                 "SUM(settlement_amount) OVER(PARTITION BY receipt_id) allocated_total," +
                 "MAX(receipt_item_id) OVER(PARTITION BY receipt_id) last_item_id," +
-                "CASE WHEN receipt_total=0 THEN NULL ELSE ROUND(settlement_amount*receipt_actual/receipt_total,2) END rounded_actual " +
+                "CASE WHEN receipt_total=0 THEN NULL ELSE ROUND(settlement_amount*receipt_actual/receipt_total,6) END rounded_actual " +
                 "FROM raw), report AS (SELECT allocated.*," +
-                "CASE WHEN ROUND(allocated_total,2)=ROUND(receipt_total,2) AND receipt_item_id=last_item_id " +
+                "CASE WHEN ROUND(allocated_total,6)=ROUND(receipt_total,6) AND receipt_item_id=last_item_id " +
                 "THEN ROUND(receipt_actual-SUM(CASE WHEN receipt_item_id<>last_item_id THEN COALESCE(rounded_actual,0) ELSE 0 END) " +
-                "OVER(PARTITION BY receipt_id),2) ELSE rounded_actual END actual_receipt_amount FROM allocated)";
+                "OVER(PARTITION BY receipt_id),6) ELSE rounded_actual END actual_receipt_amount FROM allocated)";
         applyFilters(sql, filter);
         return sql;
     }
@@ -84,8 +84,8 @@ public class ErpReceiptDetailReportRepository {
                 text("'" + typeCode + "'") + " business_type_code," + text("c.name") + " customer_name,"
                 + "r.receipt_time receipt_date," + text("r.no") + " receipt_no,"
                 + text("COALESCE(NULLIF(i.biz_no,''),s.no)") + " business_no," + text("'" + typeName + "'")
-                + " business_type,ROUND(i.receipt_price,2) settlement_amount,"
-                + "ROUND(r.total_price,2) receipt_total,ROUND(r.receipt_price,2) receipt_actual,"
+                + " business_type,ROUND(i.receipt_price,6) settlement_amount,"
+                + "ROUND(r.total_price,6) receipt_total,ROUND(r.receipt_price,6) receipt_actual,"
                 + text("COALESCE(NULLIF(TRIM(" + sourceSettle + "),''),CASE c.settle_method "
                         + "WHEN 1 THEN '现金' WHEN 2 THEN '挂账' WHEN 3 THEN '汇款' WHEN 4 THEN '网上支付' END)")
                 + " settle_method," + text("CASE a.account_type WHEN 1 THEN '银行账户' WHEN 2 THEN '现金账户' "
@@ -96,7 +96,7 @@ public class ErpReceiptDetailReportRepository {
                 + " voucher_no," + text("ru.nickname") + " receipt_user_name," + text("bu.nickname")
                 + " business_user_name,CAST(NULL AS CHAR) developer_name," + text("bc.nickname")
                 + " business_creator_name," + businessDate + " business_date,"
-                + "CAST(NULL AS DECIMAL(20,2)) cost_amount,CAST(NULL AS DECIMAL(20,2)) gross_profit,"
+                + "CAST(NULL AS DECIMAL(20,6)) cost_amount,CAST(NULL AS DECIMAL(20,6)) gross_profit,"
                 + "CAST(NULL AS DECIMAL(20,6)) gross_profit_rate," + text("bd.name") + " customer_type,"
                 + text("d.name") + " dept_name," + text("COALESCE(NULLIF(i.remark,''),r.remark)") + " remark "
                 + "FROM erp_finance_receipt_item i INNER JOIN erp_finance_receipt r ON r.id=i.receipt_id "

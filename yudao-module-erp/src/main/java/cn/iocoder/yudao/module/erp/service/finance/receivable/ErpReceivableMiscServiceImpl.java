@@ -67,6 +67,7 @@ public class ErpReceivableMiscServiceImpl implements ErpReceivableMiscService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createReceivableMisc(ErpReceivableMiscSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         validateAmountNonZero(createReqVO.getAmount(), false);
         customerService.validateCustomer(createReqVO.getCustomerId());
         validateSubmitRefs(createReqVO.getAccountId(), createReqVO.getDeptId(), createReqVO.getHandlerId(), false);
@@ -84,6 +85,7 @@ public class ErpReceivableMiscServiceImpl implements ErpReceivableMiscService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createReceivableMiscDraft(ErpReceivableMiscDraftSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         validateDraftForSave(createReqVO);
         ErpReceivableMiscDO doObj = BeanUtils.toBean(createReqVO, ErpReceivableMiscDO.class)
                 .setId(null)
@@ -102,12 +104,14 @@ public class ErpReceivableMiscServiceImpl implements ErpReceivableMiscService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createAndSubmitReceivableMisc(ErpReceivableMiscSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         return createReceivableMisc(createReqVO);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateReceivableMisc(ErpReceivableMiscSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpReceivableMiscDO db = validateReceivableMiscExists(updateReqVO.getId());
         if (ErpReceivableMiscStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
             throw exception(RECEIVABLE_MISC_DRAFT_UPDATE_FAIL, db.getNo());
@@ -138,6 +142,7 @@ public class ErpReceivableMiscServiceImpl implements ErpReceivableMiscService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateReceivableMiscDraft(ErpReceivableMiscDraftSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpReceivableMiscDO db = validateReceivableMiscExists(updateReqVO.getId());
         if (!ErpReceivableMiscStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
             throw exception(RECEIVABLE_MISC_DRAFT_UPDATE_FAIL, db.getNo());
@@ -163,6 +168,7 @@ public class ErpReceivableMiscServiceImpl implements ErpReceivableMiscService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateAndSubmitReceivableMisc(ErpReceivableMiscSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         updateReceivableMiscDraft(BeanUtils.toBean(updateReqVO, ErpReceivableMiscDraftSaveReqVO.class));
         submitReceivableMisc(updateReqVO.getId());
     }
@@ -195,7 +201,7 @@ public class ErpReceivableMiscServiceImpl implements ErpReceivableMiscService {
             throw exception(RECEIVABLE_MISC_PROCESS_FAIL);
         }
         if (receivableMiscMapper.updateByIdAndStatus(id, db.getStatus(),
-                new ErpReceivableMiscDO().setStatus(status)) == 0) {
+                new ErpReceivableMiscDO().setStatus(status).setApproveTime(java.time.LocalDateTime.now())) == 0) {
             throw exception(RECEIVABLE_MISC_APPROVE_FAIL);
         }
         operateLogService.recordStatus(LOG_TYPE, id, db.getNo(), true);

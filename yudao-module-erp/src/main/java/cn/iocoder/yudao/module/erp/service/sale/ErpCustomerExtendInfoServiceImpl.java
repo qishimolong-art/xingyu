@@ -23,6 +23,7 @@ public class ErpCustomerExtendInfoServiceImpl implements ErpCustomerExtendInfoSe
 
     @Override
     public ErpCustomerExtendInfoDO getByCustomerId(Long customerId) {
+        if (customerService.getCustomer(customerId) == null) throw cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception(cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS);
         return extendInfoMapper.selectByCustomerId(customerId);
     }
 

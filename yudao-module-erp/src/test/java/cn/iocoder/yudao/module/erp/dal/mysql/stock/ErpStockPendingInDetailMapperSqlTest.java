@@ -20,6 +20,8 @@ class ErpStockPendingInDetailMapperSqlTest {
         Select select = method.getAnnotation(Select.class);
         assertNotNull(select);
         String sql = String.join(" ", select.value()).replaceAll("\\s+", " ");
+        assertTrue(sql.contains("wm.status IN (#{processStatus}, 15)"));
+        assertTrue(sql.contains("si.status IN (10, 15)"));
 
         String[] documentAliases = {"pi", "sr", "si", "sm", "wm", "sc", "sib"};
         for (String alias : documentAliases) {

@@ -90,9 +90,9 @@ public final class ErpPurchaseInDetailReportModels {
         private BigDecimal freightIncludedPrice;
         @ExcelProperty(value = "上次采购价", index = 11)
         private BigDecimal previousPurchasePrice;
-        @ExcelProperty(value = "总金额", index = 12)
+        @ExcelProperty(value = "总金额", index = 12, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal totalAmount;
-        @ExcelProperty(value = "税务开票金额", index = 13)
+        @ExcelProperty(value = "税务开票金额", index = 13, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal invoiceAmount;
         @ExcelProperty(value = "开票状态", index = 14)
         private String invoiceStatus;

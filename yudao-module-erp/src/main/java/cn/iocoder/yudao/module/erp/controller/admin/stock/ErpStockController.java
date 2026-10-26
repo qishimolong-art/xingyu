@@ -13,6 +13,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpMallStockSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockBatchNoRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockExportTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockExportTaskStartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockInTransitDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockOccupiedDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO;
@@ -39,6 +41,7 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.config.ErpStockSelectPriceConfigService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpMallStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockExportTaskService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -53,6 +56,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -97,6 +101,8 @@ public class ErpStockController {
 
     @Resource
     private ErpStockService stockService;
+    @Resource
+    private ErpStockExportTaskService stockExportTaskService;
     @Resource
     private ErpStockMapper stockMapper;
     @Resource
@@ -299,6 +305,37 @@ public class ErpStockController {
         ExcelUtils.write(response, "产品库存.xls", "数据", ErpStockRespVO.class, list);
     }
 
+    @PostMapping("/export-task/start")
+    @Operation(summary = "创建产品库存异步导出任务")
+    @PreAuthorize("@ss.hasPermission('erp:stock:export')")
+    public CommonResult<ErpStockExportTaskStartRespVO> startStockExportTask(
+            @Valid @RequestBody ErpStockPageReqVO pageReqVO) {
+        return success(stockExportTaskService.startTask(pageReqVO,
+                reqVO -> getStockVOPageResult(reqVO, false)));
+    }
+
+    @GetMapping("/export-task/active")
+    @Operation(summary = "获得当前用户正在执行的产品库存导出任务")
+    @PreAuthorize("@ss.hasPermission('erp:stock:export')")
+    public CommonResult<ErpStockExportTaskRespVO> getActiveStockExportTask() {
+        return success(stockExportTaskService.getActiveTask());
+    }
+
+    @GetMapping("/export-task/get")
+    @Operation(summary = "获得产品库存导出任务进度")
+    @PreAuthorize("@ss.hasPermission('erp:stock:export')")
+    public CommonResult<ErpStockExportTaskRespVO> getStockExportTask(@RequestParam("id") Long id) {
+        return success(stockExportTaskService.getTask(id));
+    }
+
+    @GetMapping("/export-task/download")
+    @Operation(summary = "下载产品库存异步导出文件")
+    @PreAuthorize("@ss.hasPermission('erp:stock:export')")
+    public void downloadStockExportTask(@RequestParam("id") Long id,
+                                        HttpServletResponse response) throws IOException {
+        stockExportTaskService.downloadTask(id, response);
+    }
+
     @PutMapping("/adjust")
     @Operation(summary = "手动调整库存数量（盘点调整）")
     @PreAuthorize("@ss.hasPermission('erp:stock:adjust')")
@@ -392,9 +429,9 @@ public class ErpStockController {
                                                                   Set<String> hiddenPriceFields,
                                                                   boolean retainHiddenPriceValues) {
         boolean fullBatchPage = PageParam.PAGE_SIZE_NONE.equals(pageReqVO.getPageSize());
-        boolean requiresGlobalBatchRows = fullBatchPage
+        boolean requiresGlobalBatchRows = !Boolean.TRUE.equals(pageReqVO.getStreamingExport()) && (fullBatchPage
                 || StringUtils.hasText(pageReqVO.getBatchNo())
-                || "batchNo".equals(pageReqVO.getOrderField());
+                || "batchNo".equals(pageReqVO.getOrderField()));
         ErpStockPageReqVO baseReqVO = BeanUtils.toBean(pageReqVO, ErpStockPageReqVO.class);
         if (requiresGlobalBatchRows) {
             baseReqVO.setPageNo(1);

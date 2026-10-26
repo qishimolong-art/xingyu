@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account;
 import cn.iocoder.yudao.framework.excel.core.annotations.DictFormat;
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.idev.excel.annotation.format.NumberFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -68,7 +69,7 @@ public class ErpAccountRespVO {
     private Boolean defaultStatus;
 
     @Schema(description = "当前余额", example = "1000.00")
-    @ExcelProperty("当前余额")
+    @ExcelProperty(value = "当前余额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal currentBalance;
 
     @Schema(description = "创建人", example = "1")

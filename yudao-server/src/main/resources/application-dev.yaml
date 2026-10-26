@@ -222,6 +222,11 @@ yudao:
       tenant-id: 1
       login-client-key: '' # 留空时复用上方默认企业微信免登应用
       bind-page-url: http://erp.scxyltd.com/wecom-bot-bind.html
+  erp:
+    sale-pick-wecom-notification:
+      enabled: true # 按仓库拣货员手机号发送企微卡片
+      client-key: sale-pick
+      entry-url: http://erp.scxyltd.com/wecom-login.html
   sw-print:
     enabled: ${SW_PRINT_ENABLED:true}
     base-url: https://open.sw-aiot.com

@@ -1,12 +1,16 @@
 package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
+import cn.idev.excel.annotation.format.NumberFormat;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnRefundSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,11 +19,18 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 
 import java.math.BigDecimal;
+import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -34,6 +45,8 @@ class ErpPurchaseReturnControllerTest extends BaseMockitoUnitTest {
     private ErpPurchaseReturnService purchaseReturnService;
     @Mock
     private ErpFinancePaymentItemMapper financePaymentItemMapper;
+    @Mock
+    private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
 
     @BeforeEach
     void setUp() {
@@ -108,6 +121,38 @@ class ErpPurchaseReturnControllerTest extends BaseMockitoUnitTest {
 
         assertEquals(expected, result);
         verify(purchaseReturnService).getSupplierAvailableDeptSimplePage(100L, pageParam);
+    }
+
+    @Test
+    void getPurchaseReturnExportFieldsIncludesMainAndDetailBusinessFieldsAndHonorsPermissions() {
+        when(fieldPermissionMasker.getHiddenFieldSet("erp_purchase_return"))
+                .thenReturn(Collections.emptySet());
+
+        List<ErpExportFieldRespVO> fields = controller.getPurchaseReturnExportFields().getData();
+        Set<String> names = fields.stream().map(ErpExportFieldRespVO::getField).collect(Collectors.toSet());
+
+        assertTrue(names.containsAll(Arrays.asList(
+                "returnMode", "purchaserName", "handlerName", "totalProductPrice", "totalTaxAmount", "mainTaxPercent",
+                "refundPrice", "itemDeptName", "stockCount", "inCount", "returnableCount",
+                "lastPurchasePrice", "itemTaxPercent", "itemTaxPrice", "factoryCode", "drawingNo")));
+
+        when(fieldPermissionMasker.getHiddenFieldSet("erp_purchase_return"))
+                .thenReturn(Collections.singleton("item_warehouseId"));
+        Set<String> permittedNames = controller.getPurchaseReturnExportFields().getData().stream()
+                .map(ErpExportFieldRespVO::getField).collect(Collectors.toSet());
+        assertFalse(permittedNames.contains("warehouseName"));
+        assertTrue(permittedNames.contains("itemDeptName"));
+    }
+
+    @Test
+    void purchaseReturnExportUsesMoneyFormatsWithoutFormattingNaturalNumbers() throws Exception {
+        Field amountField = ErpPurchaseReturnExportRespVO.class.getDeclaredField("productPrice");
+        Field countField = ErpPurchaseReturnExportRespVO.class.getDeclaredField("itemCount");
+        Field stockField = ErpPurchaseReturnExportRespVO.class.getDeclaredField("stockCount");
+
+        assertEquals("0.00####", amountField.getAnnotation(NumberFormat.class).value());
+        assertEquals("0.######", countField.getAnnotation(NumberFormat.class).value());
+        assertEquals(BigDecimal.class, stockField.getType());
     }
 
 }

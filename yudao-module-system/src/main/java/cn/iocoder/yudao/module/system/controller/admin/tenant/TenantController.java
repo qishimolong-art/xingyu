@@ -7,12 +7,15 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.framework.security.core.LoginUser;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.tenant.core.aop.TenantIgnore;
 import cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant.TenantPageReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant.TenantRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.tenant.vo.tenant.TenantSaveReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.tenant.TenantDO;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
+import cn.iocoder.yudao.module.system.service.tenant.TenantVisitScopeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,6 +43,8 @@ public class TenantController {
 
     @Resource
     private TenantService tenantService;
+    @Resource
+    private TenantVisitScopeService tenantVisitScopeService;
 
     @GetMapping("/get-id-by-name")
     @PermitAll
@@ -59,6 +64,16 @@ public class TenantController {
         List<TenantDO> list = tenantService.getTenantListByStatus(CommonStatusEnum.ENABLE.getStatus());
         return success(convertList(list, tenantDO ->
                 new TenantRespVO().setId(tenantDO.getId()).setName(tenantDO.getName())));
+    }
+
+    @GetMapping("/visit-list")
+    @TenantIgnore
+    @Operation(summary = "获取当前用户获准访问的租户列表")
+    @PreAuthorize("@ss.hasPermission('system:tenant:visit')")
+    public CommonResult<List<TenantRespVO>> getTenantVisitList() {
+        LoginUser loginUser = SecurityFrameworkUtils.getLoginUser();
+        return success(tenantVisitScopeService.getCurrentUserVisitTenantList(
+                loginUser.getId(), loginUser.getTenantId()));
     }
 
     @GetMapping("/get-by-website")

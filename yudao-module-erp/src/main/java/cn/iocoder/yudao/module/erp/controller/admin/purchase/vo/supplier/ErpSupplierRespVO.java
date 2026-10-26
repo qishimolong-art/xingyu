@@ -166,6 +166,8 @@ public class ErpSupplierRespVO {
     @ExcelProperty("采购员")
     private String purchaser;
 
+    private String purchaserName;
+
     @Schema(description = "公司性质", example = "民营")
     private String companyNature;
 

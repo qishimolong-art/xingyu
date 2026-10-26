@@ -70,4 +70,9 @@ public class TenantFrameworkServiceImpl implements TenantFrameworkService {
         }
     }
 
+    @Override
+    public void validTenantVisit(Long userId, Long loginTenantId, Long visitTenantId) {
+        tenantApi.validateTenantVisit(userId, loginTenantId, visitTenantId);
+    }
+
 }

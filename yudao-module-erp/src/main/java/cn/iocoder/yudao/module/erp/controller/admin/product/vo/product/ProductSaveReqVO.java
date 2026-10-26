@@ -135,12 +135,23 @@ public class ProductSaveReqVO {
     @Valid
     private List<Universal> universals;
 
+    @Valid
+    private UniversalChanges universalChanges;
+
+    @Data
+    public static class UniversalChanges {
+        @Valid
+        private List<Universal> upserts = new java.util.ArrayList<>();
+        private List<Long> deletedIds = new java.util.ArrayList<>();
+    }
+
     @Schema(description = "自定义字段值，key 为字段编码")
     private Map<String, Object> customFields;
 
     @Schema(description = "通用件子项")
     @Data
     public static class Universal {
+        private Long id;
 
         @Schema(description = "通用件编码", requiredMode = Schema.RequiredMode.REQUIRED, example = "P000002")
         @NotEmpty(message = "通用件编码不能为空")

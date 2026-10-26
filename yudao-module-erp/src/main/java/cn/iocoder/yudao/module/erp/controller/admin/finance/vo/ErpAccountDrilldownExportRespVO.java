@@ -22,13 +22,13 @@ public class ErpAccountDrilldownExportRespVO {
     @ExcelProperty(value = "单号", index = 2)
     private String docNo;
 
-    @ExcelProperty(value = "本笔变动", index = 3)
+    @ExcelProperty(value = "本笔变动", index = 3, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal changeAmount;
 
-    @ExcelProperty(value = "上笔累计", index = 4)
+    @ExcelProperty(value = "上笔累计", index = 4, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal prevBalance;
 
-    @ExcelProperty(value = "累计金额", index = 5)
+    @ExcelProperty(value = "累计金额", index = 5, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal balance;
 
     @ExcelProperty(value = "所属部门", index = 6)

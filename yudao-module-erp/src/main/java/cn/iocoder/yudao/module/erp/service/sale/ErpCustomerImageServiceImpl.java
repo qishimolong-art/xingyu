@@ -34,7 +34,10 @@ public class ErpCustomerImageServiceImpl implements ErpCustomerImageService {
 
     @Override
     public void updateImage(ErpCustomerImageSaveReqVO updateReqVO) {
-        validateImageExists(updateReqVO.getId());
+        ErpCustomerImageDO existing = validateImageExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getCustomerId(), updateReqVO.getCustomerId())) {
+            throw exception(CUSTOMER_IMAGE_NOT_EXISTS);
+        }
         customerService.validateCustomer(updateReqVO.getCustomerId());
         imageMapper.updateById(BeanUtils.toBean(updateReqVO, ErpCustomerImageDO.class));
     }
@@ -45,25 +48,36 @@ public class ErpCustomerImageServiceImpl implements ErpCustomerImageService {
         imageMapper.deleteById(id);
     }
 
-    private void validateImageExists(Long id) {
-        if (imageMapper.selectById(id) == null) {
-            throw exception(CUSTOMER_IMAGE_NOT_EXISTS);
+    private ErpCustomerImageDO validateImageExists(Long id) {
+        ErpCustomerImageDO existing = imageMapper.selectById(id);
+        if (existing == null) throw exception(CUSTOMER_IMAGE_NOT_EXISTS);
+        validateVisibleCustomer(existing.getCustomerId());
+        return existing;
+    }
+
+    private void validateVisibleCustomer(Long customerId) {
+        if (customerId == null || customerService.getCustomer(customerId) == null) {
+            throw exception(cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS);
         }
     }
 
     @Override
     public ErpCustomerImageDO getImage(Long id) {
-        return imageMapper.selectById(id);
+        ErpCustomerImageDO existing = imageMapper.selectById(id);
+        if (existing != null) validateVisibleCustomer(existing.getCustomerId());
+        return existing;
     }
 
     @Override
     public PageResult<ErpCustomerImageDO> getImagePage(ErpCustomerImagePageReqVO pageReqVO) {
+        validateVisibleCustomer(pageReqVO.getCustomerId());
+        if (pageReqVO.getPageSize() <= 0 || pageReqVO.getPageSize() > 100) pageReqVO.setPageSize(100);
         return imageMapper.selectPage(pageReqVO);
     }
 
     @Override
     public List<ErpCustomerImageDO> getImageListByCustomerId(Long customerId) {
-        customerService.validateCustomer(customerId);
+        validateVisibleCustomer(customerId);
         return imageMapper.selectListByCustomerId(customerId);
     }
 

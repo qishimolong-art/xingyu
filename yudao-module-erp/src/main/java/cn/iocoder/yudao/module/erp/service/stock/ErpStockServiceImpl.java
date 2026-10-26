@@ -2,7 +2,6 @@ package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockBatchNoRespVO;
@@ -356,6 +355,12 @@ public class ErpStockServiceImpl implements ErpStockService {
 
     private StockQueryScope buildStockQueryScope(ErpStockPageReqVO pageReqVO) {
         StockQueryScope scope = new StockQueryScope();
+        pageReqVO.setExactKeywordProductIds(null);
+        if (ErpStockPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_STOCK_LIST.equals(pageReqVO.getKeywordSearchMode())
+                && StringUtils.hasText(pageReqVO.getProductKeyword())) {
+            pageReqVO.setExactKeywordProductIds(DataPermissionUtils.executeIgnore(() ->
+                    productMapper.selectIdsByExactStockIdentifier(pageReqVO.getProductKeyword())));
+        }
         if (hasProductConditionExceptKeyword(pageReqVO)) {
             scope.productIdFilter = DataPermissionUtils.executeIgnore(() ->
                     selectProductIdsWithoutStockShelfFilters(pageReqVO));
@@ -674,7 +679,7 @@ public class ErpStockServiceImpl implements ErpStockService {
             case "costPrice":
                 dualCostPostingService.assertLegacyMutationAllowed(false);
                 costPrice = defaultZero(reqVO.getCostPrice());
-                costAmount = MoneyUtils.priceMultiply(costPrice, count);
+                costAmount = StockDecimalMath.multiply(costPrice, count);
                 if (costAmount == null) {
                     costAmount = BigDecimal.ZERO;
                 }
@@ -701,6 +706,7 @@ public class ErpStockServiceImpl implements ErpStockService {
     private boolean hasProductCondition(ErpStockPageReqVO v) {
         return StringUtils.hasText(v.getKeyword())
                 || StringUtils.hasText(v.getProductKeyword())
+                || StringUtils.hasText(v.getProductCodeNameKeyword())
                 || StringUtils.hasText(v.getProductNameKeyword())
                 || StringUtils.hasText(v.getProductCode()) || StringUtils.hasText(v.getProductName())
                 || StringUtils.hasText(v.getDrawingNo()) || StringUtils.hasText(v.getVehicleModel())
@@ -716,6 +722,7 @@ public class ErpStockServiceImpl implements ErpStockService {
 
     private boolean hasProductConditionExceptKeyword(ErpStockPageReqVO v) {
         return StringUtils.hasText(v.getProductKeyword())
+                || StringUtils.hasText(v.getProductCodeNameKeyword())
                 || StringUtils.hasText(v.getProductNameKeyword())
                 || StringUtils.hasText(v.getProductCode()) || StringUtils.hasText(v.getProductName())
                 || StringUtils.hasText(v.getDrawingNo()) || StringUtils.hasText(v.getVehicleModel())
@@ -769,7 +776,8 @@ public class ErpStockServiceImpl implements ErpStockService {
         // 1.2 校验库存是否充足
         if (!NEGATIVE_STOCK_COUNT_ENABLE && stock.getCount().add(count).compareTo(BigDecimal.ZERO) < 0) {
             throw exception(STOCK_COUNT_NEGATIVE, getProductNameIgnoreDataPermission(productId),
-                    getWarehouseNameIgnoreDataPermission(warehouseId), stock.getCount(), count);
+                    getWarehouseNameIgnoreDataPermission(warehouseId), formatCountForMessage(stock.getCount()),
+                    formatCountForMessage(count));
         }
 
         // 2. 库存变更
@@ -820,7 +828,7 @@ public class ErpStockServiceImpl implements ErpStockService {
             BigDecimal oldCost = stock.getCostPrice() != null ? stock.getCostPrice() : BigDecimal.ZERO;
             BigDecimal oldCostAmount = stock.getCostAmount() != null
                     ? stock.getCostAmount()
-                    : MoneyUtils.priceMultiply(oldCost, oldCount);
+                    : StockDecimalMath.multiply(oldCost, oldCount);
             if (oldCostAmount == null) {
                 oldCostAmount = BigDecimal.ZERO;
             }
@@ -837,7 +845,8 @@ public class ErpStockServiceImpl implements ErpStockService {
             // 2.1 校验库存是否充足
             if (!NEGATIVE_STOCK_COUNT_ENABLE && oldCount.add(count).compareTo(BigDecimal.ZERO) < 0) {
                 throw exception(STOCK_COUNT_NEGATIVE, getProductNameIgnoreDataPermission(productId),
-                        getWarehouseNameIgnoreDataPermission(warehouseId), oldCount, count);
+                        getWarehouseNameIgnoreDataPermission(warehouseId), formatCountForMessage(oldCount),
+                        formatCountForMessage(count));
             }
 
             // 2.2 零增量：直接返回
@@ -871,7 +880,7 @@ public class ErpStockServiceImpl implements ErpStockService {
                     newCost = newAmount.divide(newCount, COST_PRICE_SCALE, RoundingMode.HALF_UP);
                 } else {
                     newCost = oldCost;
-                    newAmount = MoneyUtils.priceMultiply(newCost, newCount);
+                    newAmount = StockDecimalMath.multiply(newCost, newCount);
                     if (newAmount == null) {
                         newAmount = BigDecimal.ZERO;
                     }
@@ -888,6 +897,7 @@ public class ErpStockServiceImpl implements ErpStockService {
             BigDecimal expectedOldCount = oldCount;
             BigDecimal targetCount = newCount;
             BigDecimal targetCost = newCost;
+            newAmount = StockDecimalMath.boundary(newAmount, 4);
             BigDecimal targetAmount = newAmount;
             int updateCount = DataPermissionUtils.executeIgnore(() ->
                     stockMapper.updateCountAndCost(stockId, expectedOldCount, targetCount,
@@ -961,7 +971,7 @@ public class ErpStockServiceImpl implements ErpStockService {
             }
 
             // 2.2 有效差额（保留 2 位）
-            effectiveDelta = deltaCostAmountFull.multiply(ratio).setScale(2, RoundingMode.HALF_UP);
+            effectiveDelta = deltaCostAmountFull.multiply(ratio).setScale(4, RoundingMode.HALF_UP);
 
             // 2.3 新成本金额与均价
             newCostAmount = currentAmount.add(effectiveDelta);
@@ -1035,7 +1045,7 @@ public class ErpStockServiceImpl implements ErpStockService {
         for (int i = 0; i < MAX_RETRY_TIMES; i++) {
             BigDecimal currentCount = stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO;
             BigDecimal currentCostPrice = stock.getCostPrice() != null ? stock.getCostPrice() : BigDecimal.ZERO;
-            BigDecimal newCostAmount = MoneyUtils.priceMultiply(targetCostPrice, currentCount);
+            BigDecimal newCostAmount = StockDecimalMath.multiply(targetCostPrice, currentCount);
             if (newCostAmount == null) {
                 newCostAmount = BigDecimal.ZERO;
             }
@@ -1059,7 +1069,8 @@ public class ErpStockServiceImpl implements ErpStockService {
     }
 
     private boolean shouldDeductOutboundCostByUnitPrice(BigDecimal unitPrice, Integer bizType) {
-        return unitPrice != null && ErpStockRecordBizTypeEnum.PURCHASE_RETURN.getType().equals(bizType);
+        return unitPrice != null && (ErpStockRecordBizTypeEnum.PURCHASE_RETURN.getType().equals(bizType)
+                || ErpStockRecordBizTypeEnum.ASSEMBLY_FINISHED_IN_CANCEL.getType().equals(bizType));
     }
 
     private ErpStockDO selectStockIgnoreDataPermission(Long productId, Long warehouseId) {
@@ -1096,6 +1107,10 @@ public class ErpStockServiceImpl implements ErpStockService {
     private String getWarehouseNameIgnoreDataPermission(Long warehouseId) {
         ErpWarehouseDO warehouse = DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouse(warehouseId));
         return warehouse != null && StringUtils.hasText(warehouse.getName()) ? warehouse.getName() : String.valueOf(warehouseId);
+    }
+
+    private static String formatCountForMessage(BigDecimal count) {
+        return count != null ? count.stripTrailingZeros().toPlainString() : "0";
     }
 
 }

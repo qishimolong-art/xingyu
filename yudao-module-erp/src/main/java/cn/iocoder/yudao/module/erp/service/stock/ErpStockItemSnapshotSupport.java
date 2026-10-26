@@ -1,6 +1,5 @@
 package cn.iocoder.yudao.module.erp.service.stock;
 
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import org.springframework.stereotype.Component;
@@ -26,7 +25,7 @@ public class ErpStockItemSnapshotSupport {
     }
 
     public BigDecimal calculateTotalWeight(BigDecimal weight, BigDecimal count) {
-        return MoneyUtils.priceMultiply(weight, count);
+        return StockDecimalMath.multiply(weight, count);
     }
 
     public void fillStockRecordSnapshot(ErpStockRecordCreateReqBO reqBO, ErpProductDO product) {

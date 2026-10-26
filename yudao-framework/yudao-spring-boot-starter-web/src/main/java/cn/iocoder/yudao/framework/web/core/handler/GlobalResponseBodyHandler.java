@@ -3,6 +3,8 @@ package cn.iocoder.yudao.framework.web.core.handler;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.web.core.util.WebFrameworkUtils;
 import org.springframework.core.MethodParameter;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
@@ -21,6 +23,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
  * 方便 {@link cn.iocoder.yudao.framework.apilog.core.filter.ApiAccessLogFilter} 记录访问日志
  */
 @ControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE) // 在精度等响应转换之前记录原始 CommonResult，供访问日志使用
 public class GlobalResponseBodyHandler implements ResponseBodyAdvice {
 
     @Override
@@ -37,8 +40,10 @@ public class GlobalResponseBodyHandler implements ResponseBodyAdvice {
     @SuppressWarnings("NullableProblems") // 避免 IDEA 警告
     public Object beforeBodyWrite(Object body, MethodParameter returnType, MediaType selectedContentType, Class selectedConverterType,
                                   ServerHttpRequest request, ServerHttpResponse response) {
-        // 记录 Controller 结果
-        WebFrameworkUtils.setCommonResult(((ServletServerHttpRequest) request).getServletRequest(), (CommonResult<?>) body);
+        // 其他 Advice 可能已将响应转换为 JSON 树等类型，不强制转换或覆盖已记录的结果。
+        if (body instanceof CommonResult) {
+            WebFrameworkUtils.setCommonResult(((ServletServerHttpRequest) request).getServletRequest(), (CommonResult<?>) body);
+        }
         return body;
     }
 

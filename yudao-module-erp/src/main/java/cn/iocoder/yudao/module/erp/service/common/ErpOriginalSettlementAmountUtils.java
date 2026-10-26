@@ -1,13 +1,14 @@
 package cn.iocoder.yudao.module.erp.service.common;
 
 import cn.hutool.core.collection.CollUtil;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleDecimalUtils;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 
 /**
@@ -18,6 +19,8 @@ import java.util.List;
  */
 public final class ErpOriginalSettlementAmountUtils {
 
+    private static final int SETTLEMENT_AMOUNT_SCALE = 6;
+
     private ErpOriginalSettlementAmountUtils() {
     }
 
@@ -27,7 +30,7 @@ public final class ErpOriginalSettlementAmountUtils {
             return zeroIfNull(purchaseIn.getTotalPrice());
         }
         BigDecimal productPrice = items.stream()
-                .map(item -> MoneyUtils.priceMultiply(
+                .map(item -> ErpSaleDecimalUtils.multiply(
                         item.getOriginalProductPrice() != null ? item.getOriginalProductPrice() : item.getProductPrice(),
                         item.getCount()))
                 .filter(price -> price != null)
@@ -50,7 +53,7 @@ public final class ErpOriginalSettlementAmountUtils {
             return zeroIfNull(saleOut.getTotalPrice());
         }
         BigDecimal productPrice = items.stream()
-                .map(item -> MoneyUtils.priceMultiply(
+                .map(item -> ErpSaleDecimalUtils.multiply(
                         item.getOriginalProductPrice() != null ? item.getOriginalProductPrice() : item.getProductPrice(),
                         item.getCount()))
                 .filter(price -> price != null)
@@ -74,12 +77,41 @@ public final class ErpOriginalSettlementAmountUtils {
                     saleOut.getFeeAmount(), saleOut.getOtherPrice(), saleOut.getExtraFee(), saleOut.getFreight()));
         }
         BigDecimal productPrice = items.stream()
-                .map(item -> MoneyUtils.priceMultiply(
+                .map(item -> ErpSaleDecimalUtils.multiply(
                         item.getOriginalProductPrice() != null ? item.getOriginalProductPrice() : item.getProductPrice(),
                         item.getCount()))
                 .filter(price -> price != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         return calculateTotal(productPrice, saleOut.getDiscountPercent(), BigDecimal.ZERO);
+    }
+
+    /**
+     * 按销售单未收金额计算结算状态：0 未结清、1 部分结清、2 已结清。
+     */
+    public static Integer calculateSaleOutSettlementStatus(BigDecimal receivableAmount,
+                                                            BigDecimal receivedAmount) {
+        BigDecimal normalizedReceivableAmount = normalizeSettlementAmount(receivableAmount);
+        BigDecimal normalizedReceivedAmount = normalizeSettlementAmount(receivedAmount);
+        BigDecimal unreceivedAmount = normalizedReceivableAmount.subtract(normalizedReceivedAmount);
+        if (unreceivedAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return 2;
+        }
+        if (normalizedReceivedAmount.compareTo(BigDecimal.ZERO) > 0) {
+            return 1;
+        }
+        return 0;
+    }
+
+    /**
+     * 销售单未收金额，统一按财务金额精度计算。
+     */
+    public static BigDecimal calculateSaleOutUnreceivedAmount(BigDecimal receivableAmount,
+                                                               BigDecimal receivedAmount) {
+        return normalizeSettlementAmount(receivableAmount).subtract(normalizeSettlementAmount(receivedAmount));
+    }
+
+    private static BigDecimal normalizeSettlementAmount(BigDecimal amount) {
+        return zeroIfNull(amount).abs().setScale(SETTLEMENT_AMOUNT_SCALE, RoundingMode.HALF_UP);
     }
 
     private static boolean hasPurchaseOriginalPrice(List<ErpPurchaseInItemDO> items) {
@@ -94,7 +126,7 @@ public final class ErpOriginalSettlementAmountUtils {
 
     private static BigDecimal calculateTotal(BigDecimal productPrice, BigDecimal discountPercent,
                                              BigDecimal feeAmount) {
-        BigDecimal discountPrice = MoneyUtils.priceMultiplyPercent(productPrice, zeroIfNull(discountPercent));
+        BigDecimal discountPrice = ErpSaleDecimalUtils.multiplyPercent(productPrice, zeroIfNull(discountPercent));
         return productPrice.subtract(discountPrice).add(zeroIfNull(feeAmount));
     }
 

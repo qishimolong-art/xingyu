@@ -20,6 +20,7 @@ public class ErpStockAdjustReqVO {
 
     @Schema(description = "调整后库存数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.000")
     @NotNull(message = "调整后库存数量不能为空")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField(integer = 18, scale = 6)
     private BigDecimal targetCount;
 
     @Schema(description = "调整原因（盘点调整/报损/报溢）", example = "盘点调整")

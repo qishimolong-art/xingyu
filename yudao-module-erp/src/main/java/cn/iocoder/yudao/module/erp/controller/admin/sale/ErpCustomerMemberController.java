@@ -53,6 +53,7 @@ public class ErpCustomerMemberController {
     @Operation(summary = "创建客户小程序授权")
     @PreAuthorize("@ss.hasPermission('erp:customer-member:create')")
     public CommonResult<Long> createCustomerMember(@Valid @RequestBody ErpCustomerMemberCreateReqVO reqVO) {
+        requireVisibleCustomer(reqVO.getCustomerId());
         return success(customerMemberService.createCustomerMember(
                 reqVO.getCustomerId(), reqVO.getMemberUserId(), reqVO.getRemark()));
     }
@@ -62,6 +63,7 @@ public class ErpCustomerMemberController {
     @PreAuthorize("@ss.hasPermission('erp:customer-member:update')")
     public CommonResult<Boolean> updateCustomerMemberStatus(
             @Valid @RequestBody ErpCustomerMemberUpdateStatusReqVO reqVO) {
+        requireVisibleBinding(reqVO.getId());
         customerMemberService.updateCustomerMemberStatus(reqVO.getId(), reqVO.getStatus());
         return success(true);
     }
@@ -71,8 +73,35 @@ public class ErpCustomerMemberController {
     @Parameter(name = "id", description = "编号", required = true)
     @PreAuthorize("@ss.hasPermission('erp:customer-member:delete')")
     public CommonResult<Boolean> deleteCustomerMember(@RequestParam("id") Long id) {
+        requireVisibleBinding(id);
         customerMemberService.deleteCustomerMember(id);
         return success(true);
+    }
+
+    @GetMapping("/page")
+    @PreAuthorize("@ss.hasPermission('erp:customer-member:query')")
+    public CommonResult<cn.iocoder.yudao.framework.common.pojo.PageResult<ErpCustomerMemberRespVO>> getCustomerMemberPage(
+            @Valid cn.iocoder.yudao.framework.common.pojo.PageParam page,
+            @RequestParam("customerId") Long customerId) {
+        requireVisibleCustomer(customerId);
+        if (page.getPageSize() <= 0 || page.getPageSize() > 100) page.setPageSize(100);
+        cn.iocoder.yudao.framework.common.pojo.PageResult<ErpCustomerMemberDO> result =
+                customerMemberService.getCustomerMemberPage(customerId, page);
+        List<ErpCustomerMemberRespVO> rows = BeanUtils.toBean(result.getList(), ErpCustomerMemberRespVO.class);
+        fillCustomerMemberNames(result.getList(), rows);
+        return success(new cn.iocoder.yudao.framework.common.pojo.PageResult<>(rows, result.getTotal()));
+    }
+
+    private void requireVisibleCustomer(Long id) {
+        if (customerService.getCustomer(id) == null) throw cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception(
+                cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS);
+    }
+
+    private void requireVisibleBinding(Long id) {
+        ErpCustomerMemberDO binding = customerMemberService.getCustomerMember(id);
+        if (binding == null) throw cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception(
+                cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_MEMBER_NOT_EXISTS);
+        requireVisibleCustomer(binding.getCustomerId());
     }
 
     @GetMapping("/list-by-customer")
@@ -81,7 +110,10 @@ public class ErpCustomerMemberController {
     @PreAuthorize("@ss.hasPermission('erp:customer-member:query')")
     public CommonResult<List<ErpCustomerMemberRespVO>> getCustomerMemberListByCustomer(
             @RequestParam("customerId") Long customerId) {
+        requireVisibleCustomer(customerId);
         List<ErpCustomerMemberDO> list = customerMemberService.getCustomerMemberListByCustomerId(customerId);
+        Set<Long> visibleIds = convertSet(customerService.getCustomerList(convertSet(list, ErpCustomerMemberDO::getCustomerId)), ErpCustomerDO::getId);
+        list = list.stream().filter(row -> visibleIds.contains(row.getCustomerId())).collect(java.util.stream.Collectors.toList());
         List<ErpCustomerMemberRespVO> respList = BeanUtils.toBean(list, ErpCustomerMemberRespVO.class);
         fillCustomerMemberNames(list, respList);
         return success(respList);
@@ -94,6 +126,8 @@ public class ErpCustomerMemberController {
     public CommonResult<List<ErpCustomerMemberRespVO>> getCustomerMemberListByMember(
             @RequestParam("memberUserId") Long memberUserId) {
         List<ErpCustomerMemberDO> list = customerMemberService.getCustomerMemberListByMemberUserId(memberUserId);
+        Set<Long> visibleIds = convertSet(customerService.getCustomerList(convertSet(list, ErpCustomerMemberDO::getCustomerId)), ErpCustomerDO::getId);
+        list = list.stream().filter(row -> visibleIds.contains(row.getCustomerId())).collect(java.util.stream.Collectors.toList());
         List<ErpCustomerMemberRespVO> respList = BeanUtils.toBean(list, ErpCustomerMemberRespVO.class);
         fillCustomerMemberNames(list, respList);
         return success(respList);

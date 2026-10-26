@@ -8,8 +8,10 @@ import java.time.LocalDateTime;
 @Data
 public class ErpSalePickExportRespVO {
 
-    @ExcelProperty("销售单号")
-    private String saleOutNo;
+    @ExcelProperty("业务单号")
+    private String displayNo;
+    @ExcelProperty("拣货来源")
+    private String sourceTypeName;
     @ExcelProperty("客户")
     private String customerName;
     @ExcelProperty("仓库")

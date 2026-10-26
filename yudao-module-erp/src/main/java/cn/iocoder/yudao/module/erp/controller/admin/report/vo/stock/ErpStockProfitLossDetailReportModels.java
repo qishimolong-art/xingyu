@@ -67,15 +67,15 @@ public final class ErpStockProfitLossDetailReportModels {
         private String warehouseName;
         @ExcelProperty(value = "货架", index = 6)
         private String shelf;
-        @ExcelProperty(value = "盈亏数", index = 7)
+        @ExcelProperty(value = "盈亏数", index = 7, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
         private BigDecimal profitLossCount;
-        @ExcelProperty(value = "成本单价", index = 8)
+        @ExcelProperty(value = "成本单价", index = 8, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal costUnitPrice;
-        @ExcelProperty(value = "调整单价", index = 9)
+        @ExcelProperty(value = "调整单价", index = 9, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal adjustedUnitPrice;
-        @ExcelProperty(value = "实盘数", index = 10)
+        @ExcelProperty(value = "实盘数", index = 10, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
         private BigDecimal actualCount;
-        @ExcelProperty(value = "盈亏额", index = 11)
+        @ExcelProperty(value = "盈亏额", index = 11, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal profitLossAmount;
         @ExcelProperty(value = "制单人", index = 12)
         private String creatorName;
@@ -91,7 +91,7 @@ public final class ErpStockProfitLossDetailReportModels {
         private String drawingNo;
         @ExcelProperty(value = "关联单号", index = 18)
         private String relatedNo;
-        @ExcelProperty(value = "明细备注", index = 19)
+        @ExcelProperty(value = "明细备注", index = 19, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
         private String itemRemark;
 
         private Boolean priceVisible;

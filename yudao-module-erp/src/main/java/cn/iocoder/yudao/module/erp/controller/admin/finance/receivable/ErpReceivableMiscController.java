@@ -14,6 +14,7 @@ import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.ErpFinanceSettlementImportResolver;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.ErpFinanceSettlementImportResolver.ReceivableMiscImportContext;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.misc.ErpReceivableMiscDraftSaveReqVO;
@@ -29,6 +30,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMis
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableMiscStatusEnum;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
@@ -284,6 +286,7 @@ public class ErpReceivableMiscController {
     @PreAuthorize("@ss.hasPermission('erp:receivable-misc:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportExcel(@Valid ErpReceivableMiscPageReqVO reqVO,
+                            @RequestParam(value = "fields", required = false) String fields,
                             HttpServletResponse response) throws IOException {
         reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         PageResult<ErpReceivableMiscRespVO> voPage =
@@ -293,7 +296,25 @@ public class ErpReceivableMiscController {
         rows.forEach(row -> row.setStatusName(formatStatusName(
                 voPage.getList().stream().filter(item -> item.getNo().equals(row.getNo()))
                         .findFirst().map(ErpReceivableMiscRespVO::getStatus).orElse(null))));
-        ExcelUtils.write(response, "其他应收.xls", "数据", ErpReceivableMiscExportRespVO.class, rows);
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(
+                ErpReceivableMiscExportRespVO.class, ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFields(FIELD_PERMISSION_MODULE), Collections.emptyMap());
+        ExcelUtils.write(response, "其他应收.xls", "数据", ErpReceivableMiscExportRespVO.class,
+                rows, includeFields);
+    }
+
+    public void exportExcel(ErpReceivableMiscPageReqVO reqVO,
+                            HttpServletResponse response) throws IOException {
+        exportExcel(reqVO, null, response);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得其他应收导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-misc:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpReceivableMiscExportRespVO.class,
+                Collections.emptyMap(), fieldPermissionMasker.getHiddenFields(FIELD_PERMISSION_MODULE),
+                Collections.emptyMap()));
     }
 
     @GetMapping("/get-import-template")

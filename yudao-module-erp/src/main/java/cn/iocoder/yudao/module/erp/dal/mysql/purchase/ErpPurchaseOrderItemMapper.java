@@ -11,6 +11,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemD
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.springframework.util.StringUtils;
@@ -49,6 +50,11 @@ public interface ErpPurchaseOrderItemMapper extends BaseMapperX<ErpPurchaseOrder
     default List<ErpPurchaseOrderItemDO> selectListByOrderId(Long orderId) {
         return selectList(buildSortedQuery(orderId, null, null, null));
     }
+
+    // 批量更新使用独立会话，提交校验须先清理当前会话缓存，读取刚保存的明细。
+    @Options(useCache = false, flushCache = Options.FlushCachePolicy.TRUE)
+    @Select("SELECT * FROM erp_purchase_order_items WHERE order_id = #{orderId} AND deleted = 0 ORDER BY id")
+    List<ErpPurchaseOrderItemDO> selectListByOrderIdForSubmit(@Param("orderId") Long orderId);
 
     default List<ErpPurchaseOrderItemDO> selectListByOrderId(Long orderId, String orderField,
                                                              String orderDirection) {

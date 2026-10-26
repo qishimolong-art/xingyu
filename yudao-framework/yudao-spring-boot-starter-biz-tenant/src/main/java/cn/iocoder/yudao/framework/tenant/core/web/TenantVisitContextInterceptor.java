@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.security.core.service.SecurityFrameworkService
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.tenant.config.TenantProperties;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
+import cn.iocoder.yudao.framework.tenant.core.service.TenantFrameworkService;
 import cn.iocoder.yudao.framework.web.core.util.WebFrameworkUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,8 @@ public class TenantVisitContextInterceptor implements HandlerInterceptor {
 
     private final SecurityFrameworkService securityFrameworkService;
 
+    private final TenantFrameworkService tenantFrameworkService;
+
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         // 如果和当前租户编号一致，则直接跳过
@@ -45,8 +48,11 @@ public class TenantVisitContextInterceptor implements HandlerInterceptor {
 
         // 校验用户是否可切换租户
         if (!securityFrameworkService.hasAnyPermissions(PERMISSION)) {
-            throw exception0(GlobalErrorCodeConstants.FORBIDDEN.getCode(), "您无权切换租户");
+            throw exception0(GlobalErrorCodeConstants.TENANT_VISIT_FORBIDDEN.getCode(),
+                    GlobalErrorCodeConstants.TENANT_VISIT_FORBIDDEN.getMsg());
         }
+
+        tenantFrameworkService.validTenantVisit(loginUser.getId(), loginUser.getTenantId(), visitTenantId);
 
         // 【重点】切换租户编号
         loginUser.setVisitTenantId(visitTenantId);
@@ -59,6 +65,7 @@ public class TenantVisitContextInterceptor implements HandlerInterceptor {
         // 【重点】清理切换，换回原租户编号
         LoginUser loginUser = SecurityFrameworkUtils.getLoginUser();
         if (loginUser != null && loginUser.getTenantId() != null) {
+            loginUser.setVisitTenantId(null);
             TenantContextHolder.setTenantId(loginUser.getTenantId());
         }
     }

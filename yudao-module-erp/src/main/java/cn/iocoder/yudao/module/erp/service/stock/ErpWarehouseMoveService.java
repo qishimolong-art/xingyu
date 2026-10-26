@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWa
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveItemDO;
+import cn.iocoder.yudao.module.erp.service.stock.bo.ErpAssemblyWarehouseMoveCreateReqBO;
 
 import javax.validation.Valid;
 import java.util.Collection;
@@ -29,6 +30,18 @@ public interface ErpWarehouseMoveService {
 
     void submitWarehouseMove(Long id);
 
+    void confirmWarehouseMove(Long id);
+
+    void cancelConfirmWarehouseMove(Long id);
+
+    void autoApproveAfterPick(Long id, Long pickUserId);
+
+    /** 为跨仓套件组装创建一张已完成、已过账的系统移货单。 */
+    ErpWarehouseMoveDO createAndApproveAssemblyMove(ErpAssemblyWarehouseMoveCreateReqBO createReqBO);
+
+    /** 作废跨仓套件组装产生的系统移货单，并反冲对应库存。 */
+    void voidAssemblyMove(Long id, String reason);
+
     void updateWarehouseMoveRemark(@Valid ErpStockUpdateRemarkReqVO updateReqVO);
 
     void updateWarehouseMoveStatus(Long id, Integer status);
@@ -36,6 +49,8 @@ public interface ErpWarehouseMoveService {
     void deleteWarehouseMove(List<Long> ids);
 
     ErpWarehouseMoveDO getWarehouseMove(Long id);
+
+    List<ErpWarehouseMoveDO> getWarehouseMoveList(Collection<Long> ids);
 
     PageResult<ErpWarehouseMoveDO> getWarehouseMovePage(ErpWarehouseMovePageReqVO pageReqVO);
 

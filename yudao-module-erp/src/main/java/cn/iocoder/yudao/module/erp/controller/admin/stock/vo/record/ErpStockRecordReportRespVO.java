@@ -32,6 +32,9 @@ public class ErpStockRecordReportRespVO {
     @ExcelProperty("发生日期")
     private LocalDateTime bizDate;
 
+    @Schema(description = "审批日期（库存流水审批生效时的创建时间）")
+    private LocalDateTime approveTime;
+
     @Schema(description = "交易类型", example = "10")
     @ExcelProperty(value = "交易类型", converter = DictConvert.class)
     @DictFormat(DictTypeConstants.STOCK_RECORD_BIZ_TYPE)
@@ -65,11 +68,11 @@ public class ErpStockRecordReportRespVO {
     private Integer packageQty;
 
     @Schema(description = "单重")
-    @ExcelProperty("单重")
+    @ExcelProperty(value = "单重", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal weight;
 
     @Schema(description = "总重")
-    @ExcelProperty("总重")
+    @ExcelProperty(value = "总重", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal totalWeight;
 
     @Schema(description = "仓库编号")
@@ -85,35 +88,35 @@ public class ErpStockRecordReportRespVO {
 
     // ========== 入库分列（当 count > 0 填充） ==========
     @Schema(description = "入库数")
-    @ExcelProperty("入库数")
+    @ExcelProperty(value = "入库数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal inCount;
     @Schema(description = "入库单价")
-    @ExcelProperty("入库单价")
+    @ExcelProperty(value = "入库单价", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal inUnitPrice;
     @Schema(description = "入库金额")
-    @ExcelProperty("入库金额")
+    @ExcelProperty(value = "入库金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal inAmount;
 
     // ========== 出库分列（当 count < 0 填充，数值取绝对值） ==========
     @Schema(description = "出库数")
-    @ExcelProperty("出库数")
+    @ExcelProperty(value = "出库数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal outCount;
     @Schema(description = "出库成本单价")
-    @ExcelProperty("出库成本单价")
+    @ExcelProperty(value = "出库成本单价", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal outUnitPrice;
     @Schema(description = "出库成本金额")
-    @ExcelProperty("出库成本金额")
+    @ExcelProperty(value = "出库成本金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal outAmount;
 
     // ========== 结存列 ==========
     @Schema(description = "结存数")
-    @ExcelProperty("结存数")
+    @ExcelProperty(value = "结存数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal totalCount;
     @Schema(description = "结存单价")
-    @ExcelProperty("结存单价")
+    @ExcelProperty(value = "结存单价", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal costPrice;
     @Schema(description = "结存金额")
-    @ExcelProperty("结存金额")
+    @ExcelProperty(value = "结存金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal costAmount;
 
 }

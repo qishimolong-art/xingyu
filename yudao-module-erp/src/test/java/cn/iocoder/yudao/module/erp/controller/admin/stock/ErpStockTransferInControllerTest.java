@@ -75,8 +75,6 @@ class ErpStockTransferInControllerTest extends BaseMockitoUnitTest {
         PageResult<ErpStockMoveDO> dataPage = new PageResult<>(Collections.emptyList(), 0L);
         PageResult<ErpStockMoveRespVO> responsePage = new PageResult<>(Collections.emptyList(), 0L);
         when(stockMoveService.getVisibleStockTransferInPage(request)).thenReturn(dataPage);
-        when(stockMoveController.buildStockMoveVOPageResult(dataPage, "erp_stock_transfer_in"))
-                .thenReturn(responsePage);
         when(fieldPermissionMasker.getHiddenFieldSet("erp_stock_transfer_in"))
                 .thenReturn(Collections.emptySet());
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -85,7 +83,8 @@ class ErpStockTransferInControllerTest extends BaseMockitoUnitTest {
 
         assertEquals(Integer.valueOf(20), request.getTransferDirection());
         assertEquals(1, request.getPageNo());
-        assertEquals(5000, request.getPageSize());
+        assertEquals(100, request.getPageSize());
+        assertEquals(false, request.getIncludeItems());
         assertTrue(response.getContentAsByteArray().length > 0);
         verify(stockMoveService).getVisibleStockTransferInPage(request);
         verify(stockMoveService, never()).getStockMovePage(request);

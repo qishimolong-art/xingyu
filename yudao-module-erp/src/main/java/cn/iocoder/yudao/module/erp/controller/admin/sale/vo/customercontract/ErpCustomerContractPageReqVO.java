@@ -12,6 +12,7 @@ import lombok.ToString;
 @ToString(callSuper = true)
 public class ErpCustomerContractPageReqVO extends PageParam {
 
+    @javax.validation.constraints.NotNull
     private Long customerId;
     private String contractNo;
     private String contractType;

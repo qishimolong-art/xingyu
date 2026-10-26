@@ -51,6 +51,24 @@ public class ErpSaleReturnRespVO {
     @ExcelProperty("退货时间")
     private LocalDateTime returnTime;
 
+    @Schema(description = "下单确认人编号")
+    private Long confirmUserId;
+
+    @Schema(description = "下单确认人名称")
+    private String confirmUserName;
+
+    @Schema(description = "下单确认时间")
+    private LocalDateTime confirmTime;
+
+    @Schema(description = "拣货状态：10待拣货、20部分拣货、30已完成")
+    private Integer pickStatus;
+
+    @Schema(description = "拣货完成明细数")
+    private Integer pickedItemCount;
+
+    @Schema(description = "拣货明细总数")
+    private Integer pickTotalItemCount;
+
     @Schema(description = "销售订单编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "17386")
     private Long orderId;
 

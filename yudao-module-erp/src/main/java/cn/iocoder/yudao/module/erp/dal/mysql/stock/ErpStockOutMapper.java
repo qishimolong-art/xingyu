@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
@@ -38,6 +39,7 @@ public interface ErpStockOutMapper extends BaseMapperX<ErpStockOutDO> {
 
     static MPJLambdaWrapperX<ErpStockOutDO> buildQuery(ErpStockOutPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpStockOutDO> query = new MPJLambdaWrapperX<ErpStockOutDO>()
+                .inIfPresent(ErpStockOutDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpStockOutDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpStockOutDO::getCustomerId, reqVO.getCustomerId())
                 .betweenIfPresent(ErpStockOutDO::getOutTime, reqVO.getOutTime())
@@ -45,6 +47,12 @@ public interface ErpStockOutMapper extends BaseMapperX<ErpStockOutDO> {
                 .eqIfPresent(ErpStockOutDO::getDeptId, reqVO.getDeptId())
                 .likeIfPresent(ErpStockOutDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpStockOutDO::getCreator, reqVO.getCreator());
+        if (reqVO.getPickStatus() != null) {
+            query.apply("EXISTS (SELECT 1 FROM erp_sale_pick_delivery_order pdo "
+                            + "WHERE pdo.source_type = {0} AND pdo.source_id = t.id "
+                            + "AND pdo.pick_status = {1} AND pdo.deleted = b'0')",
+                    ErpSaleBizSourceTypeEnum.STOCK_OUT.getType(), reqVO.getPickStatus());
+        }
         ErpKeywordQuery.appendProductItemFilter(query, "erp_stock_out_item", "out_id",
                 reqVO.getProductId(), reqVO.getWarehouseId(), null, null,
                 reqVO.getProductKeyword(), true);
@@ -76,6 +84,17 @@ public interface ErpStockOutMapper extends BaseMapperX<ErpStockOutDO> {
     default int updateByIdAndStatus(Long id, Integer status, ErpStockOutDO updateObj) {
         return update(updateObj, new LambdaUpdateWrapper<ErpStockOutDO>()
                 .eq(ErpStockOutDO::getId, id).eq(ErpStockOutDO::getStatus, status));
+    }
+
+    default ErpStockOutDO selectByIdForUpdate(Long id) {
+        return selectOne(new MPJLambdaWrapperX<ErpStockOutDO>()
+                .eq(ErpStockOutDO::getId, id).last("FOR UPDATE"));
+    }
+
+    default int cancelConfirmByIdAndStatus(Long id, Integer status, Integer targetStatus) {
+        return update(new ErpStockOutDO().setStatus(targetStatus), new LambdaUpdateWrapper<ErpStockOutDO>()
+                .eq(ErpStockOutDO::getId, id).eq(ErpStockOutDO::getStatus, status)
+                .set(ErpStockOutDO::getConfirmUserId, null).set(ErpStockOutDO::getConfirmTime, null));
     }
 
     default ErpStockOutDO selectByNo(String no) {

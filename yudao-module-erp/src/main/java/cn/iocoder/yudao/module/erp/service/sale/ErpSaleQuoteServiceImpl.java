@@ -6,7 +6,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
+
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
@@ -140,6 +140,21 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleQuote(ErpSaleQuoteSaveReqVO createReqVO) {
+        ErpSaleDecimalUtils.requireScale(createReqVO.getDiscountPercent(), "优惠率，百分比");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getFeeAmount(), "费用金额，单位：元");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getOtherPrice(), "其它金额，单位：元");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getAllowancePrice(), "折让金额");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getFreightAmount(), "费用金额");
+        if (createReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < createReqVO.getItems().size(); decimalRow++) {
+                ErpSaleQuoteSaveReqVO.Item decimalItem = createReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getProductPrice(), "第" + (decimalRow + 1) + "行产品单价");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getWeight(), "第" + (decimalRow + 1) + "行重量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getCount(), "第" + (decimalRow + 1) + "行产品数量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getTaxPercent(), "第" + (decimalRow + 1) + "行税率，百分比");
+            }
+        }
         clearHiddenFields(createReqVO);
         clearHiddenItemFields(createReqVO, createReqVO.getItems());
         Long reqDeptId = createReqVO.getDeptId();
@@ -216,6 +231,21 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleQuote(ErpSaleQuoteSaveReqVO updateReqVO) {
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getDiscountPercent(), "优惠率，百分比");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getFeeAmount(), "费用金额，单位：元");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getOtherPrice(), "其它金额，单位：元");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getAllowancePrice(), "折让金额");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getFreightAmount(), "费用金额");
+        if (updateReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < updateReqVO.getItems().size(); decimalRow++) {
+                ErpSaleQuoteSaveReqVO.Item decimalItem = updateReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getProductPrice(), "第" + (decimalRow + 1) + "行产品单价");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getWeight(), "第" + (decimalRow + 1) + "行重量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getCount(), "第" + (decimalRow + 1) + "行产品数量");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getTaxPercent(), "第" + (decimalRow + 1) + "行税率，百分比");
+            }
+        }
         ErpSaleQuoteDO quote = validateSaleQuoteExists(updateReqVO.getId());
         if (ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus().equals(quote.getStatus())) {
             throw exception(SALE_QUOTE_UPDATE_FAIL_GENERATED, quote.getNo());
@@ -425,9 +455,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 BigDecimal productPrice = Boolean.TRUE.equals(item.getGiftFlag())
                         ? BigDecimal.ZERO : productPriceMap.getOrDefault(item.getProductId(), BigDecimal.ZERO);
                 item.setProductPrice(productPrice);
-                item.setTotalPrice(MoneyUtils.priceMultiply(productPrice, item.getCount()));
+                item.setTotalPrice(ErpSaleDecimalUtils.multiply(productPrice, item.getCount()));
                 item.setTaxPrice(item.getTotalPrice() != null && item.getTaxPercent() != null
-                        ? MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()) : BigDecimal.ZERO);
+                        ? ErpSaleDecimalUtils.multiplyPercent(item.getTotalPrice(), item.getTaxPercent()) : BigDecimal.ZERO);
             }
         });
         if (updatePrice) {
@@ -630,9 +660,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                     .setBatchNo(quoteItem.getBatchNo())
                     .setProductUnitId(quoteItem.getProductUnitId())
                     .setCount(entry.getValue())
-                    .setTotalPrice(MoneyUtils.priceMultiply(productPrice, entry.getValue()))
-                    .setTaxPrice(MoneyUtils.priceMultiplyPercent(
-                            MoneyUtils.priceMultiply(productPrice, entry.getValue()),
+                    .setTotalPrice(ErpSaleDecimalUtils.multiply(productPrice, entry.getValue()))
+                    .setTaxPrice(ErpSaleDecimalUtils.multiplyPercent(
+                            ErpSaleDecimalUtils.multiply(productPrice, entry.getValue()),
                             quoteItem.getTaxPercent())));
         });
         cartItems = mergeCartItemsByStockKey(cartItems);
@@ -715,8 +745,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             ErpSaleCartItemDO latest = group.get(group.size() - 1);
             survivor.setCount(count);
             survivor.setProductPrice(latest.getProductPrice());
-            survivor.setTotalPrice(MoneyUtils.priceMultiply(survivor.getProductPrice(), count));
-            survivor.setTaxPrice(MoneyUtils.priceMultiplyPercent(survivor.getTotalPrice(), survivor.getTaxPercent()));
+            survivor.setTotalPrice(ErpSaleDecimalUtils.multiply(survivor.getProductPrice(), count));
+            survivor.setTaxPrice(ErpSaleDecimalUtils.multiplyPercent(survivor.getTotalPrice(), survivor.getTaxPercent()));
             result.add(survivor);
         });
         return result;
@@ -746,7 +776,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         BigDecimal feeAmount = resolveFeeAmount(cart.getFeeAmount(), cart.getOtherPrice());
         cart.setFeeAmount(feeAmount);
         cart.setOtherPrice(feeAmount);
-        cart.setDiscountPrice(MoneyUtils.priceMultiplyPercent(cart.getTotalPrice(), cart.getDiscountPercent()));
+        cart.setDiscountPrice(ErpSaleDecimalUtils.multiplyPercent(cart.getTotalPrice(), cart.getDiscountPercent()));
         cart.setTotalPrice(cart.getTotalPrice().subtract(cart.getDiscountPrice()).add(feeAmount));
     }
 
@@ -800,9 +830,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             if (Boolean.TRUE.equals(item.getGiftFlag())) {
                 item.setProductPrice(BigDecimal.ZERO);
             }
-            item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+            item.setTotalPrice(ErpSaleDecimalUtils.multiply(item.getProductPrice(), item.getCount()));
             if (item.getTotalPrice() != null && item.getTaxPercent() != null) {
-                item.setTaxPrice(MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
+                item.setTaxPrice(ErpSaleDecimalUtils.multiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
             }
         }));
     }
@@ -847,9 +877,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                     || item.getProductPrice().compareTo(BigDecimal.ZERO) < 0) {
                 item.setProductPrice(BigDecimal.ZERO);
             }
-            item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+            item.setTotalPrice(ErpSaleDecimalUtils.multiply(item.getProductPrice(), item.getCount()));
             if (item.getTotalPrice() != null && item.getTaxPercent() != null) {
-                item.setTaxPrice(MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
+                item.setTaxPrice(ErpSaleDecimalUtils.multiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
             }
         }));
     }
@@ -973,7 +1003,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         BigDecimal feeAmount = resolveFeeAmount(quote.getFeeAmount(), quote.getOtherPrice());
         quote.setFeeAmount(feeAmount);
         quote.setOtherPrice(feeAmount);
-        quote.setDiscountPrice(MoneyUtils.priceMultiplyPercent(quote.getTotalPrice(), quote.getDiscountPercent()));
+        quote.setDiscountPrice(ErpSaleDecimalUtils.multiplyPercent(quote.getTotalPrice(), quote.getDiscountPercent()));
         quote.setTotalPrice(quote.getTotalPrice().subtract(quote.getDiscountPrice()).add(feeAmount));
     }
 
@@ -1057,8 +1087,16 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 ErpSaleQuoteImportExcelVO::getProductCode, ErpSaleQuoteImportExcelVO::getProductName, ErpSaleQuoteImportExcelVO::getFactoryCode, productMapper);
         Map<Long, ErpProductRespVO> productVOMap = DataPermissionUtils.executeIgnore(() ->
                 productService.getProductVOMap(convertList(productResolver.getResolvedProducts(), ErpProductDO::getId)));
+        Map<String, ErpWarehouseDO> warehouseMap = warehouseService.getCurrentUserVisibleSaleWarehouseList().stream()
+                .collect(Collectors.toMap(item -> normalizeKey(item.getName()), item -> item, (a, b) -> a));
         list.forEach((row) -> {
             int rowNo = respVO.getSuccessCount() + respVO.getFailureCount() + 2;
+            String decimalError = ErpSaleDecimalUtils.importScaleError(row);
+            if (decimalError != null) {
+                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(rowNo, row.getProductCode(), decimalError));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                return;
+            }
             ErpImportProductResolver.ResolveResult productResult =
                     productResolver.resolve(row.getProductCode(), row.getProductName(), row.getFactoryCode());
             if (productResult.isFailure()) {
@@ -1068,7 +1106,15 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 return;
             }
             ErpProductDO product = productResult.getProduct();
-            if (product.getDefaultWarehouseId() == null) {
+            String warehouseName = trimToNull(row.getWarehouseName());
+            ErpWarehouseDO warehouse = warehouseName == null ? null : warehouseMap.get(normalizeKey(warehouseName));
+            if (warehouseName != null && warehouse == null) {
+                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(
+                        rowNo, productResult.getIdentifier(), "仓库不存在或无销售权限：" + row.getWarehouseName()));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                return;
+            }
+            if (warehouse == null && product.getDefaultWarehouseId() == null) {
                 respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(
                         rowNo, productResult.getIdentifier(), "产品默认仓库不能为空"));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
@@ -1086,11 +1132,13 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             item.setProductCode(product.getCode());
             item.setProductUnitId(product.getUnitId());
             item.setProductUnitName(productVOMap.get(product.getId()) == null ? null : productVOMap.get(product.getId()).getUnitName());
-            item.setWarehouseId(product.getDefaultWarehouseId());
+            item.setWarehouseId(warehouse == null ? product.getDefaultWarehouseId() : warehouse.getId());
+            item.setWarehouseName(warehouse == null ? null : warehouse.getName());
             item.setGiftFlag(Boolean.TRUE.equals(row.getGiftFlag()));
             item.setProductPrice(Boolean.TRUE.equals(item.getGiftFlag())
                     ? BigDecimal.ZERO : (row.getProductPrice() != null ? row.getProductPrice() : product.getSalePrice()));
             item.setCount(count);
+            item.setRemark(trimToNull(row.getRemark()));
             respVO.getItems().add(item);
             respVO.setSuccessCount(respVO.getSuccessCount() + 1);
         });
@@ -1117,6 +1165,12 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         for (int i = 0; i < list.size(); i++) {
             ErpSaleQuoteOrderImportExcelVO row = list.get(i);
             int rowNo = i + 2;
+            String decimalError = ErpSaleDecimalUtils.importScaleError(row);
+            if (decimalError != null) {
+                respVO.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(rowNo, null, row.getProductCode(), decimalError));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
             if (isBlankQuoteOrderRow(row)) {
                 continue;
             }

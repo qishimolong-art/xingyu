@@ -198,10 +198,10 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
     public void testValidateCustomerForGeneratedSale_creditBlocked_throwException() {
         ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("授信超限客户")
                 .setStatus(CommonStatusEnum.ENABLE.getStatus()).setDeptId(102L).setAllowMultiDept(false)
-                .setCreditEnabled(true).setCreditLimit(new BigDecimal("100"));
+                .setCreditEnabled(true).setCreditLimit(new BigDecimal("2000.00"));
         when(customerMapper.selectById(14L)).thenReturn(customer);
         when(receivableAccountMapper.selectByCustomerId(14L)).thenReturn(
-                new ErpReceivableAccountDO().setReceivableBalance(new BigDecimal("100")));
+                new ErpReceivableAccountDO().setReceivableBalance(new BigDecimal("2300.000000")));
         when(saleOutMapper.selectList(any())).thenReturn(Collections.emptyList());
         when(saleReturnMapper.selectList(any())).thenReturn(Collections.emptyList());
         when(salePriceAdjustMapper.selectList(any())).thenReturn(Collections.emptyList());
@@ -210,7 +210,7 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
         when(receivableOtherMapper.selectList(any())).thenReturn(Collections.emptyList());
 
         assertServiceException(() -> customerService.validateCustomerForGeneratedSale(14L, 102L),
-                CUSTOMER_CREDIT_BLOCKED, "授信超限客户", "欠款金额 100 已达到授信金额 100");
+                CUSTOMER_CREDIT_BLOCKED, "授信超限客户", "欠款金额 2300.00 已达到授信金额 2000.00");
     }
 
     @Test
@@ -304,7 +304,7 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
         when(receivableOtherMapper.selectList(any())).thenReturn(Collections.emptyList());
 
         assertServiceException(() -> customerService.validateCustomerForSale(14L, 102L),
-                CUSTOMER_CREDIT_BLOCKED, "全局授信客户", "欠款金额 100 已达到授信金额 100");
+                CUSTOMER_CREDIT_BLOCKED, "全局授信客户", "欠款金额 100.00 已达到授信金额 100.00");
         verify(receivableAccountMapper).selectByCustomerId(14L);
         verify(receivableAccountMapper, never()).selectByCustomerIdAndDeptId(any(), any());
     }
@@ -328,7 +328,7 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
         when(receivableOtherMapper.selectList(any())).thenReturn(Collections.emptyList());
 
         assertServiceException(() -> customerService.validateCustomerForSale(14L, 102L),
-                CUSTOMER_CREDIT_BLOCKED, "部门授信客户", "欠款金额 100 已达到授信金额 100");
+                CUSTOMER_CREDIT_BLOCKED, "部门授信客户", "欠款金额 100.00 已达到授信金额 100.00");
         verify(receivableAccountMapper).selectByCustomerIdAndDeptId(14L, 102L);
         verify(receivableAccountMapper, never()).selectByCustomerId(any());
     }
@@ -1069,4 +1069,23 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
                 buildDept(30L, "停用部", 0L, CommonStatusEnum.DISABLE.getStatus())));
     }
 
+
+    @Test
+    void creditStatusBatchReadsBalancesAndDatesOnceForAllCustomers() {
+        java.util.List<Long> ids = Arrays.asList(1L, 2L);
+        when(customerMapper.selectByIds(ids)).thenReturn(Arrays.asList(
+                new ErpCustomerDO().setId(1L).setCreditEnabled(true).setCreditLimit(new BigDecimal("100")),
+                new ErpCustomerDO().setId(2L).setCreditEnabled(true).setCreditTermDays(10)));
+        when(receivableAccountMapper.selectByCustomerIds(ids)).thenReturn(Arrays.asList(
+                new ErpReceivableAccountDO().setCustomerId(1L).setReceivableBalance(new BigDecimal("100")),
+                new ErpReceivableAccountDO().setCustomerId(2L).setReceivableBalance(BigDecimal.ZERO)));
+        java.time.LocalDate date = java.time.LocalDate.now().minusDays(20);
+        when(customerMapper.selectEarliestUnpaidDates(any())).thenReturn(Collections.singletonList(
+                new cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerDebtDateBO().setCustomerId(1L).setEarliestUnpaidDate(date)));
+        Map<Long, cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerCreditStatusBO> result = customerService.getCustomerCreditStatusMap(ids);
+        assertTrue(result.get(1L).getBlocked()); assertEquals(date, result.get(1L).getEarliestUnpaidDate());
+        org.junit.jupiter.api.Assertions.assertFalse(result.get(2L).getBlocked());
+        verify(receivableAccountMapper).selectByCustomerIds(ids); verify(customerMapper).selectEarliestUnpaidDates(any());
+        verify(receivableAccountMapper, never()).selectByCustomerId(any());
+    }
 }

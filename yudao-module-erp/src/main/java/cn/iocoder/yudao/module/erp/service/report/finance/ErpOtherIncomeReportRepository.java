@@ -36,7 +36,7 @@ public class ErpOtherIncomeReportRepository {
 
     public Summary summary(Filter filter, Scope scope) {
         Sql sql = reportSql(filter, scope);
-        return jdbc().queryForObject("SELECT COUNT(*) row_count,COALESCE(SUM(ROUND(i.amount,2)),0) amount"
+        return jdbc().queryForObject("SELECT COUNT(*) row_count,COALESCE(SUM(ROUND(i.amount,6)),0) amount"
                         + sql.fromWhere, sql.params, new BeanPropertyRowMapper<>(Summary.class));
     }
 
@@ -61,7 +61,7 @@ public class ErpOtherIncomeReportRepository {
         return "SELECT CONCAT(e.id,':',i.id) row_key,e.id income_id,i.id item_id,e.account_id,"
                 + "e.dept_id billing_dept_id,i.dept_id project_dept_id,e.handler_id,"
                 + "DATE_FORMAT(e.approve_time,'%Y-%m-%d') approve_date,a.name account_name,e.no document_no,"
-                + "i.item_name,ROUND(i.amount,2) amount,e.voucher_no,i.remark summary,CAST(NULL AS CHAR) type,"
+                + "i.item_name,ROUND(i.amount,6) amount,e.voucher_no,i.remark summary,CAST(NULL AS CHAR) type,"
                 + "bd.name billing_dept_name,pd.name project_dept_name,hu.nickname handler_name,e.party,"
                 + "i.invoice_no invoice,DATE_FORMAT(i.biz_date,'%Y-%m-%d') occurrence_date";
     }

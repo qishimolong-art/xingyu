@@ -27,6 +27,8 @@ public class ErpImportExportRecordDetailDO extends BaseDO {
     @TableId
     private Long id;
 
+    private Long tenantId;
+
     private Long recordId;
     private Integer rowNo;
     private String groupKey;

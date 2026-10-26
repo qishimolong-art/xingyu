@@ -42,6 +42,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutBillItemMapper;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockItemPriceReferenceFiller;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import java.util.function.BiFunction;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
@@ -85,6 +90,10 @@ public class ErpStockOutBillController {
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
 
+    @Resource private ErpStockOutBillItemMapper billItemMapper;
+    @Resource private DeptApi deptApi;
+    @Resource private ErpStockItemPriceReferenceFiller itemPriceReferenceFiller;
+
     @GetMapping("/page")
     @Operation(summary = "获得出仓单分页")
     @PreAuthorize("@ss.hasPermission('erp:stock-out-bill:query')")
@@ -100,6 +109,7 @@ public class ErpStockOutBillController {
             @Valid ErpStockOutBillPageReqVO pageReqVO) {
         ErpStockOutBillSummaryRespVO summary = stockOutBillService.getStockOutBillSummary(pageReqVO);
         fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, summary);
+        ErpStockBillExportSupport.mask(summary, exportHidden());
         return success(summary);
     }
 
@@ -114,6 +124,8 @@ public class ErpStockOutBillController {
         MapUtils.findAndThen(warehouseMap, respVO.getWarehouseId(),
                 warehouse -> respVO.setWarehouseName(warehouse.getName()));
         fillUserNames(respVO, adminUserApi.getUserMap(collectUserIds(Collections.singletonList(stockOutBill))));
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, respVO);
+        ErpStockBillExportSupport.mask(respVO, exportHidden());
         return success(respVO);
     }
 
@@ -121,8 +133,11 @@ public class ErpStockOutBillController {
     @Operation(summary = "获得出仓单明细")
     @PreAuthorize("@ss.hasPermission('erp:stock-out-bill:query')")
     public CommonResult<List<ErpStockOutBillItemRespVO>> getStockOutBillItems(@RequestParam("id") Long id) {
+        stockOutBillService.getStockOutBill(id);
         List<ErpStockOutBillItemDO> items = stockOutBillService.getStockOutBillItemList(id);
-        return success(buildStockOutBillItemVOList(items));
+        List<ErpStockOutBillItemRespVO> result = buildStockOutBillItemVOList(items);
+        maskItems(result);
+        return success(result);
     }
 
     @GetMapping("/item-page")
@@ -134,7 +149,7 @@ public class ErpStockOutBillController {
         PageResult<ErpStockOutBillItemRespVO> respResult = new PageResult<>(
                 buildStockOutBillItemVOList(pageResult.getList()), pageResult.getTotal());
         if (Boolean.TRUE.equals(pageReqVO.getMask())) {
-            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
+            maskItems(respResult.getList());
         }
         return success(respResult);
     }
@@ -154,38 +169,15 @@ public class ErpStockOutBillController {
     public void exportStockOutBillExcel(@Valid ErpStockOutBillPageReqVO pageReqVO,
                                         @RequestParam(value = "fields", required = false) String fields,
                                         HttpServletResponse response) throws IOException {
-        PageResult<ErpStockOutBillDO> pageResult;
-        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
-            if (pageReqVO.getIds().size() > EXPORT_MAX_COUNT) {
-                throw exception(EXPORT_COUNT_EXCEEDED);
-            }
-            pageResult = new PageResult<>(stockOutBillService.getStockOutBillList(pageReqVO.getIds()),
-                    (long) pageReqVO.getIds().size());
-        } else {
-            pageReqVO.setPageNo(1);
-            pageReqVO.setPageSize(EXPORT_MAX_COUNT);
-            pageResult = stockOutBillService.getStockOutBillPage(pageReqVO);
-            if (pageResult.getTotal() > EXPORT_MAX_COUNT) {
-                throw exception(EXPORT_COUNT_EXCEEDED);
-            }
-        }
-        List<ErpStockOutBillItemDO> itemList = stockOutBillService.getStockOutBillItemListByBillIds(
-                convertSet(pageResult.getList(), ErpStockOutBillDO::getId));
-        Map<Long, List<ErpStockOutBillItemDO>> itemMap = convertMultiMap(itemList, ErpStockOutBillItemDO::getBillId);
-        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(
-                convertSet(itemList, ErpStockOutBillItemDO::getProductId)));
-        Set<Long> warehouseIds = new HashSet<>();
-        warehouseIds.addAll(convertSet(pageResult.getList(), ErpStockOutBillDO::getWarehouseId));
-        warehouseIds.addAll(convertSet(itemList, ErpStockOutBillItemDO::getWarehouseId));
-        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() ->
-                warehouseService.getWarehouseMap(warehouseIds));
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(pageResult.getList()));
-        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpStockOutBillExportRespVO.class,
-                ErpExportFieldUtils.parseFieldParam(fields),
-                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
-        ExcelUtils.write(response, "出仓单.xls", "数据", ErpStockOutBillExportRespVO.class,
-                buildStockOutBillExportList(pageResult.getList(), itemMap, productMap, warehouseMap, userMap),
-                includeFields);
+        if (pageReqVO.getIds() != null && pageReqVO.getIds().size() > EXPORT_MAX_COUNT) throw exception(EXPORT_COUNT_EXCEEDED);
+        Set<String> hidden = ErpStockBillExportSupport.hidden(fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
+        Set<String> legacyFields = new java.util.LinkedHashSet<>(EXPORT_FIELD_GROUP_MAP.keySet());
+        legacyFields.removeAll(java.util.Arrays.asList("warehouseDeptName","remainingCount","itemWarehouseDeptName"));
+        ErpStockBillExportSupport.write(response,"stock-out-bill",fields,ErpStockOutBillExportRespVO.class,
+                EXPORT_FIELD_GROUP_MAP,hidden,legacyFields,
+                pageNo -> { pageReqVO.setPageNo(pageNo); pageReqVO.setPageSize(100); return stockOutBillService.getStockOutBillPage(pageReqVO); },
+                ErpStockOutBillDO::getId,(ids,pageNo) -> billItemMapper.selectExportPageByBillIds(ids,pageNo).getList(),
+                ErpStockOutBillItemDO::getBillId,this::prepareExportRows);
     }
 
     @GetMapping("/export-fields")
@@ -193,7 +185,7 @@ public class ErpStockOutBillController {
     @PreAuthorize("@ss.hasPermission('erp:stock-out-bill:export')")
     public CommonResult<List<ErpExportFieldRespVO>> getStockOutBillExportFields() {
         return success(ErpExportFieldUtils.listFields(ErpStockOutBillExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
-                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
+                ErpStockBillExportSupport.hidden(fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     @GetMapping("/user-simple-page")
@@ -217,11 +209,14 @@ public class ErpStockOutBillController {
             addUserId(userIds, stockOutBill.getUpdater());
         });
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
-        return BeanUtils.toBean(pageResult, ErpStockOutBillRespVO.class, vo -> {
+        PageResult<ErpStockOutBillRespVO> result = BeanUtils.toBean(pageResult, ErpStockOutBillRespVO.class, vo -> {
             MapUtils.findAndThen(warehouseMap, vo.getWarehouseId(),
                     warehouse -> vo.setWarehouseName(warehouse.getName()));
             fillUserNames(vo, userMap);
         });
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE,result.getList());
+        result.getList().forEach(vo -> ErpStockBillExportSupport.mask(vo, exportHidden()));
+        return result;
     }
 
     private Set<Long> collectUserIds(List<ErpStockOutBillDO> list) {
@@ -244,7 +239,7 @@ public class ErpStockOutBillController {
         Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(items) ? Collections.emptyMap()
                 : DataPermissionUtils.executeIgnore(() ->
                 productService.getProductVOMap(convertSet(items, ErpStockOutBillItemDO::getProductId)));
-        return BeanUtils.toBean(items, ErpStockOutBillItemRespVO.class, vo -> {
+        List<ErpStockOutBillItemRespVO> result = BeanUtils.toBean(items, ErpStockOutBillItemRespVO.class, vo -> {
             MapUtils.findAndThen(warehouseMap, vo.getWarehouseId(),
                     warehouse -> vo.setWarehouseName(warehouse.getName()));
             MapUtils.findAndThen(productMap, vo.getProductId(), product -> vo
@@ -252,8 +247,10 @@ public class ErpStockOutBillController {
                     .setProductName(product.getName())
                     .setProductUnitId(product.getUnitId())
                     .setProductUnitName(product.getUnitName()));
-            vo.setRemainCount(nullToZero(vo.getCount()).subtract(nullToZero(vo.getPickedCount())));
+            vo.setRemainCount(vo.getCount() == null || vo.getPickedCount() == null ? null : vo.getCount().subtract(vo.getPickedCount()));
         });
+        itemPriceReferenceFiller.fill(result);
+        return result;
     }
 
     private void fillUserNames(ErpStockOutBillRespVO vo, Map<Long, AdminUserRespDTO> userMap) {
@@ -333,7 +330,7 @@ public class ErpStockOutBillController {
         row.setItemWholeQty(item.getWholeQty());
         row.setItemCount(item.getCount());
         row.setItemPickedCount(item.getPickedCount());
-        row.setItemRemainCount(nullToZero(item.getCount()).subtract(nullToZero(item.getPickedCount())));
+        row.setItemRemainCount(item.getCount() == null || item.getPickedCount() == null ? null : item.getCount().subtract(item.getPickedCount()));
         row.setProductPrice(item.getProductPrice());
         row.setItemTotalPrice(item.getProductPrice() == null || item.getCount() == null
                 ? null : item.getProductPrice().multiply(item.getCount()));
@@ -362,6 +359,43 @@ public class ErpStockOutBillController {
         }
     }
 
+
+    private BiFunction<ErpStockOutBillDO,ErpStockOutBillItemDO,ErpStockOutBillExportRespVO> prepareExportRows(List<ErpStockOutBillDO> bills, List<ErpStockOutBillItemDO> items) {
+        Map<Long, ErpProductRespVO> productMap = items.isEmpty() ? Collections.emptyMap() : DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertSet(items,ErpStockOutBillItemDO::getProductId)));
+        Set<Long> warehouseIds = new HashSet<>(convertSet(bills,ErpStockOutBillDO::getWarehouseId));
+        warehouseIds.addAll(convertSet(items,ErpStockOutBillItemDO::getWarehouseId));
+        Map<Long,ErpWarehouseDO> warehouses = warehouseIds.isEmpty() ? Collections.emptyMap() : DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(warehouseIds));
+        Set<Long> deptIds = convertSet(new ArrayList<>(warehouses.values()),ErpWarehouseDO::getDeptId);
+        Map<Long,DeptRespDTO> departments = deptIds.isEmpty() ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+        Map<Long,AdminUserRespDTO> users = adminUserApi.getUserMap(collectUserIds(bills));
+        return (bill,item) -> {
+            ErpStockOutBillExportRespVO row = buildStockOutBillExportRow(bill,item,item == null ? null : productMap.get(item.getProductId()),true,warehouses,users);
+            row.setRemainingCount(bill.getTotalCount() == null || bill.getPickedCount() == null ? null : bill.getTotalCount().subtract(bill.getPickedCount()).max(java.math.BigDecimal.ZERO));
+            ErpWarehouseDO warehouse = warehouses.get(bill.getWarehouseId());
+            if (warehouse != null && departments.get(warehouse.getDeptId()) != null) row.setWarehouseDeptName(departments.get(warehouse.getDeptId()).getName());
+            ErpWarehouseDO itemWarehouse = item == null ? null : warehouses.get(item.getWarehouseId());
+            if (itemWarehouse != null && departments.get(itemWarehouse.getDeptId()) != null) row.setItemWarehouseDeptName(departments.get(itemWarehouse.getDeptId()).getName());
+            return row;
+        };
+    }
+
+    private Set<String> exportHidden() {
+        return ErpStockBillExportSupport.hidden(fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE),EXPORT_FIELD_PERMISSION_MAP);
+    }
+
+    private void maskItems(List<ErpStockOutBillItemRespVO> items) {
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE,items);
+        Set<String> hidden = ErpStockBillExportSupport.hidden(fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE),EXPORT_FIELD_PERMISSION_MAP);
+        items.forEach(item -> {
+            ErpStockBillExportSupport.maskItem(item,hidden);
+            if (hidden.contains("itemRemainCount")) item.setRemainCount(null);
+            if (hidden.contains("productPrice")) item.setProductPrice(null);
+            if (hidden.contains("itemCount")) item.setCount(null);
+            if (hidden.contains("itemPickedCount")) item.setPickedCount(null);
+        });
+    }
+
     private static Map<String, String> buildExportFieldGroupMap() {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("priority", "main");
@@ -374,14 +408,14 @@ public class ErpStockOutBillController {
         map.put("sourceUnitName", "main");
         map.put("sourceNo", "main");
         map.put("status", "main");
-        map.put("creatorName", "system");
-        map.put("createTime", "system");
-        map.put("updaterName", "system");
-        map.put("updateTime", "system");
-        map.put("auditorName", "system");
-        map.put("auditTime", "system");
-        map.put("printTime", "system");
-        map.put("printCount", "system");
+        map.put("creatorName", "main");
+        map.put("createTime", "main");
+        map.put("updaterName", "main");
+        map.put("updateTime", "main");
+        map.put("auditorName", "main");
+        map.put("auditTime", "main");
+        map.put("printTime", "main");
+        map.put("printCount", "main");
         map.put("sourceRemark", "main");
         map.put("totalWeight", "main");
         map.put("remark", "main");
@@ -412,12 +446,19 @@ public class ErpStockOutBillController {
         map.put("vehicleModel", "detail");
         map.put("originPlace", "detail");
         map.put("itemRemark", "detail");
+        map.put("warehouseDeptName", "main");
+        map.put("remainingCount", "main");
+        map.put("itemWarehouseDeptName", "detail");
         return map;
     }
 
     private static Map<String, String> buildExportFieldPermissionMap() {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("warehouseName", "warehouseId");
+        map.put("warehouseDeptName", "warehouseId");
+        map.put("itemWarehouseDeptName", "item_warehouseId");
+        map.put("creatorName", "creator");
+        map.put("updaterName", "updater");
         map.put("itemSourceNo", "item_sourceNo");
         map.put("productCode", "item_productId");
         map.put("productName", "item_productId");

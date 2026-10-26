@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS `erp_import_export_record` (
   `file_name` varchar(255) DEFAULT NULL COMMENT '文件名',
   `file_type` varchar(20) DEFAULT NULL COMMENT '文件类型',
   `status` varchar(30) NOT NULL COMMENT '执行状态',
+  `stage` varchar(30) DEFAULT NULL COMMENT '执行阶段',
   `total_count` int NOT NULL DEFAULT 0 COMMENT '总条数',
+  `processed_count` int NOT NULL DEFAULT 0 COMMENT '已处理条数',
   `success_count` int NOT NULL DEFAULT 0 COMMENT '成功条数',
   `failure_count` int NOT NULL DEFAULT 0 COMMENT '失败条数',
   `create_count` int NOT NULL DEFAULT 0 COMMENT '新增条数',
@@ -30,6 +32,7 @@ CREATE TABLE IF NOT EXISTS `erp_import_export_record` (
   `operator_name` varchar(64) DEFAULT NULL COMMENT '操作人名称',
   `start_time` datetime DEFAULT NULL COMMENT '开始时间',
   `end_time` datetime DEFAULT NULL COMMENT '结束时间',
+  `heartbeat_time` datetime DEFAULT NULL COMMENT '最近进度更新时间',
   `creator` varchar(64) DEFAULT '' COMMENT '创建者',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updater` varchar(64) DEFAULT '' COMMENT '更新者',
@@ -39,7 +42,8 @@ CREATE TABLE IF NOT EXISTS `erp_import_export_record` (
   PRIMARY KEY (`id`),
   KEY `idx_type_module_time` (`tenant_id`, `operation_type`, `module_key`, `create_time`),
   KEY `idx_operator_time` (`tenant_id`, `operator_id`, `create_time`),
-  KEY `idx_status_time` (`tenant_id`, `status`, `create_time`)
+  KEY `idx_status_time` (`tenant_id`, `status`, `create_time`),
+  KEY `idx_import_task_active` (`tenant_id`, `operation_type`, `module_key`, `status`, `heartbeat_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 导入导出记录';
 
 CREATE TABLE IF NOT EXISTS `erp_import_export_record_detail` (

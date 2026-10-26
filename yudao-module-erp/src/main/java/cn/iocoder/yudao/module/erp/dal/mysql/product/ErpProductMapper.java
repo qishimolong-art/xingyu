@@ -140,6 +140,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                                                 Collection<String> customKeywordColumns) {
         LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<ErpProductDO>();
         wrapper
+                .inIfPresent(ErpProductDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpProductDO::getName, fuzzyKeyword(reqVO.getName()))
                 .likeIfPresent(ErpProductDO::getCode, fuzzyKeyword(reqVO.getCode()))
                 .likeIfPresent(ErpProductDO::getBrand, fuzzyKeyword(reqVO.getBrand()))
@@ -853,6 +854,21 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         return rows.stream().map(m -> (Long) m.get("id")).collect(Collectors.toList());
     }
 
+    default List<Long> selectIdsByExactStockIdentifier(String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return Collections.emptyList();
+        }
+        String value = keyword.trim();
+        LambdaQueryWrapper<ErpProductDO> w = new LambdaQueryWrapper<>();
+        w.select(ErpProductDO::getId)
+                .and(q -> q.eq(ErpProductDO::getCode, value)
+                        .or().eq(ErpProductDO::getBarCode, value)
+                        .or().eq(ErpProductDO::getFactoryCode, value)
+                        .or().eq(ErpProductDO::getOeNumber, value));
+        List<Map<String, Object>> rows = selectMaps(w);
+        return rows.stream().map(m -> (Long) m.get("id")).collect(Collectors.toList());
+    }
+
     default List<Long> selectIdsByComplexQuery(ErpStockPageReqVO reqVO,
                                                Collection<Long> shelfDuplicateIds,
                                                Collection<Long> shelfEmptyIds,
@@ -865,6 +881,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         if (StringUtils.hasText(reqVO.getProductName())) {
             w.like(ErpProductDO::getName, fuzzyKeyword(reqVO.getProductName()));
         }
+        appendStockProductCodeNameKeywordCondition(w, reqVO.getProductCodeNameKeyword());
         appendStockProductNameKeywordCondition(w, reqVO.getProductNameKeyword());
         if (StringUtils.hasText(reqVO.getDrawingNo())) {
             w.like(ErpProductDO::getDrawingNo, fuzzyKeyword(reqVO.getDrawingNo()));
@@ -896,9 +913,9 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         if (StringUtils.hasText(reqVO.getOeNumber())) {
             w.like(ErpProductDO::getOeNumber, fuzzyKeyword(reqVO.getOeNumber()));
         }
-        appendStockKeywordCondition(w, reqVO.getProductKeyword());
+        appendStockKeywordCondition(w, reqVO.getProductKeyword(), isProductStockListKeywordMode(reqVO));
         if (includeKeyword) {
-            appendStockKeywordCondition(w, reqVO.getKeyword());
+            appendStockKeywordCondition(w, reqVO.getKeyword(), isProductStockListKeywordMode(reqVO));
         }
         if (reqVO.getCategoryId() != null) {
             w.eq(ErpProductDO::getCategoryId, reqVO.getCategoryId());
@@ -931,6 +948,15 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
     }
 
     static void appendStockKeywordCondition(LambdaQueryWrapper<ErpProductDO> w, String keyword) {
+        appendStockKeywordCondition(w, keyword, false);
+    }
+
+    static void appendStockKeywordCondition(LambdaQueryWrapper<ErpProductDO> w, String keyword,
+                                            boolean productStockListMode) {
+        if (productStockListMode) {
+            appendProductStockListKeywordCondition(w, keyword);
+            return;
+        }
         if (!StringUtils.hasText(keyword)) {
             return;
         }
@@ -947,6 +973,36 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
             return;
         }
         w.and(q -> appendStockKeywordTokenMatchGroup(q, keyword));
+    }
+
+    static void appendProductStockListKeywordCondition(LambdaQueryWrapper<ErpProductDO> w, String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return;
+        }
+        KeywordSearch keywordSearch = parseKeywordSearch(keyword);
+        if (keywordSearch.explicitDelimited()) {
+            appendProductStockListKeywordTokensAndCondition(w, keywordSearch.tokens());
+            return;
+        }
+        if (keywordSearch.spaceDelimited()) {
+            w.and(q -> {
+                appendStockKeywordMatchGroup(q, fuzzyKeyword(keyword));
+                q.or(or -> appendProductStockListKeywordTokensAndCondition(or, keywordSearch.tokens()));
+            });
+            return;
+        }
+        w.and(q -> appendStockKeywordMatchGroup(q, fuzzyKeyword(keyword)));
+    }
+
+    static void appendProductStockListKeywordTokensAndCondition(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                                                List<String> tokens) {
+        tokens.forEach(token -> wrapper.and(w -> appendKeywordMatchGroup(w, fuzzyKeyword(token),
+                STOCK_PRODUCT_KEYWORD_FIELDS, Collections.emptyList())));
+    }
+
+    static boolean isProductStockListKeywordMode(ErpStockPageReqVO reqVO) {
+        return reqVO != null && ErpStockPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_STOCK_LIST
+                .equals(reqVO.getKeywordSearchMode());
     }
 
     static void appendStockProductNameKeywordCondition(LambdaQueryWrapper<ErpProductDO> w, String keyword) {
@@ -968,6 +1024,27 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
             return;
         }
         w.and(q -> appendKeywordTokenMatchGroup(q, keyword, nameField, Collections.emptyList()));
+    }
+
+    static void appendStockProductCodeNameKeywordCondition(LambdaQueryWrapper<ErpProductDO> w, String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return;
+        }
+        Collection<String> codeNameFields = java.util.Arrays.asList(KEYWORD_FIELD_CODE, KEYWORD_FIELD_NAME);
+        KeywordSearch keywordSearch = parseKeywordSearch(keyword);
+        if (keywordSearch.explicitDelimited()) {
+            appendKeywordTokensAndCondition(w, keywordSearch.tokens(), codeNameFields, Collections.emptyList());
+            return;
+        }
+        if (keywordSearch.spaceDelimited()) {
+            w.and(q -> {
+                appendKeywordMatchGroupWithViscosityVariants(q, keyword, codeNameFields, Collections.emptyList());
+                q.or(or -> appendKeywordTokensAndCondition(
+                        or, keywordSearch.tokens(), codeNameFields, Collections.emptyList()));
+            });
+            return;
+        }
+        w.and(q -> appendKeywordTokenMatchGroup(q, keyword, codeNameFields, Collections.emptyList()));
     }
 
     static void appendStockKeywordMatchGroup(LambdaQueryWrapper<ErpProductDO> wrapper, String keyword) {

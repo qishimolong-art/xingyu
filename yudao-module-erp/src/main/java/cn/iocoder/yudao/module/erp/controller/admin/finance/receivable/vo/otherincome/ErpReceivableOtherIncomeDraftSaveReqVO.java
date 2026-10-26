@@ -34,7 +34,8 @@ public class ErpReceivableOtherIncomeDraftSaveReqVO {
         private Long id;
         private String operation;
         private String itemName;
-        private BigDecimal amount;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal amount;
         private String invoiceNo;
         private String party;
         private Long customerId;

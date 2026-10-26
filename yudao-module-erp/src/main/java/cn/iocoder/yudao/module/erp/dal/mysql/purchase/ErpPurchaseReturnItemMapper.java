@@ -180,10 +180,15 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
             case "inCount" -> spec("(SELECT pii.count FROM erp_purchase_in_items pii WHERE pii.id = "
                     + item + ".source_in_item_id AND pii.tenant_id = " + item
                     + ".tenant_id AND pii.deleted = 0 LIMIT 1)", false);
-            case "returnableCount" -> spec("((SELECT pii.count FROM erp_purchase_in_items pii WHERE pii.id = "
+            case "returnableCount" -> spec("GREATEST(((SELECT pii.count FROM erp_purchase_in_items pii WHERE pii.id = "
                     + item + ".source_in_item_id AND pii.tenant_id = " + item
                     + ".tenant_id AND pii.deleted = 0 LIMIT 1) - "
-                    + ErpPurchaseItemSortUtils.returnedCount(item, item + ".source_in_item_id") + ")", false);
+                    + "(SELECT COALESCE(SUM(pri.count), 0) FROM erp_purchase_return_items pri"
+                    + " INNER JOIN erp_purchase_return pr ON pr.id = pri.return_id"
+                    + " AND pr.tenant_id = pri.tenant_id AND pr.deleted = 0 AND pr.status IN (10, 20)"
+                    + " WHERE pri.source_in_item_id = " + item + ".source_in_item_id"
+                    + " AND pri.return_id != " + item + ".return_id"
+                    + " AND pri.tenant_id = " + item + ".tenant_id AND pri.deleted = 0)), 0)", false);
             case "partCode" -> spec(item + ".part_code", true);
             case "partName" -> spec(item + ".part_name", true);
             case "vehicleModel" -> spec(item + ".vehicle_model", true);

@@ -104,6 +104,10 @@ public class ErpStockRecordDO extends BaseDO {
      */
     private String bizNo;
     /**
+     * 来源库存流水编号。作废、冲销流水通过该字段关联原流水。
+     */
+    private Long sourceRecordId;
+    /**
      * 本次业务单价（入库进价 / 出库成本均价），单位：元
      */
     private BigDecimal unitPrice;

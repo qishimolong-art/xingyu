@@ -41,6 +41,8 @@ public interface LogRecordConstants {
     String ERP_STOCK_MOVE_TYPE = "库存调拨单";
     String ERP_WAREHOUSE_MOVE_TYPE = "仓库移货单";
     String ERP_STOCK_CHECK_TYPE = "库存盘点单";
+    String ERP_ASSEMBLY_RECIPE_TYPE = "模块管理";
+    String ERP_ASSEMBLY_ORDER_TYPE = "套件组装单";
 
     String ERP_CREATE_SUB_TYPE = "新增";
     String ERP_UPDATE_SUB_TYPE = "修改";

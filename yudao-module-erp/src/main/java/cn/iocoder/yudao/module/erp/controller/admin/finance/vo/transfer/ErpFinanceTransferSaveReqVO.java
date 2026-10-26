@@ -31,14 +31,17 @@ public class ErpFinanceTransferSaveReqVO {
     @Schema(description = "转账金额", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
     @NotNull(message = "转账金额不能为空")
     @DecimalMin(value = "0", inclusive = false, message = "转账金额必须大于 0")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal transferPrice;
 
     @Schema(description = "汇率", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     @DecimalMin(value = "0", inclusive = false, message = "汇率必须大于 0")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField(integer = 12)
     private BigDecimal exchangeRate;
 
     @Schema(description = "手续费", example = "1.00")
     @DecimalMin(value = "0", message = "手续费不能小于 0")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal feePrice;
 
     @Schema(description = "费用项目", example = "银行手续费")

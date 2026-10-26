@@ -35,6 +35,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceItemMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
@@ -53,6 +54,7 @@ import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInvoiceSourceServ
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -143,6 +145,8 @@ public class ErpPurchaseInvoiceController {
     private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
     private ErpStockService stockService;
+    @Resource
+    private ErpWarehouseService warehouseService;
     @Resource
     private ErpProductService productService;
     @Resource
@@ -535,10 +539,13 @@ public class ErpPurchaseInvoiceController {
         }
         List<ErpPurchaseInvoiceItemDO> itemList = purchaseInvoiceService.getPurchaseInvoiceItemListByInvoiceIds(
                 convertSet(pageResult.getList(), ErpPurchaseInvoiceDO::getId));
+        purchaseInvoiceSourceService.fillSourceDisplayFields(itemList);
         Map<Long, List<ErpPurchaseInvoiceItemDO>> itemMap = convertMultiMap(itemList, ErpPurchaseInvoiceItemDO::getInvoiceId);
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
                 productService.getProductVOMap(convertSet(itemList, ErpPurchaseInvoiceItemDO::getProductId)));
         Map<Long, ErpPurchaseInItemDO> sourceInItemMap = getSourceInItemMap(itemList);
+        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMap(itemList);
+        Map<Long, DeptRespDTO> sourceDeptMap = getSourceDeptMap(itemList);
         Set<Long> supplierIds = convertSet(pageResult.getList(), ErpPurchaseInvoiceDO::getSupplierId);
         supplierIds.remove(null);
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(supplierIds);
@@ -547,7 +554,8 @@ public class ErpPurchaseInvoiceController {
 
         PageResult<ErpPurchaseInvoiceRespVO> respPage = BeanUtils.toBean(pageResult, ErpPurchaseInvoiceRespVO.class);
         respPage.getList().forEach(invoice -> {
-            fillInvoiceRespItems(invoice, itemMap.get(invoice.getId()), productMap, sourceInItemMap);
+            fillInvoiceRespItems(invoice, itemMap.get(invoice.getId()), productMap, sourceInItemMap,
+                    warehouseMap, sourceDeptMap);
             MapUtils.findAndThen(supplierMap, invoice.getSupplierId(), supplier -> {
                 invoice.setSupplierName(supplier.getName());
                 invoice.setSupplierType(supplier.getSupplierType());
@@ -622,6 +630,16 @@ public class ErpPurchaseInvoiceController {
         Map<String, ErpStockDO> stockMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
                 ? Collections.emptyMap()
                 : DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(productIds, warehouseIds));
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseIds.isEmpty()
+                ? Collections.emptyMap() : warehouseService.getWarehouseMap(warehouseIds);
+        Set<Long> sourceDeptIds = sourceItems.stream()
+                .map(sourceItem -> sourceItem.getDeptId() != null ? sourceItem.getDeptId()
+                        : purchaseInMap.get(sourceItem.getInId()) == null ? null
+                        : purchaseInMap.get(sourceItem.getInId()).getDeptId())
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, DeptRespDTO> sourceDeptMap = sourceDeptIds.isEmpty()
+                ? Collections.emptyMap() : deptApi.getDeptMap(sourceDeptIds);
         List<ErpPurchaseInvoiceRespVO.Item> result = new ArrayList<>();
         for (ErpPurchaseInItemDO sourceItem : sourceItems) {
             ErpPurchaseInDO purchaseIn = purchaseInMap.get(sourceItem.getInId());
@@ -632,8 +650,18 @@ public class ErpPurchaseInvoiceController {
             item.setSourceInItemId(sourceItem.getId());
             item.setProductId(sourceItem.getProductId());
             item.setWarehouseId(sourceItem.getWarehouseId());
+            item.setWarehouseName(warehouseMap.get(sourceItem.getWarehouseId()) == null ? null
+                    : warehouseMap.get(sourceItem.getWarehouseId()).getName());
+            Long sourceDeptId = sourceItem.getDeptId() != null ? sourceItem.getDeptId()
+                    : purchaseIn == null ? null : purchaseIn.getDeptId();
+            item.setSourceDeptId(sourceDeptId);
+            item.setSourceDeptName(sourceDeptMap.get(sourceDeptId) == null ? null
+                    : sourceDeptMap.get(sourceDeptId).getName());
             item.setCount(sourceItem.getCount());
             item.setPackageQty(sourceItem.getPackageQty());
+            item.setWholeQty(sourceItem.getWholeQty());
+            item.setBatchNo(sourceItem.getBatchNo());
+            item.setBusinessEntity(sourceItem.getBusinessEntity());
             item.setProductPrice(sourceItem.getProductPrice());
             item.setRemark(sourceItem.getRemark());
             item.setTaxExclusivePrice(sourceItem.getProductPrice() == null || sourceItem.getCount() == null
@@ -645,6 +673,7 @@ public class ErpPurchaseInvoiceController {
             item.setStockCount(stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO);
             MapUtils.findAndThen(productMap, sourceItem.getProductId(), product -> item.setProductName(product.getName())
                     .setProductCode(product.getCode())
+                    .setFactoryCode(product.getFactoryCode())
                     .setProductUnitName(product.getUnitName())
                     .setPackageQty(item.getPackageQty() == null ? product.getPackageQty() : item.getPackageQty())
                     .setProductBarCode(product.getBarCode()));
@@ -659,12 +688,15 @@ public class ErpPurchaseInvoiceController {
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
                 productService.getProductVOMap(convertSet(itemList, ErpPurchaseInvoiceItemDO::getProductId)));
         Map<Long, ErpPurchaseInItemDO> sourceInItemMap = getSourceInItemMap(itemList);
-        fillInvoiceRespItems(invoice, itemList, productMap, sourceInItemMap);
+        fillInvoiceRespItems(invoice, itemList, productMap, sourceInItemMap,
+                getWarehouseMap(itemList), getSourceDeptMap(itemList));
     }
 
     private void fillInvoiceRespItems(ErpPurchaseInvoiceRespVO invoice, List<ErpPurchaseInvoiceItemDO> itemList,
                                       Map<Long, ErpProductRespVO> productMap,
-                                      Map<Long, ErpPurchaseInItemDO> sourceInItemMap) {
+                                      Map<Long, ErpPurchaseInItemDO> sourceInItemMap,
+                                      Map<Long, ErpWarehouseDO> warehouseMap,
+                                      Map<Long, DeptRespDTO> sourceDeptMap) {
         List<ErpPurchaseInvoiceRespVO.Item> items = BeanUtils.toBean(itemList, ErpPurchaseInvoiceRespVO.Item.class);
         if (items == null) {
             items = new ArrayList<>();
@@ -695,12 +727,17 @@ public class ErpPurchaseInvoiceController {
             }
             ErpStockDO stock = stockMap.get(item.getProductId() + "_" + item.getWarehouseId());
             item.setStockCount(stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO);
+            MapUtils.findAndThen(warehouseMap, item.getWarehouseId(),
+                    warehouse -> item.setWarehouseName(warehouse.getName()));
+            MapUtils.findAndThen(sourceDeptMap, item.getSourceDeptId(),
+                    dept -> item.setSourceDeptName(dept.getName()));
             ErpProductRespVO product = productMap.get(item.getProductId());
             if (product == null) {
                 continue;
             }
             item.setProductName(product.getName());
             item.setProductCode(product.getCode());
+            item.setFactoryCode(product.getFactoryCode());
             if (item.getProductUnitName() == null) {
                 item.setProductUnitName(product.getUnitName());
             }
@@ -715,6 +752,19 @@ public class ErpPurchaseInvoiceController {
         invoice.setItems(items);
         invoice.setProductNames(CollUtil.join(items, ", ", ErpPurchaseInvoiceRespVO.Item::getProductName));
         invoice.setDisplayTaxPercent(buildDisplayTaxPercent(itemList));
+    }
+
+    private Map<Long, ErpWarehouseDO> getWarehouseMap(List<ErpPurchaseInvoiceItemDO> itemList) {
+        Set<Long> warehouseIds = convertSet(CollUtil.emptyIfNull(itemList),
+                ErpPurchaseInvoiceItemDO::getWarehouseId);
+        warehouseIds.remove(null);
+        return warehouseIds.isEmpty() ? Collections.emptyMap() : warehouseService.getWarehouseMap(warehouseIds);
+    }
+
+    private Map<Long, DeptRespDTO> getSourceDeptMap(List<ErpPurchaseInvoiceItemDO> itemList) {
+        Set<Long> deptIds = convertSet(CollUtil.emptyIfNull(itemList), ErpPurchaseInvoiceItemDO::getSourceDeptId);
+        deptIds.remove(null);
+        return deptIds.isEmpty() ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
     }
 
     private Map<Long, ErpPurchaseInItemDO> getSourceInItemMap(List<ErpPurchaseInvoiceItemDO> itemList) {
@@ -790,16 +840,27 @@ public class ErpPurchaseInvoiceController {
         row.setSourceTypeName(item.getSourceTypeName());
         row.setSourceDocNo(item.getSourceDocNo());
         row.setSourceItemId(item.getSourceItemId());
+        row.setSourceDeptName(item.getSourceDeptName());
+        row.setSourceTotalCount(item.getSourceTotalCount());
+        row.setSourceRemainingCount(item.getSourceRemainingCount());
         row.setAmountDirectionName(item.getAmountDirection() == null ? "手工"
                 : item.getAmountDirection() < 0 ? "负向/冲减" : "正向");
         row.setSourceInNo(item.getSourceInNo());
         row.setSourceInItemId(item.getSourceInItemId());
         row.setProductCode(item.getProductCode());
         row.setProductName(item.getProductName());
+        row.setFactoryCode(item.getFactoryCode());
         row.setProductBarCode(item.getProductBarCode());
         row.setProductUnitName(item.getProductUnitName());
+        row.setWarehouseName(item.getWarehouseName());
+        row.setStockCount(item.getStockCount());
+        row.setPackageQty(item.getPackageQty());
+        row.setWholeQty(item.getWholeQty());
+        row.setBatchNo(item.getBatchNo());
+        row.setBusinessEntity(item.getBusinessEntity());
         row.setCount(item.getCount());
         row.setProductPrice(item.getProductPrice());
+        row.setLastPurchasePrice(item.getLastPurchasePrice());
         row.setTaxExclusivePrice(item.getTaxExclusivePrice());
         row.setTaxPercent(item.getTaxPercent());
         row.setTaxPrice(item.getTaxPrice());
@@ -860,6 +921,7 @@ public class ErpPurchaseInvoiceController {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("no", "main");
         map.put("supplierName", "main");
+        map.put("supplierType", "main");
         map.put("status", "main");
         map.put("invoiceDate", "main");
         map.put("invoiceType", "main");
@@ -875,19 +937,32 @@ public class ErpPurchaseInvoiceController {
         map.put("createTime", "system");
         map.put("updaterName", "system");
         map.put("updateTime", "system");
+        map.put("auditUserName", "system");
+        map.put("auditTime", "system");
         map.put("remark", "main");
         map.put("sourceTypeName", "detail");
         map.put("sourceDocNo", "detail");
         map.put("sourceItemId", "detail");
+        map.put("sourceDeptName", "detail");
+        map.put("sourceTotalCount", "detail");
+        map.put("sourceRemainingCount", "detail");
         map.put("amountDirectionName", "detail");
         map.put("sourceInNo", "detail");
         map.put("sourceInItemId", "detail");
         map.put("productCode", "detail");
         map.put("productName", "detail");
+        map.put("factoryCode", "detail");
         map.put("productBarCode", "detail");
         map.put("productUnitName", "detail");
+        map.put("warehouseName", "detail");
+        map.put("stockCount", "detail");
+        map.put("packageQty", "detail");
+        map.put("wholeQty", "detail");
+        map.put("batchNo", "detail");
+        map.put("businessEntity", "detail");
         map.put("count", "detail");
         map.put("productPrice", "detail");
+        map.put("lastPurchasePrice", "detail");
         map.put("taxExclusivePrice", "detail");
         map.put("taxPercent", "detail");
         map.put("taxPrice", "detail");
@@ -899,14 +974,26 @@ public class ErpPurchaseInvoiceController {
     private static Map<String, String> buildExportFieldPermissionMap() {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("supplierName", "supplierId");
+        map.put("supplierType", "supplierId");
         map.put("deptName", "deptId");
         map.put("handlerName", "handlerId");
         map.put("productCode", "item_productCode");
         map.put("productName", "item_productId");
+        map.put("factoryCode", "item_factoryCode");
         map.put("productBarCode", "item_productBarCode");
         map.put("productUnitName", "item_productUnitName");
+        map.put("sourceDeptName", "item_sourceDeptId");
+        map.put("sourceTotalCount", "item_count");
+        map.put("sourceRemainingCount", "item_sourceRemainingCount");
+        map.put("warehouseName", "item_warehouseId");
+        map.put("stockCount", "item_stockCount");
+        map.put("packageQty", "item_packageQty");
+        map.put("wholeQty", "item_wholeQty");
+        map.put("batchNo", "item_batchNo");
+        map.put("businessEntity", "item_businessEntity");
         map.put("count", "item_count");
         map.put("productPrice", "item_productPrice");
+        map.put("lastPurchasePrice", "item_lastPurchasePrice");
         map.put("taxExclusivePrice", "item_taxExclusivePrice");
         map.put("taxPercent", "item_taxPercent");
         map.put("taxPrice", "item_taxPrice");

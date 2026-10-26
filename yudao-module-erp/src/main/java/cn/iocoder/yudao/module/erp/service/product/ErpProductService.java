@@ -41,6 +41,9 @@ public interface ErpProductService {
      */
     ErpProductImportRespVO importProductList(List<ErpProductImportExcelVO> list);
 
+    ErpProductImportRespVO importProductList(List<ErpProductImportExcelVO> list,
+                                             ErpProductImportProgressListener progressListener);
+
     /**
      * 解析 CSV 导入文件
      */
@@ -119,7 +122,11 @@ public interface ErpProductService {
      * @param id 编号
      * @return 详情 VO
      */
+    java.util.Set<String> getExportHiddenFields();
     ErpProductRespVO getProductArchiveDetail(Long id);
+    ErpProductRespVO getProductArchiveDetail(Long id, boolean includeUniversals);
+    PageResult<ErpProductRespVO.Universal> getUniversalPage(
+            cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductUniversalPageReqVO reqVO);
 
     /**
      * 获得配件库存分发信息。
@@ -178,6 +185,9 @@ public interface ErpProductService {
      * @param ids 编号数组
      * @return 产品 VO Map
      */
+    /** Bounded display fields without universal detail rows; preserves price/field masking. */
+    Map<Long, ErpProductRespVO> getProductDisplayVOMap(Collection<Long> ids);
+
     default Map<Long, ErpProductRespVO> getProductVOMap(Collection<Long> ids) {
         return convertMap(getProductVOList(ids), ErpProductRespVO::getId);
     }

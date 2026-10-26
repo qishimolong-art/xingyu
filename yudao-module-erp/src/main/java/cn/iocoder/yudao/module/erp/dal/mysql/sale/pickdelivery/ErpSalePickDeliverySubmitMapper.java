@@ -10,6 +10,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
+import java.util.Collection;
 
 @Mapper
 public interface ErpSalePickDeliverySubmitMapper extends BaseMapperX<ErpSalePickDeliverySubmitDO> {
@@ -52,6 +53,18 @@ public interface ErpSalePickDeliverySubmitMapper extends BaseMapperX<ErpSalePick
         return selectList(new LambdaQueryWrapperX<ErpSalePickDeliverySubmitDO>()
                 .eq(ErpSalePickDeliverySubmitDO::getSaleOutId, saleOutId)
                 .eqIfPresent(ErpSalePickDeliverySubmitDO::getType, type)
+                .orderByDesc(ErpSalePickDeliverySubmitDO::getId));
+    }
+
+    default List<ErpSalePickDeliverySubmitDO> selectListBySaleOutIdsAndType(Collection<Long> saleOutIds,
+                                                                            Integer type) {
+        if (saleOutIds == null || saleOutIds.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpSalePickDeliverySubmitDO>()
+                .in(ErpSalePickDeliverySubmitDO::getSaleOutId, saleOutIds)
+                .eq(ErpSalePickDeliverySubmitDO::getType, type)
+                .orderByDesc(ErpSalePickDeliverySubmitDO::getSubmitTime)
                 .orderByDesc(ErpSalePickDeliverySubmitDO::getId));
     }
 

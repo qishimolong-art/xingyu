@@ -13,6 +13,7 @@ import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseExportRespVO;
@@ -24,7 +25,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.E
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseItemDO;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
@@ -278,6 +281,7 @@ public class ErpPayableExpenseController {
     @PreAuthorize("@ss.hasPermission('erp:payable-expense:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportExcel(@Valid ErpPayableExpensePageReqVO reqVO,
+                            @RequestParam(value = "fields", required = false) String fields,
                             HttpServletResponse response) throws IOException {
         reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         PageResult<ErpPayableExpenseRespVO> voPage = maskPageResult(
@@ -293,7 +297,24 @@ public class ErpPayableExpenseController {
                 rows.add(buildExportRow(expense, items.get(i), i == 0));
             }
         }
-        ExcelUtils.write(response, "费用支付.xls", "数据", ErpPayableExpenseExportRespVO.class, rows);
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(
+                ErpPayableExpenseExportRespVO.class, ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFields(FIELD_PERMISSION_MODULE), Collections.emptyMap());
+        ExcelUtils.write(response, "费用支付.xls", "数据", ErpPayableExpenseExportRespVO.class, rows, includeFields);
+    }
+
+    public void exportExcel(ErpPayableExpensePageReqVO reqVO,
+                            HttpServletResponse response) throws IOException {
+        exportExcel(reqVO, null, response);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得费用支付导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpPayableExpenseExportRespVO.class,
+                Collections.emptyMap(), fieldPermissionMasker.getHiddenFields(FIELD_PERMISSION_MODULE),
+                Collections.emptyMap()));
     }
 
     @GetMapping("/get-import-template")
@@ -381,6 +402,10 @@ public class ErpPayableExpenseController {
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getUpdater()), user -> vo.setUpdaterName(user.getNickname()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+            if (ErpAuditStatus.APPROVE.getStatus().equals(vo.getStatus())) {
+                vo.setAuditorName(vo.getUpdaterName());
+                vo.setAuditTime(vo.getUpdateTime());
+            }
             if (includeItems) {
                 fillItemExtend(vo);
             }
@@ -425,6 +450,7 @@ public class ErpPayableExpenseController {
         row.setItemQty(item.getQty());
         row.setItemExpenseCategory(item.getExpenseCategory());
         row.setItemRemark(item.getRemark());
+        row.setItemFileUrl(item.getFileUrl());
         return row;
     }
 

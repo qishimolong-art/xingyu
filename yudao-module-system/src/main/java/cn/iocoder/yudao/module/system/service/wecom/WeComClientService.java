@@ -41,4 +41,26 @@ public interface WeComClientService {
         return getUserMobileByCode(code, null);
     }
 
+    /**
+     * 根据成员手机号查询企业微信 UserID。
+     *
+     * @param mobile 手机号
+     * @param clientKey 企业微信应用配置 key
+     * @return 企业微信 UserID
+     */
+    String getUserIdByMobile(String mobile, String clientKey);
+
+    /**
+     * 发送企业微信应用文本卡片消息。
+     *
+     * @param userId 企业微信 UserID
+     * @param title 卡片标题
+     * @param description 卡片内容
+     * @param url 点击跳转地址
+     * @param buttonText 按钮文案
+     * @param clientKey 企业微信应用配置 key
+     */
+    void sendTextCardMessage(String userId, String title, String description, String url,
+                             String buttonText, String clientKey);
+
 }

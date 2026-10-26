@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.suppliertask.ErpSupplierTaskSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierTaskDO;
 
@@ -12,5 +14,7 @@ public interface ErpSupplierTaskService {
     void deleteSupplierTask(Long id);
     ErpSupplierTaskDO getSupplierTask(Long id);
     List<ErpSupplierTaskDO> getSupplierTaskList(Long supplierId);
+
+    PageResult<ErpSupplierTaskDO> getSupplierTaskPage(ErpSupplierItemPageReqVO reqVO);
 
 }

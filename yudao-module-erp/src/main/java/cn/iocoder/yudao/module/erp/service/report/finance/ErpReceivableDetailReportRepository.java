@@ -163,7 +163,7 @@ public class ErpReceivableDetailReportRepository {
                                 String settleMethod, String deliveryMethod, String businessUserId, String description,
                                 String voucherNo, String settledAmount, String businessAmount) {
         String status = "CASE WHEN ABS(" + businessAmount + ")>0 THEN CASE WHEN ABS(" + settledAmount
-                + ")>=ROUND(ABS(" + businessAmount + "),2) THEN '是' ELSE '否' END ELSE '-' END";
+                + ")>=ROUND(ABS(" + businessAmount + "),6) THEN '是' ELSE '否' END ELSE '-' END";
         return "SELECT " + collate("CONCAT('" + code + ":',t.id)") + " row_key,t.id business_id,t.customer_id,t.dept_id,"
                 + collate("'" + code + "'") + " document_type_code," + collate("'" + name + "'")
                 + " document_type," + eventOrder + " event_order," + businessDate + " business_date,"
@@ -174,9 +174,9 @@ public class ErpReceivableDetailReportRepository {
                 + collate("(SELECT su.nickname FROM system_users su WHERE su.id=" + businessUserId
                 + " AND su.tenant_id=t.tenant_id AND su.deleted=b'0')") + " business_user_name,"
                 + collate(deliveryMethod) + " delivery_method," + collate("t.no") + " document_no,ROUND(" + increase
-                + ",2) increase_amount,ROUND(" + receipt
-                + ",2) receipt_amount,ROUND(" + writeoff + ",2) write_off_amount,ROUND(" + increase
-                + ",2) unconfirmed_receivable,0 received_amount," + approveTime + " approve_time," + collate(voucherNo)
+                + ",6) increase_amount,ROUND(" + receipt
+                + ",6) receipt_amount,ROUND(" + writeoff + ",6) write_off_amount,ROUND(" + increase
+                + ",6) unconfirmed_receivable,0 received_amount," + approveTime + " approve_time," + collate(voucherNo)
                 + " voucher_no," + collate(sourceNo) + " source_no," + sourceBusinessId + " source_business_id,"
                 + collate(sourceDocumentTypeCode) + " source_document_type_code," + collate(description) + " description,"
                 + collate(status) + " settled_status";

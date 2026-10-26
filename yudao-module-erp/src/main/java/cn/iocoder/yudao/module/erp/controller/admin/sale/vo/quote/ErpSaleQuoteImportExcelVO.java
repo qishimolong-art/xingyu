@@ -27,15 +27,23 @@ public class ErpSaleQuoteImportExcelVO {
     @ExcelProperty("厂家编码（三选一）")
     private String factoryCode;
 
+    @ExcelProperty("所属仓库")
+    private String warehouseName;
+
     @ExcelRequired
     @ExcelProperty("数量")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "count最多支持 6 位小数")
     private BigDecimal count;
 
     @ExcelProperty("单价")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "productPrice最多支持 6 位小数")
     private BigDecimal productPrice;
 
     @ExcelColumnSelect(functionName = ErpYesNoExcelColumnSelectFunction.NAME)
     @ExcelProperty(value = "赠品", converter = YesNoBooleanConvert.class)
     private Boolean giftFlag;
+
+    @ExcelProperty("备注")
+    private String remark;
 
 }

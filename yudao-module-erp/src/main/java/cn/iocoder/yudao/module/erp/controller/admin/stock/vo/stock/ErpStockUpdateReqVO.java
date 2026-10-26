@@ -30,14 +30,17 @@ public class ErpStockUpdateReqVO {
 
     @Schema(description = "Purchase price")
     @DecimalMin(value = "0", message = "purchase price cannot be less than 0")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField(integer = 18, scale = 6)
     private BigDecimal purchasePrice;
 
     @Schema(description = "Cost price")
     @DecimalMin(value = "0", message = "cost price cannot be less than 0")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField(integer = 10, scale = 6)
     private BigDecimal costPrice;
 
     @Schema(description = "Cost amount")
     @DecimalMin(value = "0", message = "cost amount cannot be less than 0")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField(integer = 16, scale = 4)
     private BigDecimal costAmount;
 
 }

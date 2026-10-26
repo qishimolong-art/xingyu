@@ -21,9 +21,12 @@ import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleFormDataScopeMapp
 import cn.iocoder.yudao.module.system.dal.mysql.permission.UserRoleMapper;
 import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
+import cn.iocoder.yudao.module.system.service.tenant.TenantVisitScopeService;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
 import cn.iocoder.yudao.module.system.service.user.UserPriceFieldService;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -77,6 +80,20 @@ public class PermissionServiceTest extends BaseDbUnitTest {
     private UserPriceFieldService userPriceFieldService;
     @MockBean
     private FieldDefinitionMapper fieldDefinitionMapper;
+    @MockBean
+    private TenantVisitScopeService tenantVisitScopeService;
+
+    @BeforeEach
+    void setUpTenantContext() {
+        TenantContextHolder.setTenantId(1L);
+        when(tenantVisitScopeService.preserveManagedTenantVisitRole(anyLong(), anyCollection()))
+                .thenAnswer(invocation -> new HashSet<>((Collection<Long>) invocation.getArgument(1)));
+    }
+
+    @AfterEach
+    void clearTenantContext() {
+        TenantContextHolder.clear();
+    }
 
     @Test
     public void testGetCurrentUserHiddenFields_ProductUsesLoginDepartmentAndPersonal() {

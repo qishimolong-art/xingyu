@@ -29,6 +29,17 @@ public class AssistantWeComResultFormatter {
             "creator", "updater", "password", "token", "secret", "deleted"));
 
     public String result(Map<String, Object> result, String explanation) {
+        if (result != null && result.get("tasks") instanceof Collection) {
+            StringBuilder out = new StringBuilder("### 组合查询\n");
+            for (Map<String,Object> task : rows(result.get("tasks"))) {
+                out.append("\n**").append(escape(task.get("title"))).append("**\n");
+                if (task.get("result") instanceof Map) out.append(result((Map<String,Object>)task.get("result"), null));
+                else if (task.get("clarification") instanceof Map) out.append(escape(((Map<?,?>)task.get("clarification")).get("clarification")));
+                else out.append(escape(task.get("message")));
+                out.append('\n');
+            }
+            return truncate(out.toString());
+        }
         if (result != null && "answer_company_knowledge".equals(result.get("toolName"))) {
             return knowledgeResult(result, explanation);
         }
@@ -236,6 +247,24 @@ public class AssistantWeComResultFormatter {
         out.append("\n权限范围：").append(escape(result.get("scope")));
         appendDetailHint(out, result);
         return truncate(out.toString());
+    }
+
+    public String resultWithChoices(Map<String,Object> value, String explanation, ChoiceResult choices) {
+        return truncate(result(value, explanation) + (choices == null ? "" : "\n" + choices.getContent()));
+    }
+
+    public Map<String,Object> taskClarification(Map<String,Object> result) {
+        List<Map<String,Object>> candidates = new ArrayList<>();
+        if (result != null) for (Map<String,Object> task : rows(result.get("tasks"))) {
+            Object clarification = task.get("clarification");
+            if (!(clarification instanceof Map)) continue;
+            for (Map<String,Object> candidate : rows(((Map<?,?>)clarification).get("candidates"))) {
+                Map<String,Object> choice = new LinkedHashMap<>(candidate);
+                choice.put("name", String.valueOf(task.get("title")) + "：" + candidate.get("name"));
+                candidates.add(choice);
+            }
+        }
+        return cn.iocoder.yudao.module.erp.service.assistant.AssistantClarification.entityChoice("请回复编号确认对应任务的对象", candidates);
     }
 
     public ChoiceResult clarification(Object value) {

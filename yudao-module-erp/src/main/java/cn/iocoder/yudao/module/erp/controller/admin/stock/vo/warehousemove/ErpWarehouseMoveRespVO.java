@@ -1,17 +1,15 @@
 package cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove;
 
+import cn.idev.excel.annotation.ExcelIgnore;
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
-import cn.iocoder.yudao.framework.excel.core.annotations.DictFormat;
-import cn.iocoder.yudao.framework.excel.core.convert.DictConvert;
+import cn.idev.excel.annotation.format.NumberFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-
-import static cn.iocoder.yudao.module.erp.enums.DictTypeConstants.AUDIT_STATUS;
 
 @Schema(description = "Admin - ERP warehouse move Response VO")
 @Data
@@ -59,6 +57,7 @@ public class ErpWarehouseMoveRespVO {
     private String handlerName;
 
     @Schema(description = "来源类型")
+    @NumberFormat("0")
     private Integer sourceType;
 
     @Schema(description = "来源单据 ID")
@@ -70,27 +69,61 @@ public class ErpWarehouseMoveRespVO {
 
     @Schema(description = "项数")
     @ExcelProperty("项数")
+    @NumberFormat("0")
     private Integer itemCount;
 
     @Schema(description = "移货数量合计")
-    @ExcelProperty("移货数量")
+    @ExcelProperty(value = "移货数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.######")
     private BigDecimal totalCount;
 
     @Schema(description = "移货金额合计")
-    @ExcelProperty("移货金额")
+    @ExcelProperty(value = "移货金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal totalPrice;
 
     @Schema(description = "成本金额合计")
-    @ExcelProperty("成本金额")
+    @ExcelProperty(value = "成本金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal totalCostAmount;
 
     @Schema(description = "整单总重")
+    @NumberFormat("0.######")
     private BigDecimal totalWeight;
 
     @Schema(description = "状态")
-    @ExcelProperty(value = "状态", converter = DictConvert.class)
-    @DictFormat(AUDIT_STATUS)
+    @ExcelIgnore
+    @NumberFormat("0")
     private Integer status;
+
+    @Schema(description = "状态名称")
+    @ExcelProperty("状态")
+    private String statusName;
+
+    @Schema(description = "下单确认人 ID")
+    private Long confirmUserId;
+
+    @Schema(description = "下单确认人")
+    @ExcelProperty("下单确认人")
+    private String confirmUserName;
+
+    @Schema(description = "下单确认时间")
+    @ExcelProperty("下单确认时间")
+    private LocalDateTime confirmTime;
+
+    @Schema(description = "拣货状态")
+    @NumberFormat("0")
+    private Integer pickStatus;
+
+    @Schema(description = "已拣货明细数")
+    @NumberFormat("0")
+    private Integer pickedItemCount;
+
+    @Schema(description = "拣货明细总数")
+    @NumberFormat("0")
+    private Integer pickTotalItemCount;
+
+    @Schema(description = "拣货进度")
+    @ExcelProperty("拣货进度")
+    private String pickProgress;
 
     @Schema(description = "审核人 ID")
     private Long approveUserId;
@@ -134,7 +167,7 @@ public class ErpWarehouseMoveRespVO {
     private String productNames;
 
     @Schema(description = "产品编码")
-    @ExcelProperty("产品编码")
+    @ExcelProperty(value = "产品编码")
     private String productCodes;
 
     @Schema(description = "明细")
@@ -142,6 +175,8 @@ public class ErpWarehouseMoveRespVO {
 
     @Data
     public static class Item {
+        private String fromWarehouseDeptName;
+        private String toWarehouseDeptName;
 
         @Schema(description = "明细 ID")
         private Long id;
@@ -161,31 +196,52 @@ public class ErpWarehouseMoveRespVO {
         private String brand;
         private String drawingNo;
         private Long productUnitId;
-        private Integer packageQty;
+        @NumberFormat("0")
+    private Integer packageQty;
         private String fromShelf;
         private String toShelf;
-        private BigDecimal productPurchasePrice;
-        private BigDecimal salePrice;
-        private BigDecimal lastSalePrice;
-        private BigDecimal minPrice;
-        private BigDecimal referencePrice;
-        private BigDecimal retailPrice;
-        private BigDecimal lastPurchasePrice;
-        private Integer grossProfitRate;
-        private BigDecimal backupPrice1;
-        private BigDecimal wholesalePrice;
-        private BigDecimal sharePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal productPurchasePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal salePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal lastSalePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal minPrice;
+        @NumberFormat("0.####################")
+    private BigDecimal referencePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal retailPrice;
+        @NumberFormat("0.####################")
+    private BigDecimal lastPurchasePrice;
+        @NumberFormat("0")
+    private Integer grossProfitRate;
+        @NumberFormat("0.####################")
+    private BigDecimal backupPrice1;
+        @NumberFormat("0.####################")
+    private BigDecimal wholesalePrice;
+        @NumberFormat("0.####################")
+    private BigDecimal sharePrice;
         private Boolean priceVisible;
-        private BigDecimal productPrice;
-        private BigDecimal count;
-        private BigDecimal totalPrice;
-        private BigDecimal costPrice;
-        private BigDecimal costAmount;
-        private BigDecimal weight;
-        private BigDecimal totalWeight;
+        @NumberFormat("0.####################")
+    private BigDecimal productPrice;
+        @NumberFormat("0.######")
+    private BigDecimal count;
+        @NumberFormat("0.####################")
+    private BigDecimal totalPrice;
+        @NumberFormat("0.####################")
+    private BigDecimal costPrice;
+        @NumberFormat("0.####################")
+    private BigDecimal costAmount;
+        @NumberFormat("0.######")
+    private BigDecimal weight;
+        @NumberFormat("0.######")
+    private BigDecimal totalWeight;
         private String batchNo;
-        private BigDecimal fromStockCount;
-        private BigDecimal toStockCount;
+        @NumberFormat("0.######")
+    private BigDecimal fromStockCount;
+        @NumberFormat("0.######")
+    private BigDecimal toStockCount;
         private String remark;
 
     }

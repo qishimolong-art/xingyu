@@ -77,7 +77,7 @@ public class ErpPayableAgingReportRepository {
                 payableAdjust(accountOther), payment(accountPayment));
         sql.cte = "WITH visible_suppliers AS (" + visibleSuppliers + "),raw_events AS (" + rawEvents + "),"
                 + "aged AS (SELECT supplier_id,"
-                + "ROUND(COALESCE(SUM(amount),0),2) balance," + bucketColumns()
+                + "ROUND(COALESCE(SUM(amount),0),6) balance," + bucketColumns()
                 + " FROM raw_events GROUP BY supplier_id),"
                 + "report AS (SELECT vs.supplier_id,vs.supplier_name,vs.supplier_type,vs.purchaser,"
                 + coalescedColumns("a") + " FROM visible_suppliers vs LEFT JOIN aged a ON a.supplier_id=vs.supplier_id)";
@@ -115,7 +115,7 @@ public class ErpPayableAgingReportRepository {
     }
 
     private String eventSelect(String date, String amount, String table, String scope) {
-        return "SELECT t.supplier_id,DATE(" + date + ") event_date,ROUND(" + amount + ",2) amount FROM "
+        return "SELECT t.supplier_id,DATE(" + date + ") event_date,ROUND(" + amount + ",6) amount FROM "
                 + table + " t INNER JOIN visible_suppliers vs ON vs.supplier_id=t.supplier_id"
                 + " WHERE t.tenant_id=:tenant AND t.deleted=b'0' AND t.status=20 AND " + date
                 + "<:cutoff_exclusive" + scope;
@@ -127,13 +127,13 @@ public class ErpPayableAgingReportRepository {
             String upper = month == 1 ? ":cutoff_exclusive" : ":month" + two(month - 1) + "_start";
             columns.append("ROUND(COALESCE(SUM(CASE WHEN event_date>=:month")
                     .append(two(month)).append("_start AND event_date<").append(upper)
-                    .append(" THEN amount ELSE 0 END),0),2) month").append(two(month)).append(',');
+                    .append(" THEN amount ELSE 0 END),0),6) month").append(two(month)).append(',');
         }
         columns.append("ROUND(COALESCE(SUM(CASE WHEN event_date>=:month24_start AND event_date<:month12_start ")
-                .append("THEN amount ELSE 0 END),0),2) within_two_years,")
+                .append("THEN amount ELSE 0 END),0),6) within_two_years,")
                 .append("ROUND(COALESCE(SUM(CASE WHEN event_date>=:month36_start AND event_date<:month24_start ")
-                .append("THEN amount ELSE 0 END),0),2) within_three_years,")
-                .append("ROUND(COALESCE(SUM(CASE WHEN event_date<:month36_start THEN amount ELSE 0 END),0),2) ")
+                .append("THEN amount ELSE 0 END),0),6) within_three_years,")
+                .append("ROUND(COALESCE(SUM(CASE WHEN event_date<:month36_start THEN amount ELSE 0 END),0),6) ")
                 .append("over_three_years");
         return columns.toString();
     }

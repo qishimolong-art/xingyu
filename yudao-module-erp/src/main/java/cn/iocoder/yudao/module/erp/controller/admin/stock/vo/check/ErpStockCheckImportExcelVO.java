@@ -38,13 +38,13 @@ public class ErpStockCheckImportExcelVO {
     private String batchNo;
 
     @ExcelRequired
-    @ExcelProperty("实际库存")
+    @ExcelProperty(value = "实际库存")
     private BigDecimal actualCount;
 
-    @ExcelProperty("盘点单价")
+    @ExcelProperty(value = "盘点单价")
     private BigDecimal productPrice;
 
-    @ExcelProperty("盘点金额")
+    @ExcelProperty(value = "盘点金额")
     private BigDecimal totalPrice;
 
     @ExcelProperty("单据备注")

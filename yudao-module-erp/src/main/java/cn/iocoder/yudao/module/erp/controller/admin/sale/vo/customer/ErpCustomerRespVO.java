@@ -180,4 +180,16 @@ public class ErpCustomerRespVO {
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
 
+
+    private String saleUserName;
+    private String developerUserName;
+    private String creator;
+    private String updater;
+    private String creatorName;
+    private String updaterName;
+    private String routeName;
+    private String areaName;
+    private String customerTypeName;
+    private String settleMethodName;
+    private LocalDateTime updateTime;
 }

@@ -66,6 +66,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpPrintRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpPrintTemplateMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableAccountMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartItemMapper;
@@ -85,6 +86,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMoveItemMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.print.ErpPrintModuleEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
@@ -169,6 +171,8 @@ public class ErpPrintServiceImpl implements ErpPrintService {
     private ErpPrintTemplateMapper printTemplateMapper;
     @Resource
     private ErpPrintRecordMapper printRecordMapper;
+    @Resource
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
@@ -561,10 +565,17 @@ public class ErpPrintServiceImpl implements ErpPrintService {
         if (saleOut == null) {
             return null;
         }
-        Map<String, Object> data = buildPrintData(ErpPrintModuleEnum.SALE_OUT, saleOut,
-                itemOrderField == null ? saleOutService.getSaleOutItemListByOutId(businessId)
-                        : saleOutService.getSaleOutItemListByOutId(
-                                businessId, itemOrderField, itemOrderDirection));
+        List<ErpSaleOutItemDO> items = itemOrderField == null
+                ? saleOutService.getSaleOutItemListByOutId(businessId)
+                : saleOutService.getSaleOutItemListByOutId(businessId, itemOrderField, itemOrderDirection);
+        BigDecimal receivableAmount = ErpOriginalSettlementAmountUtils.calculateSaleOut(saleOut, items);
+        BigDecimal receivedAmount = financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                businessId, ErpBizTypeEnum.SALE_OUT.getType());
+        receivedAmount = receivedAmount != null ? receivedAmount : BigDecimal.ZERO;
+        saleOut.setReceiptPrice(receivedAmount);
+        saleOut.setSettleStatus(ErpOriginalSettlementAmountUtils.calculateSaleOutSettlementStatus(
+                receivableAmount, receivedAmount));
+        Map<String, Object> data = buildPrintData(ErpPrintModuleEnum.SALE_OUT, saleOut, items);
         enrichSaleOutPrintData(data, saleOut);
         return data;
     }
@@ -733,7 +744,7 @@ public class ErpPrintServiceImpl implements ErpPrintService {
         BigDecimal totalPrice = nullToZero(stockCheck.getTotalPrice());
         String balanceTypeName = formatStockCheckBalanceType(totalCount, totalPrice);
         String balanceAmountLabel = formatStockCheckBalanceAmountLabel(totalCount, totalPrice);
-        String balanceAmount = new DecimalFormat("#,##0.00").format(totalPrice.abs());
+        String balanceAmount = new DecimalFormat("#,##0.00##################").format(totalPrice.abs());
         String checkDateTime = formatPrintDateTime(stockCheck.getCheckTime());
         String printDateTime = formatPrintDateTime(LocalDateTime.now());
 
@@ -1045,7 +1056,7 @@ public class ErpPrintServiceImpl implements ErpPrintService {
         putDocumentField(documentMap, mainMap, "moveDateTime", formatPrintDateTime(stockMove.getMoveTime()));
         putDocumentField(documentMap, mainMap, "totalPieceCount", calculateTotalPieceCount(data));
         putDocumentField(documentMap, mainMap, "totalPriceFormatted",
-                new DecimalFormat("#,##0.00").format(nullToZero(stockMove.getTotalPrice())));
+                new DecimalFormat("#,##0.00##################").format(nullToZero(stockMove.getTotalPrice())));
         putDocumentField(documentMap, mainMap, "printDateTime", formatPrintDateTime(LocalDateTime.now()));
         if (!ErpSaleBizSourceTypeEnum.CART.getType().equals(stockMove.getSourceType())
                 || stockMove.getSourceId() == null) {

@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetDetailExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetDetailLegacyExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetPageReqVO;
@@ -75,8 +76,15 @@ public class ErpSettlementOffsetController {
     public void exportSettlementOffsetDetail(@Valid ErpSettlementOffsetDetailReqVO reqVO,
                                              HttpServletResponse response) throws IOException {
         ErpSettlementOffsetDetailRespVO detail = settlementOffsetService.getSettlementOffsetDetail(reqVO);
-        ExcelUtils.write(response, "应收冲应付明细.xls", "明细", ErpSettlementOffsetDetailExportRespVO.class,
-                buildSettlementOffsetDetailExportRows(detail));
+        List<ErpSettlementOffsetDetailExportRespVO> rows = buildSettlementOffsetDetailExportRows(detail);
+        if (reqVO.isApproveTimeBasis()) {
+            ExcelUtils.write(response, "应收冲应付明细.xls", "明细", ErpSettlementOffsetDetailExportRespVO.class,
+                    rows);
+            return;
+        }
+        ExcelUtils.write(response, "应收冲应付明细.xls", "明细",
+                ErpSettlementOffsetDetailLegacyExportRespVO.class,
+                BeanUtils.toBean(rows, ErpSettlementOffsetDetailLegacyExportRespVO.class));
     }
 
     private List<ErpSettlementOffsetDetailExportRespVO> buildSettlementOffsetDetailExportRows(

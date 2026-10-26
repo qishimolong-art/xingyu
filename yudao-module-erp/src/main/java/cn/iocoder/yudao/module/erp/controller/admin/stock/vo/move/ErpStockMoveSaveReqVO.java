@@ -94,16 +94,19 @@ public class ErpStockMoveSaveReqVO {
         private Integer packageQty;
 
         @Schema(description = "Unit weight", example = "1.25")
-        private BigDecimal weight;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal weight;
 
         @Schema(description = "Total weight", example = "125.00")
         private BigDecimal totalWeight;
 
         @Schema(description = "Product price", example = "100.00")
-        private BigDecimal productPrice;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal productPrice;
 
         @Schema(description = "Product count", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        private BigDecimal count;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal count;
 
         @Schema(description = "Remark", example = "remark")
         private String remark;

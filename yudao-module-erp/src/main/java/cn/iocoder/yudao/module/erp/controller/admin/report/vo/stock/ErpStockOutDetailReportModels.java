@@ -83,32 +83,25 @@ public final class ErpStockOutDetailReportModels {
         private String vehicleModel;
         @ExcelProperty(value = "特征码", index = 7)
         private String featureCode;
-        @ExcelProperty(value = "数量", index = 8)
+        @ExcelProperty(value = "数量", index = 8, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
         private BigDecimal count;
-        @ExcelProperty(value = "单价", index = 9)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "单价", index = 9, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal unitPrice;
-        @ExcelProperty(value = "金额", index = 10)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "金额", index = 10, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal totalAmount;
-        @ExcelProperty(value = "成本单价", index = 11)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "成本单价", index = 11, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal costUnitPrice;
-        @ExcelProperty(value = "成本金额", index = 12)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "成本金额", index = 12, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal costAmount;
-        @ExcelProperty(value = "产品价格", index = 13)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "产品价格", index = 13, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal productPrice;
-        @ExcelProperty(value = "产品金额", index = 14)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "产品金额", index = 14, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal productAmount;
-        @ExcelProperty(value = "取消数", index = 15)
+        @ExcelProperty(value = "取消数", index = 15, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
         private BigDecimal cancelCount;
-        @ExcelProperty(value = "取消后出库数", index = 16)
+        @ExcelProperty(value = "取消后出库数", index = 16, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
         private BigDecimal afterCancelCount;
-        @ExcelProperty(value = "取消后出库金额", index = 17)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "取消后出库金额", index = 17, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal afterCancelAmount;
         @ExcelProperty(value = "单据日期", index = 18)
         @DateTimeFormat("yyyy-MM-dd HH:mm:ss")
@@ -136,7 +129,7 @@ public final class ErpStockOutDetailReportModels {
         private String creatorName;
         @ExcelProperty(value = "部门", index = 29)
         private String deptName;
-        @ExcelProperty(value = "备注", index = 30)
+        @ExcelProperty(value = "备注", index = 30, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
         private String itemRemark;
 
         private Boolean priceVisible;

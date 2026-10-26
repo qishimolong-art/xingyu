@@ -110,8 +110,10 @@ public class AuthController {
 
         // 1.3 获得菜单列表
         Set<Long> menuIds = permissionService.getRoleMenuListByRoleId(convertSet(roles, RoleDO::getId));
+        // 必须基于完整菜单树判断菜单是否启用。如果只传角色已授权的菜单，按钮权限在未授权父菜单时会被误判为禁用。
+        Set<Long> enabledMenuIds = convertSet(menuService.filterDisableMenus(menuService.getMenuList()), MenuDO::getId);
         List<MenuDO> menuList = menuService.getMenuList(menuIds);
-        menuList = menuService.filterDisableMenus(menuList);
+        menuList.removeIf(menu -> !enabledMenuIds.contains(menu.getId()));
         menuList = permissionService.filterDeniedMenus(getLoginUserId(), roles, menuList);
 
         // 2. 拼接结果返回

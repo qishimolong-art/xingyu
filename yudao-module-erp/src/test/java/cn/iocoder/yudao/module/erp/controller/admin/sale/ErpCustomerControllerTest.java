@@ -17,12 +17,15 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerBusinessInfoMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerQueryService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerCreditStatusBO;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.lang.reflect.Method;
@@ -53,6 +56,25 @@ public class ErpCustomerControllerTest extends BaseMockitoUnitTest {
 
     @Mock
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+
+    @Mock private cn.iocoder.yudao.module.erp.dal.mysql.base.ErpBaseDataMapper baseDataMapper;
+    @Mock private cn.iocoder.yudao.module.system.api.user.AdminUserApi adminUserApi;
+    @Mock private cn.iocoder.yudao.module.system.api.dept.DeptApi deptApi;
+
+    private ErpCustomerQueryService customerQueryService;
+
+    @BeforeEach
+    void setUpCustomerQueryService() {
+        customerQueryService = new ErpCustomerQueryService();
+        ReflectionTestUtils.setField(customerQueryService, "customerService", customerService);
+        ReflectionTestUtils.setField(customerQueryService, "saleOutMapper", saleOutMapper);
+        ReflectionTestUtils.setField(customerQueryService, "customerBusinessInfoMapper", customerBusinessInfoMapper);
+        ReflectionTestUtils.setField(customerQueryService, "fieldPermissionMasker", fieldPermissionMasker);
+        ReflectionTestUtils.setField(customerQueryService, "baseDataMapper", baseDataMapper);
+        ReflectionTestUtils.setField(customerQueryService, "adminUserApi", adminUserApi);
+        ReflectionTestUtils.setField(customerQueryService, "deptApi", deptApi);
+        ReflectionTestUtils.setField(controller, "customerQueryService", customerQueryService);
+    }
 
     // ==================== createCustomer ====================
 
@@ -442,4 +464,21 @@ public class ErpCustomerControllerTest extends BaseMockitoUnitTest {
         assertTrue(anno.value().contains("erp:customer:update"));
     }
 
+
+    @Test
+    void masks500CustomersWithOnePermissionResolutionAndNoDisplayNameLeak() {
+        java.util.List<ErpCustomerDO> rows = java.util.stream.IntStream.range(0, 500).mapToObj(i ->
+                new ErpCustomerDO().setId((long) i + 1).setName("客户").setPriceLevel(8).setSaleUserId(7L)).collect(java.util.stream.Collectors.toList());
+        when(customerService.getCustomerPage(any())).thenReturn(new PageResult<>(rows, 500L));
+        cn.iocoder.yudao.module.system.api.permission.PermissionApi permission = org.mockito.Mockito.mock(cn.iocoder.yudao.module.system.api.permission.PermissionApi.class);
+        when(permission.getCurrentUserHiddenFields("erp_customer", null, true, 8)).thenReturn(Arrays.asList("saleUserId"));
+        ErpSaleFieldPermissionMasker realMasker = new ErpSaleFieldPermissionMasker();
+        org.springframework.test.util.ReflectionTestUtils.setField(realMasker, "permissionApi", permission);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "fieldPermissionMasker", realMasker);
+        org.springframework.test.util.ReflectionTestUtils.setField(customerQueryService, "fieldPermissionMasker", realMasker);
+        PageResult<ErpCustomerRespVO> result = controller.getCustomerPage(new ErpCustomerPageReqVO()).getData();
+        assertEquals(500, result.getList().size()); assertNull(result.getList().get(0).getSaleUserId()); assertNull(result.getList().get(0).getSaleUserName());
+        verify(permission).getCurrentUserHiddenFields("erp_customer", null, true, 8);
+        org.mockito.Mockito.verifyNoMoreInteractions(permission);
+    }
 }

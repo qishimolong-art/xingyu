@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.system.controller.admin.user.vo.user;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import javax.validation.constraints.NotNull;
+import javax.validation.Valid;
 import lombok.Data;
 
 import java.util.Set;
@@ -19,5 +20,9 @@ public class UserRolePermissionSaveReqVO {
 
     @Schema(description = "用户级禁用的按钮权限编码列表")
     private Set<String> deniedPermissions;
+
+    @Schema(description = "用户可访问租户范围；不传表示保持原配置")
+    @Valid
+    private TenantVisitScopeSaveReqVO tenantVisitScope;
 
 }

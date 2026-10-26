@@ -15,6 +15,18 @@ import java.util.List;
 
 @Mapper
 public interface ErpStockOutBillItemMapper extends BaseMapperX<ErpStockOutBillItemDO> {
+    default PageResult<ErpStockOutBillItemDO> selectExportPageByBillIds(Collection<Long> ids, int pageNo) {
+        if (ids == null || ids.isEmpty()) return PageResult.empty();
+        cn.iocoder.yudao.framework.common.pojo.PageParam page = new cn.iocoder.yudao.framework.common.pojo.PageParam();
+        page.setPageNo(pageNo); page.setPageSize(500);
+        StringBuilder order = new StringBuilder("CASE bill_id ");
+        int index=0;
+        for (Long id : ids) order.append("WHEN ").append(id).append(" THEN ").append(index++).append(' ');
+        order.append("END");
+        return selectPage(page,new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ErpStockOutBillItemDO>()
+                .in("bill_id",ids).orderByAsc(order.toString(),"id"));
+    }
+
 
     default List<ErpStockOutBillItemDO> selectListByBillId(Long billId) {
         return selectList(new LambdaQueryWrapperX<ErpStockOutBillItemDO>()

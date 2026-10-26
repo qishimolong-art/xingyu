@@ -29,14 +29,17 @@ public class ErpFinancePaymentImportExcelVO {
     private String accountName;
 
     @ExcelProperty("优惠金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal discountPrice;
 
     @ExcelRequired
     @ExcelProperty("合计金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal totalPrice;
 
     @ExcelRequired
     @ExcelProperty("实际付款金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal paymentPrice;
 
     @ExcelProperty("凭证号")
@@ -52,9 +55,11 @@ public class ErpFinancePaymentImportExcelVO {
     private String bizNo;
 
     @ExcelProperty("已付金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal paidPrice;
 
     @ExcelProperty("本次付款")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal itemPaymentPrice;
 
     @ExcelProperty("明细备注")

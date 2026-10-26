@@ -180,6 +180,7 @@ class ErpFinanceAutoWriteOffServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue()).extracting(ErpFinanceReceiptItemDO::getBizId)
                 .containsExactly(201L, 202L);
         assertThat(captor.getValue()).extracting(ErpFinanceReceiptItemDO::getReceiptPrice)
+                .usingElementComparator(BigDecimal::compareTo)
                 .containsExactly(new BigDecimal("60.00"), new BigDecimal("40.00"));
         assertThat(captor.getValue()).allSatisfy(item -> {
             assertThat(item.getRemark()).isEqualTo("系统自动核销");
@@ -238,6 +239,7 @@ class ErpFinanceAutoWriteOffServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue()).extracting(ErpFinanceReceiptItemDO::getBizId)
                 .containsExactly(201L, 202L);
         assertThat(captor.getValue()).extracting(ErpFinanceReceiptItemDO::getReceiptPrice)
+                .usingElementComparator(BigDecimal::compareTo)
                 .containsExactly(new BigDecimal("20.00"), new BigDecimal("10.00"));
         verify(saleOutService).updateSaleInReceiptPrice(202L, new BigDecimal("10"));
     }
@@ -344,6 +346,7 @@ class ErpFinanceAutoWriteOffServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue()).extracting(ErpFinancePaymentItemDO::getBizId)
                 .containsExactly(211L, 212L);
         assertThat(captor.getValue()).extracting(ErpFinancePaymentItemDO::getPaymentPrice)
+                .usingElementComparator(BigDecimal::compareTo)
                 .containsExactly(new BigDecimal("60.00"), new BigDecimal("40.00"));
         assertThat(captor.getValue()).allSatisfy(item -> {
             assertThat(item.getRemark()).isEqualTo("系统自动核销");
@@ -429,6 +432,7 @@ class ErpFinanceAutoWriteOffServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue()).extracting(ErpFinancePaymentItemDO::getBizId)
                 .containsExactly(211L, 212L);
         assertThat(captor.getValue()).extracting(ErpFinancePaymentItemDO::getPaymentPrice)
+                .usingElementComparator(BigDecimal::compareTo)
                 .containsExactly(new BigDecimal("20.00"), new BigDecimal("10.00"));
         verify(purchaseInService).updatePurchaseInPaymentPrice(212L, new BigDecimal("10"));
     }

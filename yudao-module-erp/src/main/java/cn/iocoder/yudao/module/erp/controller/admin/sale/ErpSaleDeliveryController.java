@@ -128,7 +128,7 @@ public class ErpSaleDeliveryController {
     }
 
     @PostMapping("/mobile/upload-voucher")
-    @Operation(summary = "移动端上传销售送货凭证")
+    @Operation(summary = "移动端上传销售送货快递单")
     @PreAuthorize("@ss.hasPermission('erp:sale-delivery:delivery')")
     public CommonResult<String> uploadDeliveryVoucher(@RequestParam("file") MultipartFile file) throws IOException {
         return success(salePickDeliveryService.uploadVoucher(file.getBytes(), file.getOriginalFilename()));

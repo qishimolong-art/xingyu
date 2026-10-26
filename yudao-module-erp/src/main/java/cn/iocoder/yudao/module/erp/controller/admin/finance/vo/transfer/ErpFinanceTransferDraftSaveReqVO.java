@@ -18,12 +18,15 @@ public class ErpFinanceTransferDraftSaveReqVO {
     private LocalDateTime transferTime;
     private Long outAccountId;
     private Long inAccountId;
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal transferPrice;
 
     @DecimalMin(value = "0", inclusive = false, message = "汇率必须大于 0")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField(integer = 12)
     private BigDecimal exchangeRate;
 
     @DecimalMin(value = "0", message = "手续费不能小于 0")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal feePrice;
 
     @Size(max = 64, message = "费用项目长度不能超过 64 个字符")

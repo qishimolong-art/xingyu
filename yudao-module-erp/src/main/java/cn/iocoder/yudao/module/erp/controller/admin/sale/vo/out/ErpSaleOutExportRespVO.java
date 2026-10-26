@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out;
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.idev.excel.annotation.format.NumberFormat;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -32,12 +33,15 @@ public class ErpSaleOutExportRespVO {
     private LocalDateTime outTime;
 
     @ExcelProperty("合计数量")
+    @NumberFormat("0.######")
     private BigDecimal totalCount;
 
     @ExcelProperty("合计金额")
+    @NumberFormat("0.00####")
     private BigDecimal totalPrice;
 
     @ExcelProperty("费用金额")
+    @NumberFormat("0.00####")
     private BigDecimal feeAmount;
 
     @ExcelProperty("备注")
@@ -53,30 +57,37 @@ public class ErpSaleOutExportRespVO {
     private String productUnitName;
 
     @ExcelProperty("单重")
+    @NumberFormat("0.######")
     private BigDecimal unitWeight;
 
     @ExcelProperty("包装数")
     private Integer packageQty;
 
     @ExcelProperty("总重")
+    @NumberFormat("0.######")
     private BigDecimal totalWeight;
 
     @ExcelProperty("仓库名称")
     private String warehouseName;
 
     @ExcelProperty("数量")
+    @NumberFormat("0.######")
     private BigDecimal itemCount;
 
     @ExcelProperty("单价")
+    @NumberFormat("0.00####")
     private BigDecimal productPrice;
 
     @ExcelProperty("金额")
+    @NumberFormat("0.00####")
     private BigDecimal itemTotalPrice;
 
     @ExcelProperty("税率")
+    @NumberFormat("0.######")
     private BigDecimal itemTaxPercent;
 
     @ExcelProperty("税额")
+    @NumberFormat("0.00####")
     private BigDecimal itemTaxPrice;
 
     @ExcelProperty("品牌")

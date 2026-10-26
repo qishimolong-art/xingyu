@@ -1,9 +1,12 @@
 package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
+import cn.idev.excel.annotation.format.NumberFormat;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableStockReqVO;
@@ -28,9 +31,13 @@ import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import javax.servlet.http.HttpServletResponse;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -70,6 +77,31 @@ class ErpPurchaseOrderControllerTest extends BaseMockitoUnitTest {
     private ErpSaleOutItemMapper saleOutItemMapper;
     @Mock
     private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
+
+    @Test
+    void getPurchaseOrderExportFields_includesBusinessDetailFieldsAndKeepsAmountNumericStyle() throws Exception {
+        when(fieldPermissionMasker.getHiddenFieldSet("erp_purchase_order"))
+                .thenReturn(Collections.emptySet());
+
+        CommonResult<java.util.List<ErpExportFieldRespVO>> result =
+                purchaseOrderController.getPurchaseOrderExportFields();
+
+        assertTrue(result.isSuccess());
+        Set<String> fields = result.getData().stream()
+                .map(ErpExportFieldRespVO::getField)
+                .collect(Collectors.toSet());
+        assertTrue(fields.containsAll(Set.of(
+                "deptName", "purchaserName", "orderDate", "totalProductPrice", "discountPrice", "depositPrice",
+                "itemInStatus", "warehouseName", "itemDeptName", "stockCount", "lastPurchasePrice",
+                "vehicleModel", "standard", "featureCode", "pieceCount", "arrivalCount", "warehousePosition",
+                "drawingNo", "batchNo", "factoryCode", "brand", "originPlace", "itemInCount", "itemReturnCount")));
+        Field amountField = ErpPurchaseOrderExportRespVO.class.getDeclaredField("productPrice");
+        NumberFormat numberFormat = amountField.getAnnotation(NumberFormat.class);
+        assertNotNull(numberFormat);
+        assertEquals("0.00####", numberFormat.value());
+        assertEquals(BigDecimal.class,
+                ErpPurchaseOrderExportRespVO.class.getDeclaredField("stockCount").getType());
+    }
 
     @Test
     void downloadImportFailureDetails_delegatesPurchaseOrderModule() throws Exception {
@@ -212,6 +244,22 @@ class ErpPurchaseOrderControllerTest extends BaseMockitoUnitTest {
         PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
         assertNotNull(preAuthorize);
         assertTrue(preAuthorize.value().contains("erp:purchase-in:create"));
+    }
+
+    @Test
+    void detailImportTaskEndpoints_allowCreateOrUpdatePermission() throws Exception {
+        for (String methodName : Arrays.asList(
+                "startDetailImportTask", "getActiveDetailImportTask", "getDetailImportTask",
+                "getDetailImportTaskResult", "downloadDetailImportFailureDetails")) {
+            Method method = Arrays.stream(ErpPurchaseOrderController.class.getMethods())
+                    .filter(candidate -> candidate.getName().equals(methodName))
+                    .findFirst()
+                    .orElseThrow();
+            PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+            assertNotNull(preAuthorize);
+            assertTrue(preAuthorize.value().contains("erp:purchase-order:create"));
+            assertTrue(preAuthorize.value().contains("erp:purchase-order:update"));
+        }
     }
 
     @Test

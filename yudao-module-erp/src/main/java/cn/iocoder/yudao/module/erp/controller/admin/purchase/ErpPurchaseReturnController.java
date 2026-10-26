@@ -39,6 +39,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
@@ -578,6 +579,12 @@ public class ErpPurchaseReturnController {
                     item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
                             .setProductUnitName(product.getUnitName()).setWeight(product.getWeight())
+                            .setStandard(product.getStandard()).setFeatureCode(product.getFeatureCode())
+                            .setFactoryCode(product.getFactoryCode()).setLastPurchasePrice(product.getLastPurchasePrice())
+                            .setDrawingNo(item.getDrawingNo() != null ? item.getDrawingNo() : product.getDrawingNo())
+                            .setBrand(item.getBrand() != null ? item.getBrand() : product.getBrand())
+                            .setVehicleModel(item.getVehicleModel() != null ? item.getVehicleModel() : product.getVehicleModel())
+                            .setOriginPlace(item.getOriginPlace() != null ? item.getOriginPlace() : product.getOriginPlace())
                             .setPackageQty(item.getPackageQty() == null || item.getPackageQty() <= 0
                                     ? product.getPackageQty() : item.getPackageQty())
                             .setBatchNoEnabled(product.getBatchNoEnabled())));
@@ -649,7 +656,7 @@ public class ErpPurchaseReturnController {
             List<ErpPurchaseInItemDO> inItems = purchaseInItemMapper.selectBatchIds(sourceInItemIds);
             inItemMap = cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap(
                     inItems, ErpPurchaseInItemDO::getId);
-            returnedMap = purchaseReturnItemMapper.selectReturnedCountMapBySourceInItemIdsExcludeReturn(
+            returnedMap = purchaseReturnItemMapper.selectProcessingAndApprovedReturnedCountMapBySourceInItemIdsExcludeReturn(
                     sourceInItemIds, currentReturnId);
         }
         Map<Long, ErpPurchaseInItemDO> finalInItemMap = inItemMap;
@@ -660,6 +667,12 @@ public class ErpPurchaseReturnController {
             MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                     .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
                     .setProductUnitName(product.getUnitName()).setWeight(product.getWeight())
+                    .setStandard(product.getStandard()).setFeatureCode(product.getFeatureCode())
+                    .setFactoryCode(product.getFactoryCode()).setLastPurchasePrice(product.getLastPurchasePrice())
+                    .setDrawingNo(item.getDrawingNo() != null ? item.getDrawingNo() : product.getDrawingNo())
+                    .setBrand(item.getBrand() != null ? item.getBrand() : product.getBrand())
+                    .setVehicleModel(item.getVehicleModel() != null ? item.getVehicleModel() : product.getVehicleModel())
+                    .setOriginPlace(item.getOriginPlace() != null ? item.getOriginPlace() : product.getOriginPlace())
                     .setPackageQty(item.getPackageQty() == null || item.getPackageQty() <= 0
                             ? product.getPackageQty() : item.getPackageQty())
                     .setBatchNoEnabled(product.getBatchNoEnabled()));
@@ -668,7 +681,7 @@ public class ErpPurchaseReturnController {
                 if (inItem != null) {
                     item.setInCount(inItem.getCount());
                     BigDecimal otherReturned = finalReturnedMap.getOrDefault(item.getSourceInItemId(), BigDecimal.ZERO);
-                    item.setReturnableCount(inItem.getCount().subtract(otherReturned));
+                    item.setReturnableCount(inItem.getCount().subtract(otherReturned).max(BigDecimal.ZERO));
                 }
             }
         });
@@ -677,19 +690,70 @@ public class ErpPurchaseReturnController {
     }
 
     private List<ErpPurchaseReturnExportRespVO> buildPurchaseReturnExportList(List<ErpPurchaseReturnRespVO> list) {
-        Map<Long, ErpWarehouseDO> warehouseMap = cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap(
-                warehouseService.getWarehouseListByStatus(0), ErpWarehouseDO::getId);
+        Set<Long> warehouseIds = new LinkedHashSet<>();
+        Set<Long> itemDeptIds = new LinkedHashSet<>();
+        Set<Long> productIds = new LinkedHashSet<>();
+        Set<Long> sourceInItemIds = new LinkedHashSet<>();
+        for (ErpPurchaseReturnRespVO purchaseReturn : list) {
+            for (ErpPurchaseReturnRespVO.Item item : CollUtil.emptyIfNull(purchaseReturn.getItems())) {
+                if (item.getWarehouseId() != null) {
+                    warehouseIds.add(item.getWarehouseId());
+                }
+                if (item.getDeptId() != null) {
+                    itemDeptIds.add(item.getDeptId());
+                }
+                if (item.getProductId() != null) {
+                    productIds.add(item.getProductId());
+                }
+                if (item.getSourceInItemId() != null) {
+                    sourceInItemIds.add(item.getSourceInItemId());
+                }
+            }
+        }
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(warehouseIds));
+        Map<Long, DeptRespDTO> itemDeptMap = CollUtil.isEmpty(itemDeptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(itemDeptIds);
+        Map<String, ErpStockDO> stockMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(productIds, warehouseIds));
+        Map<Long, ErpPurchaseInItemDO> sourceInItemMap = CollUtil.isEmpty(sourceInItemIds)
+                ? Collections.emptyMap()
+                : cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap(
+                        purchaseInItemMapper.selectBatchIds(sourceInItemIds), ErpPurchaseInItemDO::getId);
+        Map<Long, BigDecimal> returnedCountMap = CollUtil.isEmpty(sourceInItemIds)
+                ? Collections.emptyMap()
+                : purchaseReturnItemMapper.selectProcessingAndApprovedReturnedCountMapBySourceInItemIdsExcludeReturn(
+                        sourceInItemIds, null);
         List<ErpPurchaseReturnExportRespVO> rows = new ArrayList<>();
         for (ErpPurchaseReturnRespVO purchaseReturn : list) {
             if (CollUtil.isEmpty(purchaseReturn.getItems())) {
-                rows.add(buildPurchaseReturnExportRow(purchaseReturn, null, null, true));
+                rows.add(buildPurchaseReturnExportRow(purchaseReturn, null, null, null,
+                        null, null, null, true));
                 continue;
+            }
+            // 导出与编辑页一样排除本单占用，同来源多行须一起归还本单额度。
+            Map<Long, BigDecimal> currentCounts = new LinkedHashMap<>();
+            if (ErpAuditStatus.PROCESS.getStatus().equals(purchaseReturn.getStatus())
+                    || ErpAuditStatus.APPROVE.getStatus().equals(purchaseReturn.getStatus())) {
+                for (ErpPurchaseReturnRespVO.Item item : purchaseReturn.getItems()) {
+                    if (item.getSourceInItemId() != null && item.getCount() != null) {
+                        currentCounts.merge(item.getSourceInItemId(), item.getCount(), BigDecimal::add);
+                    }
+                }
             }
             for (int i = 0; i < purchaseReturn.getItems().size(); i++) {
                 ErpPurchaseReturnRespVO.Item item = purchaseReturn.getItems().get(i);
+                ErpStockDO stock = stockMap.get(item.getProductId() + "_" + item.getWarehouseId());
                 rows.add(buildPurchaseReturnExportRow(purchaseReturn,
                         item,
                         warehouseMap.get(item.getWarehouseId()),
+                        itemDeptMap.get(item.getDeptId()),
+                        stock,
+                        sourceInItemMap.get(item.getSourceInItemId()),
+                        returnedCountMap.getOrDefault(item.getSourceInItemId(), BigDecimal.ZERO)
+                                .subtract(currentCounts.getOrDefault(item.getSourceInItemId(), BigDecimal.ZERO)),
                         i == 0));
             }
         }
@@ -699,6 +763,10 @@ public class ErpPurchaseReturnController {
     private ErpPurchaseReturnExportRespVO buildPurchaseReturnExportRow(ErpPurchaseReturnRespVO purchaseReturn,
                                                                        ErpPurchaseReturnRespVO.Item item,
                                                                        ErpWarehouseDO warehouse,
+                                                                       DeptRespDTO itemDept,
+                                                                       ErpStockDO stock,
+                                                                       ErpPurchaseInItemDO sourceInItem,
+                                                                       BigDecimal returnedCount,
                                                                        boolean fillOrderFields) {
         ErpPurchaseReturnExportRespVO row = fillOrderFields
                 ? BeanUtils.toBean(purchaseReturn, ErpPurchaseReturnExportRespVO.class)
@@ -706,7 +774,12 @@ public class ErpPurchaseReturnController {
         if (fillOrderFields) {
             row.setSupplierName(purchaseReturn.getSupplierName());
             row.setReturnTime(purchaseReturn.getReturnTime());
+            row.setReturnMode(purchaseReturn.getReturnMode());
             row.setStatus(purchaseReturn.getStatus());
+            row.setPurchaserName(purchaseReturn.getPurchaserName());
+            row.setHandlerName(purchaseReturn.getHandlerName());
+            row.setTotalTaxAmount(purchaseReturn.getTotalTaxPrice());
+            row.setMainTaxPercent(purchaseReturn.getTaxRate());
             row.setCreatorName(purchaseReturn.getCreatorName());
             row.setUpdaterName(purchaseReturn.getUpdaterName());
             row.setUpdateTime(purchaseReturn.getUpdateTime());
@@ -718,17 +791,41 @@ public class ErpPurchaseReturnController {
         row.setProductCode(item.getProductCode());
         row.setProductName(item.getProductName());
         row.setProductUnitName(item.getProductUnitName());
+        row.setItemDeptName(itemDept != null ? itemDept.getName() : null);
+        row.setStockCount(stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO);
+        row.setInCount(sourceInItem != null ? sourceInItem.getCount() : item.getInCount());
+        if (sourceInItem != null) {
+            BigDecimal otherReturned = returnedCount == null ? BigDecimal.ZERO : returnedCount;
+            row.setReturnableCount(sourceInItem.getCount().subtract(otherReturned).max(BigDecimal.ZERO));
+        } else {
+            row.setReturnableCount(item.getReturnableCount());
+        }
         row.setWeight(item.getWeight());
         row.setPackageQty(item.getPackageQty());
+        row.setWholeQty(item.getWholeQty());
         row.setItemCount(item.getCount());
         row.setProductPrice(item.getProductPrice());
+        row.setLastPurchasePrice(item.getLastPurchasePrice());
         row.setItemTotalPrice(item.getProductPrice() == null || item.getCount() == null
                 ? null : item.getProductPrice().multiply(item.getCount()));
         row.setSourceInNo(item.getSourceInNo());
+        row.setItemTaxPercent(item.getTaxPercent());
+        row.setItemTaxPrice(item.getTaxPrice());
         row.setWarehouseName(warehouse != null ? warehouse.getName() : null);
         row.setWarehousePosition(item.getWarehousePosition());
         row.setBatchNo(item.getBatchNo());
         row.setBrand(item.getBrand());
+        row.setStandard(item.getStandard());
+        row.setFeatureCode(item.getFeatureCode());
+        row.setFactoryCode(item.getFactoryCode());
+        row.setPartCode(item.getPartCode());
+        row.setPartName(item.getPartName());
+        row.setVehicleModel(item.getVehicleModel());
+        row.setOriginPlace(item.getOriginPlace());
+        row.setProductBarCode(item.getProductBarCode());
+        row.setDrawingNo(item.getDrawingNo());
+        row.setBarCode(item.getBarCode());
+        row.setBusinessEntity(item.getBusinessEntity());
         row.setItemRemark(item.getRemark());
         return row;
     }
@@ -739,6 +836,9 @@ public class ErpPurchaseReturnController {
             addUserId(userIds, purchaseReturn.getCreator());
             addUserId(userIds, purchaseReturn.getUpdater());
             addUserId(userIds, purchaseReturn.getPurchaser());
+            if (purchaseReturn.getHandler() != null) {
+                userIds.add(purchaseReturn.getHandler());
+            }
         });
         return userIds;
     }
@@ -755,6 +855,10 @@ public class ErpPurchaseReturnController {
         Long purchaserId = parseUserId(purchaseReturn.getPurchaser());
         if (purchaserId != null) {
             MapUtils.findAndThen(userMap, purchaserId, user -> purchaseReturn.setPurchaserName(user.getNickname()));
+        }
+        if (purchaseReturn.getHandler() != null) {
+            MapUtils.findAndThen(userMap, purchaseReturn.getHandler(),
+                    user -> purchaseReturn.setHandlerName(user.getNickname()));
         }
     }
 
@@ -782,7 +886,29 @@ public class ErpPurchaseReturnController {
         map.put("supplierName", "main");
         map.put("deptName", "main");
         map.put("returnTime", "main");
+        map.put("returnMode", "main");
+        map.put("purchaserName", "main");
+        map.put("handlerName", "main");
         map.put("status", "main");
+        map.put("totalCount", "main");
+        map.put("totalProductPrice", "main");
+        map.put("totalTaxAmount", "main");
+        map.put("discountPercent", "main");
+        map.put("discountPrice", "main");
+        map.put("otherPrice", "main");
+        map.put("refundPrice", "main");
+        map.put("totalPrice", "main");
+        map.put("mainTaxPercent", "main");
+        map.put("invoiceType", "main");
+        map.put("transportMethod", "main");
+        map.put("settleMethod", "main");
+        map.put("freightAmount", "main");
+        map.put("logisticsCompany", "main");
+        map.put("factoryOrderNo", "main");
+        map.put("priority", "main");
+        map.put("orderMethod", "main");
+        map.put("createTime", "system");
+        map.put("fileUrl", "main");
         map.put("creatorName", "system");
         map.put("updaterName", "system");
         map.put("updateTime", "system");
@@ -791,16 +917,35 @@ public class ErpPurchaseReturnController {
         map.put("productCode", "detail");
         map.put("productName", "detail");
         map.put("productUnitName", "detail");
+        map.put("itemDeptName", "detail");
+        map.put("stockCount", "detail");
+        map.put("inCount", "detail");
+        map.put("returnableCount", "detail");
         map.put("weight", "detail");
         map.put("packageQty", "detail");
+        map.put("wholeQty", "detail");
         map.put("sourceInNo", "detail");
         map.put("itemCount", "detail");
         map.put("productPrice", "detail");
+        map.put("lastPurchasePrice", "detail");
         map.put("itemTotalPrice", "detail");
+        map.put("itemTaxPercent", "detail");
+        map.put("itemTaxPrice", "detail");
         map.put("warehouseName", "detail");
         map.put("warehousePosition", "detail");
         map.put("batchNo", "detail");
         map.put("brand", "detail");
+        map.put("standard", "detail");
+        map.put("featureCode", "detail");
+        map.put("factoryCode", "detail");
+        map.put("partCode", "detail");
+        map.put("partName", "detail");
+        map.put("vehicleModel", "detail");
+        map.put("originPlace", "detail");
+        map.put("productBarCode", "detail");
+        map.put("drawingNo", "detail");
+        map.put("barCode", "detail");
+        map.put("businessEntity", "detail");
         map.put("itemRemark", "detail");
         return map;
     }
@@ -809,18 +954,46 @@ public class ErpPurchaseReturnController {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("supplierName", "supplierId");
         map.put("deptName", "deptId");
+        map.put("purchaserName", "purchaser");
+        map.put("handlerName", "handler");
+        map.put("totalProductPrice", "totalProductPrice");
+        map.put("totalTaxAmount", "totalTaxPrice");
+        map.put("mainTaxPercent", "taxRate");
+        map.put("discountPercent", "discountPercent");
+        map.put("discountPrice", "discountPrice");
+        map.put("otherPrice", "otherPrice");
+        map.put("refundPrice", "refundPrice");
         map.put("productCode", "item_productCode");
         map.put("productName", "item_productName");
         map.put("productUnitName", "item_productUnitName");
+        map.put("itemDeptName", "item_deptId");
+        map.put("stockCount", "item_stockCount");
+        map.put("inCount", "item_inCount");
+        map.put("returnableCount", "item_returnableCount");
         map.put("weight", "item_weight");
         map.put("packageQty", "item_packageQty");
+        map.put("wholeQty", "item_wholeQty");
         map.put("itemCount", "item_count");
         map.put("productPrice", "item_productPrice");
+        map.put("lastPurchasePrice", "item_lastPurchasePrice");
         map.put("itemTotalPrice", "item_totalProductPrice");
+        map.put("itemTaxPercent", "item_taxPercent");
+        map.put("itemTaxPrice", "item_taxPrice");
         map.put("warehouseName", "item_warehouseId");
         map.put("warehousePosition", "item_warehousePosition");
         map.put("batchNo", "item_batchNo");
         map.put("brand", "item_brand");
+        map.put("standard", "item_standard");
+        map.put("featureCode", "item_featureCode");
+        map.put("factoryCode", "item_factoryCode");
+        map.put("partCode", "item_partCode");
+        map.put("partName", "item_partName");
+        map.put("vehicleModel", "item_vehicleModel");
+        map.put("originPlace", "item_originPlace");
+        map.put("productBarCode", "item_productBarCode");
+        map.put("drawingNo", "item_drawingNo");
+        map.put("barCode", "item_barCode");
+        map.put("businessEntity", "item_businessEntity");
         map.put("itemRemark", "item_remark");
         return map;
     }

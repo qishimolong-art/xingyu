@@ -3,7 +3,6 @@ package cn.iocoder.yudao.module.erp.service.purchase;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceMixedSourceItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceDocumentPageReqVO;
@@ -363,6 +362,10 @@ public class ErpPurchaseInvoiceSourceService {
             item.setSourceTypeName(snapshot.sourceTypeName);
             item.setWarehouseId(snapshot.warehouseId);
             item.setPackageQty(snapshot.packageQty);
+            item.setSourceDeptId(snapshot.deptId);
+            item.setWholeQty(snapshot.wholeQty);
+            item.setBatchNo(snapshot.batchNo);
+            item.setBusinessEntity(snapshot.businessEntity);
             item.setSourceTotalCount(snapshot.totalCount);
             item.setSourceRemainingCount(snapshot.remainingCount);
         });
@@ -824,8 +827,10 @@ public class ErpPurchaseInvoiceSourceService {
                     doc == null ? null : doc.getNo(), doc == null ? null : doc.getSupplierId(),
                     doc == null ? null : doc.getDeptId(), doc == null ? null : doc.getStatus(),
                     doc == null ? null : doc.getInTime(), item.getId(),
-                    item.getProductId(), item.getWarehouseId(), item.getPackageQty(), count, price,
-                    MoneyUtils.priceMultiply(price, count), 1, item.getRemark(), nvl(allocatedMap.get(item.getId())));
+                    item.getProductId(), item.getWarehouseId(), item.getPackageQty(),
+                    item.getDeptId() == null && doc != null ? doc.getDeptId() : item.getDeptId(),
+                    item.getWholeQty(), item.getBatchNo(), item.getBusinessEntity(), count, price,
+                    ErpPurchaseDecimalUtils.multiply(price, count), 1, item.getRemark(), nvl(allocatedMap.get(item.getId())));
         }).collect(Collectors.toList());
     }
 
@@ -833,18 +838,27 @@ public class ErpPurchaseInvoiceSourceService {
                                                       Map<Long, ErpPurchasePriceAdjustDO> docMap, boolean ignored) {
         Map<Long, BigDecimal> allocatedMap = allocationMapper.selectAllocatedCountMap(
                 ErpPurchaseInvoiceSourceTypeEnum.PRICE_ADJUST.getType(), ids(items, ErpPurchasePriceAdjustItemDO::getId));
+        Set<Long> sourceInItemIds = ids(items, ErpPurchasePriceAdjustItemDO::getInItemId);
+        Map<Long, ErpPurchaseInItemDO> sourceInItemMap = sourceInItemIds.isEmpty()
+                ? Collections.emptyMap()
+                : toMap(purchaseInItemMapper.selectBatchIds(sourceInItemIds), ErpPurchaseInItemDO::getId);
         return CollUtil.emptyIfNull(items).stream().map(item -> {
             ErpPurchasePriceAdjustDO doc = docMap.get(item.getAdjustId());
+            ErpPurchaseInItemDO sourceInItem = sourceInItemMap.get(item.getInItemId());
             BigDecimal unitDifference = nvl(item.getNewPrice()).subtract(nvl(item.getOldPrice()));
             BigDecimal count = nvl(item.getCount());
             BigDecimal amount = item.getAdjustPrice() == null
-                    ? MoneyUtils.priceMultiply(unitDifference, count) : item.getAdjustPrice();
+                    ? ErpPurchaseDecimalUtils.multiply(unitDifference, count) : item.getAdjustPrice();
             int direction = amount.compareTo(ZERO) < 0 ? -1 : 1;
             return new SourceSnapshot(ErpPurchaseInvoiceSourceTypeEnum.PRICE_ADJUST, item.getAdjustId(),
                     doc == null ? null : doc.getNo(), doc == null ? null : doc.getSupplierId(),
                     doc == null ? null : doc.getDeptId(), doc == null ? null : doc.getStatus(),
                     doc == null ? null : doc.getAdjustTime(), item.getId(),
-                    item.getProductId(), item.getWarehouseId(), item.getPackageQty(), count, unitDifference,
+                    item.getProductId(), item.getWarehouseId(), item.getPackageQty(),
+                    item.getDeptId() == null && doc != null ? doc.getDeptId() : item.getDeptId(),
+                    sourceInItem == null ? null : sourceInItem.getWholeQty(),
+                    sourceInItem == null ? null : sourceInItem.getBatchNo(),
+                    sourceInItem == null ? null : sourceInItem.getBusinessEntity(), count, unitDifference,
                     amount, direction, null, nvl(allocatedMap.get(item.getId())));
         }).filter(snapshot -> snapshot.totalAmount.compareTo(ZERO) != 0).collect(Collectors.toList());
     }
@@ -857,12 +871,14 @@ public class ErpPurchaseInvoiceSourceService {
             ErpPurchaseReturnDO doc = docMap.get(item.getReturnId());
             BigDecimal price = nvl(item.getProductPrice()).abs();
             BigDecimal count = nvl(item.getCount());
-            BigDecimal amount = MoneyUtils.priceMultiply(price, count).negate();
+            BigDecimal amount = ErpPurchaseDecimalUtils.multiply(price, count).negate();
             return new SourceSnapshot(ErpPurchaseInvoiceSourceTypeEnum.PURCHASE_RETURN, item.getReturnId(),
                     doc == null ? null : doc.getNo(), doc == null ? null : doc.getSupplierId(),
                     doc == null ? null : doc.getDeptId(), doc == null ? null : doc.getStatus(),
                     doc == null ? null : doc.getReturnTime(), item.getId(),
-                    item.getProductId(), item.getWarehouseId(), item.getPackageQty(), count, price,
+                    item.getProductId(), item.getWarehouseId(), item.getPackageQty(),
+                    item.getDeptId() == null && doc != null ? doc.getDeptId() : item.getDeptId(),
+                    item.getWholeQty(), item.getBatchNo(), item.getBusinessEntity(), count, price,
                     amount, -1, item.getRemark(), nvl(allocatedMap.get(item.getId())));
         }).collect(Collectors.toList());
     }
@@ -986,6 +1002,9 @@ public class ErpPurchaseInvoiceSourceService {
         private final Long productId;
         private final Long warehouseId;
         private final Integer packageQty;
+        private final Integer wholeQty;
+        private final String batchNo;
+        private final String businessEntity;
         private final BigDecimal totalCount;
         private final BigDecimal unitPrice;
         private final BigDecimal totalAmount;
@@ -996,7 +1015,8 @@ public class ErpPurchaseInvoiceSourceService {
         private SourceSnapshot(ErpPurchaseInvoiceSourceTypeEnum type, Long sourceDocId, String sourceDocNo,
                                Long supplierId, Long deptId, Integer status, LocalDateTime sourceDocBizTime,
                                Long sourceItemId, Long productId,
-                               Long warehouseId, Integer packageQty, BigDecimal totalCount, BigDecimal unitPrice,
+                               Long warehouseId, Integer packageQty, Long sourceDeptId, Integer wholeQty,
+                               String batchNo, String businessEntity, BigDecimal totalCount, BigDecimal unitPrice,
                                BigDecimal totalAmount, Integer amountDirection, String remark,
                                BigDecimal allocatedCount) {
             this.sourceType = type.getType();
@@ -1004,13 +1024,16 @@ public class ErpPurchaseInvoiceSourceService {
             this.sourceDocId = sourceDocId;
             this.sourceDocNo = sourceDocNo;
             this.supplierId = supplierId;
-            this.deptId = deptId;
+            this.deptId = sourceDeptId == null ? deptId : sourceDeptId;
             this.status = status;
             this.sourceDocBizTime = sourceDocBizTime;
             this.sourceItemId = sourceItemId;
             this.productId = productId;
             this.warehouseId = warehouseId;
             this.packageQty = packageQty;
+            this.wholeQty = wholeQty;
+            this.batchNo = batchNo;
+            this.businessEntity = businessEntity;
             this.totalCount = nvl(totalCount);
             this.unitPrice = nvl(unitPrice);
             this.totalAmount = nvl(totalAmount);
@@ -1148,12 +1171,12 @@ public class ErpPurchaseInvoiceSourceService {
                 return ZERO;
             }
             if (ErpPurchaseInvoiceSourceTypeEnum.PRICE_ADJUST.getType().equals(sourceType)) {
-                return MoneyUtils.priceMultiply(unitPrice, count);
+                return ErpPurchaseDecimalUtils.multiply(unitPrice, count);
             }
             if (ErpPurchaseInvoiceSourceTypeEnum.PURCHASE_RETURN.getType().equals(sourceType)) {
-                return MoneyUtils.priceMultiply(unitPrice, count).negate();
+                return ErpPurchaseDecimalUtils.multiply(unitPrice, count).negate();
             }
-            return MoneyUtils.priceMultiply(unitPrice, count);
+            return ErpPurchaseDecimalUtils.multiply(unitPrice, count);
         }
     }
 }

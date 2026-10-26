@@ -13,6 +13,17 @@ import java.math.BigDecimal;
 public class ErpSaleReturnOrderImportExcelVO {
 
     @ExcelRequired
+    @ExcelProperty("导入单号")
+    private String importNo;
+
+    @ExcelRequired
+    @ExcelProperty("退货模式")
+    private Integer returnMode;
+
+    @ExcelProperty("来源销售单号")
+    private String sourceOutNo;
+
+    @ExcelRequired
     @ExcelProperty("客户名称")
     private String customerName;
 
@@ -37,9 +48,11 @@ public class ErpSaleReturnOrderImportExcelVO {
 
     @ExcelRequired
     @ExcelProperty("退货数量")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "itemCount最多支持 6 位小数")
     private BigDecimal itemCount;
 
     @ExcelProperty("退货单价")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "productPrice最多支持 6 位小数")
     private BigDecimal productPrice;
 
     @ExcelProperty("退货原因")

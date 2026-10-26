@@ -104,6 +104,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOtherIncome(ErpReceivableOtherIncomeSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         fillDefaultDeptId(createReqVO);
         validateRequiredItems(createReqVO.getItems());
         validateFormalDeptId(createReqVO.getDeptId());
@@ -128,6 +129,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOtherIncomeDraft(ErpReceivableOtherIncomeDraftSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         normalizeDraftBizTime(createReqVO, null);
         List<ErpReceivableOtherIncomeDraftSaveReqVO.Item> items = safeDraftItems(createReqVO.getItems());
         if (CollUtil.isEmpty(items)) {
@@ -157,6 +159,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOtherIncomeAndSubmit(ErpReceivableOtherIncomeSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         return createOtherIncome(createReqVO);
     }
 
@@ -230,6 +233,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateOtherIncome(ErpReceivableOtherIncomeSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpReceivableOtherIncomeDO db = validateExists(updateReqVO.getId());
         if (ErpAuditStatus.APPROVE.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_RECEIVABLE_UPDATE_FAIL_APPROVE, db.getNo());
@@ -288,6 +292,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateOtherIncomeDraft(ErpReceivableOtherIncomeDraftSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpReceivableOtherIncomeDO db = validateExists(updateReqVO.getId());
         if (!ErpReceivableOtherIncomeStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_INCOME_DRAFT_UPDATE_FAIL, db.getNo());
@@ -350,6 +355,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateOtherIncomeDraftAndSubmit(ErpReceivableOtherIncomeDraftSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         updateOtherIncomeDraft(updateReqVO);
         submitOtherIncome(updateReqVO.getId());
     }
@@ -381,6 +387,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
 
     @Override
     public void updateOtherIncomeRemark(ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpReceivableOtherIncomeDO db = validateExists(updateReqVO.getId());
         otherIncomeMapper.updateById(new ErpReceivableOtherIncomeDO()
                 .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));

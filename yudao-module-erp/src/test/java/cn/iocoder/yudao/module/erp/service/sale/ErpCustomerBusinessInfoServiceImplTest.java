@@ -35,6 +35,12 @@ public class ErpCustomerBusinessInfoServiceImplTest extends BaseMockitoUnitTest 
     @Mock
     private ErpCustomerService customerService;
 
+    @org.junit.jupiter.api.BeforeEach
+    void visibleCustomerFixture() {
+        org.mockito.Mockito.lenient().when(customerService.getCustomer(org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> new cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO().setId(invocation.getArgument(0)).setName("可见客户"));
+    }
+
     // ==================== create ====================
 
     @Test
@@ -78,7 +84,7 @@ public class ErpCustomerBusinessInfoServiceImplTest extends BaseMockitoUnitTest 
 
         businessInfoService.updateBusinessInfo(reqVO);
 
-        verify(customerService).validateCustomer(eq(100L));
+        verify(customerService).getCustomer(eq(100L));
         verify(businessInfoMapper).updateById(argThat((ErpCustomerBusinessInfoDO info) ->
                 Long.valueOf(50L).equals(info.getId())
                         && "李四（修改）".equals(info.getLegalPerson())));
@@ -101,7 +107,7 @@ public class ErpCustomerBusinessInfoServiceImplTest extends BaseMockitoUnitTest 
     @Test
     public void testDeleteBusinessInfo_normalCase_success() {
         when(businessInfoMapper.selectById(eq(10L)))
-                .thenReturn(new ErpCustomerBusinessInfoDO().setId(10L));
+                .thenReturn(new ErpCustomerBusinessInfoDO().setId(10L).setCustomerId(1L));
 
         businessInfoService.deleteBusinessInfo(10L);
 
@@ -171,14 +177,13 @@ public class ErpCustomerBusinessInfoServiceImplTest extends BaseMockitoUnitTest 
         List<ErpCustomerBusinessInfoDO> result = businessInfoService.getBusinessInfoListByCustomerId(100L);
 
         assertEquals(2, result.size());
-        verify(customerService).validateCustomer(eq(100L));
+        verify(customerService).getCustomer(eq(100L));
         verify(businessInfoMapper).selectListByCustomerId(eq(100L));
     }
 
     @Test
     public void testGetBusinessInfoListByCustomerId_invalidCustomer_throwException() {
-        doThrow(new ServiceException(CUSTOMER_NOT_EXISTS))
-                .when(customerService).validateCustomer(eq(999L));
+        when(customerService.getCustomer(999L)).thenReturn(null);
 
         assertServiceException(() -> businessInfoService.getBusinessInfoListByCustomerId(999L),
                 CUSTOMER_NOT_EXISTS);
@@ -200,4 +205,21 @@ public class ErpCustomerBusinessInfoServiceImplTest extends BaseMockitoUnitTest 
         return reqVO;
     }
 
+
+    @Test
+    void cannotMoveChildToAnotherCustomer() {
+        when(businessInfoMapper.selectById(1L)).thenReturn(new ErpCustomerBusinessInfoDO().setId(1L).setCustomerId(10L));
+        ErpCustomerBusinessInfoSaveReqVO req = new ErpCustomerBusinessInfoSaveReqVO(); req.setId(1L); req.setCustomerId(20L);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> businessInfoService.updateBusinessInfo(req));
+        org.mockito.Mockito.verify(businessInfoMapper, org.mockito.Mockito.never()).updateById(org.mockito.ArgumentMatchers.<ErpCustomerBusinessInfoDO>any());
+    }
+
+    @Test
+    void hiddenParentPreventsReadAndDelete() {
+        when(businessInfoMapper.selectById(1L)).thenReturn(new ErpCustomerBusinessInfoDO().setId(1L).setCustomerId(99L));
+        when(customerService.getCustomer(99L)).thenReturn(null);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> businessInfoService.getBusinessInfo(1L));
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> businessInfoService.deleteBusinessInfo(1L));
+        org.mockito.Mockito.verify(businessInfoMapper, org.mockito.Mockito.never()).deleteById(1L);
+    }
 }

@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierContactDO;
@@ -9,6 +11,12 @@ import java.util.List;
 
 @Mapper
 public interface ErpSupplierContactMapper extends BaseMapperX<ErpSupplierContactDO> {
+
+    default PageResult<ErpSupplierContactDO> selectPage(ErpSupplierItemPageReqVO reqVO) {
+        return selectPage(reqVO, new LambdaQueryWrapperX<ErpSupplierContactDO>()
+                .eq(ErpSupplierContactDO::getSupplierId, reqVO.getSupplierId())
+                .orderByDesc(ErpSupplierContactDO::getId));
+    }
 
     default List<ErpSupplierContactDO> selectListBySupplierId(Long supplierId) {
         return selectList(new LambdaQueryWrapperX<ErpSupplierContactDO>()

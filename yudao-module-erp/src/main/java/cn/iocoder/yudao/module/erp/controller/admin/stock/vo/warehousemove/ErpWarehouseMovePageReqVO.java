@@ -2,7 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove;
 
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.validation.InEnum;
-import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpWarehouseMoveStatusEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -31,8 +31,11 @@ public class ErpWarehouseMovePageReqVO extends PageParam {
     private LocalDateTime[] moveTime;
 
     @Schema(description = "状态")
-    @InEnum(ErpAuditStatus.class)
+    @InEnum(ErpWarehouseMoveStatusEnum.class)
     private Integer status;
+
+    @Schema(description = "拣货状态")
+    private Integer pickStatus;
 
     @Schema(description = "来源类型")
     private Integer sourceType;

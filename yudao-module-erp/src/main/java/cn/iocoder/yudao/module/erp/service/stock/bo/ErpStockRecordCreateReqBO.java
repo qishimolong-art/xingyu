@@ -104,6 +104,8 @@ public class ErpStockRecordCreateReqBO {
     private Long sourceBizId;
     private Long sourceBizItemId;
     private Long reversalPostingId;
+    /** 反向库存流水对应的原库存流水编号。 */
+    private Long sourceRecordId;
     /** 在已锁定来源单的审批事务内准备的不可变交易快照，仅内部流转。 */
     private cn.iocoder.yudao.module.erp.service.report.trade.ErpTradeSnapshotService.PreparedTradeContext tradeContext;
 

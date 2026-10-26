@@ -39,7 +39,7 @@ class ErpPurchaseDocumentItemSortTest {
                 "inNo", "productCode", "productName", "batchNo", "oldPrice", "adjustRatio", "newPrice",
                 "adjustPrice", "vehicleModel", "standard", "featureCode", "originPlace", "brand", "drawingNo",
                 "warehouseId", "deptId", "warehousePosition", "productUnitName", "weight", "packageQty",
-                "pieceCount", "stockCount", "count"));
+                "pieceCount", "stockCount", "count", "remark"));
 
         String injection = "id desc; delete from erp_purchase_in_items";
         assertFalse(ErpPurchaseOrderItemMapper.isSupportedOrderField(injection));
@@ -77,6 +77,10 @@ class ErpPurchaseDocumentItemSortTest {
                 .getCustomSqlSegment();
         assertTrue(adjustSql.contains("in_no"));
         assertTrue(adjustSql.contains("erp_purchase_price_adjust_item.id ASC"));
+
+        String adjustRemarkSql = ErpPurchasePriceAdjustItemMapper.buildSortedQuery(1L, null, "remark", "asc")
+                .getCustomSqlSegment();
+        assertTrue(adjustRemarkSql.contains("erp_purchase_price_adjust_item.remark"));
     }
 
     @Test

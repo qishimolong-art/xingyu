@@ -30,6 +30,12 @@ public class ErpCustomerExtendServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpCustomerService customerService;
 
+    @org.junit.jupiter.api.BeforeEach
+    void visibleCustomerFixture() {
+        org.mockito.Mockito.lenient().when(customerService.getCustomer(org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> new cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO().setId(invocation.getArgument(0)).setName("可见客户"));
+    }
+
     // ==================== createExtend ====================
 
     @Test
@@ -91,7 +97,7 @@ public class ErpCustomerExtendServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setExtendValue("足球");
 
         // mock：存在校验通过
-        when(extendMapper.selectById(eq(10L))).thenReturn(new ErpCustomerExtendDO().setId(10L));
+        when(extendMapper.selectById(eq(10L))).thenReturn(new ErpCustomerExtendDO().setId(10L).setCustomerId(1L));
 
         // 执行
         customerExtendService.updateExtend(reqVO);
@@ -125,7 +131,7 @@ public class ErpCustomerExtendServiceImplTest extends BaseMockitoUnitTest {
     @Test
     public void testDeleteExtend_success() {
         // mock：存在
-        when(extendMapper.selectById(eq(20L))).thenReturn(new ErpCustomerExtendDO().setId(20L));
+        when(extendMapper.selectById(eq(20L))).thenReturn(new ErpCustomerExtendDO().setId(20L).setCustomerId(1L));
 
         // 执行
         customerExtendService.deleteExtend(20L);
@@ -159,8 +165,25 @@ public class ErpCustomerExtendServiceImplTest extends BaseMockitoUnitTest {
 
         // 断言
         assertEquals(2, result.size());
-        verify(customerService).validateCustomer(eq(customerId));
+        verify(customerService).getCustomer(eq(customerId));
         verify(extendMapper).selectListByCustomerId(eq(customerId));
     }
 
+
+    @Test
+    void cannotMoveChildToAnotherCustomer() {
+        when(extendMapper.selectById(1L)).thenReturn(new ErpCustomerExtendDO().setId(1L).setCustomerId(10L));
+        ErpCustomerExtendSaveReqVO req = new ErpCustomerExtendSaveReqVO(); req.setId(1L); req.setCustomerId(20L);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> customerExtendService.updateExtend(req));
+        org.mockito.Mockito.verify(extendMapper, org.mockito.Mockito.never()).updateById(org.mockito.ArgumentMatchers.<ErpCustomerExtendDO>any());
+    }
+
+    @Test
+    void hiddenParentPreventsReadAndDelete() {
+        when(extendMapper.selectById(1L)).thenReturn(new ErpCustomerExtendDO().setId(1L).setCustomerId(99L));
+        when(customerService.getCustomer(99L)).thenReturn(null);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> customerExtendService.getExtend(1L));
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> customerExtendService.deleteExtend(1L));
+        org.mockito.Mockito.verify(extendMapper, org.mockito.Mockito.never()).deleteById(1L);
+    }
 }

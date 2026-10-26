@@ -18,6 +18,7 @@ public class ErpReceivableOtherIncomeSaveReqVO {
     @NotNull private Long accountId;
     private String voucherNo;
     @NotNull private String incomeType;
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal totalAmount;
     @NotNull private Long deptId;
     @NotNull private Long handlerId;
@@ -32,7 +33,8 @@ public class ErpReceivableOtherIncomeSaveReqVO {
         private Long id;
         private String operation;
         private String itemName;
-        private BigDecimal amount;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal amount;
         private String invoiceNo;
         private String party;
         private Long customerId;

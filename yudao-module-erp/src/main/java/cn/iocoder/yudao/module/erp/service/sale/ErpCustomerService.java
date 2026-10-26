@@ -184,6 +184,12 @@ public interface ErpCustomerService {
      */
     ErpCustomerImportRespVO importCustomerList(@Valid List<ErpCustomerImportExcelVO> list);
 
+    /** 导入客户并报告处理进度。 */
+    default ErpCustomerImportRespVO importCustomerList(@Valid List<ErpCustomerImportExcelVO> list,
+                                                        ErpCustomerImportProgressListener listener) {
+        return importCustomerList(list);
+    }
+
     /**
      * 批量编辑客户
      *

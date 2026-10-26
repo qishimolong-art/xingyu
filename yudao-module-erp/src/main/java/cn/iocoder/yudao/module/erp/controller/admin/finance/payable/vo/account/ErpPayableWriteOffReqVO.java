@@ -27,6 +27,7 @@ public class ErpPayableWriteOffReqVO {
     @Schema(description = "核销金额", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "核销金额不能为空")
     @DecimalMin(value = "0", inclusive = false, message = "核销金额必须大于 0")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal writeOffAmount;
 
     @Schema(description = "核销备注")

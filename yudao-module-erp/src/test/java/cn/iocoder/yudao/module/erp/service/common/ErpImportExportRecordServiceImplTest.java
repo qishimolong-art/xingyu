@@ -140,16 +140,16 @@ class ErpImportExportRecordServiceImplTest extends BaseMockitoUnitTest {
             Sheet sheet = workbook.getSheetAt(0);
             assertEquals("失败明细", sheet.getSheetName());
             assertTemplateFailureHeaders(sheet);
-            assertCell(sheet, 1, 0, "客户A");
-            assertCell(sheet, 1, 1, "整单备注");
-            assertCell(sheet, 1, 9, "");
-            assertCell(sheet, 2, 0, "客户A");
-            assertCell(sheet, 2, 2, "P002");
-            assertCell(sheet, 2, 4, "主仓");
-            assertCell(sheet, 2, 5, "2");
-            assertCell(sheet, 2, 6, "12.5");
-            assertCell(sheet, 2, 8, "明细备注");
-            assertCell(sheet, 2, 9, "产品不存在");
+            assertTemplateCell(sheet, 1, "customerName", "客户A");
+            assertTemplateCell(sheet, 1, "remark", "整单备注");
+            assertCell(sheet, 1, sheet.getRow(0).getLastCellNum() - 1, "");
+            assertTemplateCell(sheet, 2, "customerName", "客户A");
+            assertTemplateCell(sheet, 2, "productCode", "P002");
+            assertTemplateCell(sheet, 2, "warehouseName", "主仓");
+            assertTemplateCell(sheet, 2, "itemCount", "2");
+            assertTemplateCell(sheet, 2, "productPrice", "12.5");
+            assertTemplateCell(sheet, 2, "itemRemark", "明细备注");
+            assertCell(sheet, 2, sheet.getRow(0).getLastCellNum() - 1, "产品不存在");
             assertEquals("attachment;filename=" + HttpUtils.encodeUtf8("报价订单导入-错误数据.xls"),
                     response.getHeader("Content-Disposition"));
         }
@@ -257,16 +257,46 @@ class ErpImportExportRecordServiceImplTest extends BaseMockitoUnitTest {
     }
 
     private void assertTemplateFailureHeaders(Sheet sheet) {
-        assertEquals("客户名称", sheet.getRow(0).getCell(0).getStringCellValue());
-        assertEquals("备注", sheet.getRow(0).getCell(1).getStringCellValue());
-        assertEquals("配件编码", sheet.getRow(0).getCell(2).getStringCellValue());
-        assertEquals("配件名称", sheet.getRow(0).getCell(3).getStringCellValue());
-        assertEquals("所属仓库", sheet.getRow(0).getCell(4).getStringCellValue());
-        assertEquals("数量", sheet.getRow(0).getCell(5).getStringCellValue());
-        assertEquals("单价", sheet.getRow(0).getCell(6).getStringCellValue());
-        assertEquals("赠品", sheet.getRow(0).getCell(7).getStringCellValue());
-        assertEquals("明细备注", sheet.getRow(0).getCell(8).getStringCellValue());
-        assertEquals("错误信息", sheet.getRow(0).getCell(9).getStringCellValue());
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        for (java.lang.reflect.Field field : ErpSaleQuoteOrderImportExcelVO.class.getDeclaredFields()) {
+            cn.idev.excel.annotation.ExcelProperty property = field.getAnnotation(cn.idev.excel.annotation.ExcelProperty.class);
+            if (property != null) labels.add(property.value()[0]);
+        }
+        for (int index = 0; index < labels.size(); index++) assertEquals(labels.get(index), sheet.getRow(0).getCell(index).getStringCellValue());
+        assertEquals("错误信息", sheet.getRow(0).getCell(labels.size()).getStringCellValue());
+    }
+
+    private void assertTemplateCell(Sheet sheet, int rowIndex, String fieldName, String value) {
+        int index = 0;
+        for (java.lang.reflect.Field field : ErpSaleQuoteOrderImportExcelVO.class.getDeclaredFields()) {
+            if (field.getAnnotation(cn.idev.excel.annotation.ExcelProperty.class) == null) continue;
+            if (field.getName().equals(fieldName)) { assertCell(sheet, rowIndex, index, value); return; }
+            index++;
+        }
+        throw new AssertionError("模板字段不存在: " + fieldName);
+    }
+
+    @Test
+    void productFailureDownloadKeepsOriginalRowAndLineNumber() throws Exception {
+        Long id = 30L;
+        ErpImportExportRecordDO record = record(id);
+        record.setModuleKey("erp_product"); record.setOperationType("IMPORT"); record.setOperatorId(104L);
+        record.setTemplateKey(cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportExcelVO.class.getName());
+        when(recordMapper.selectById(id)).thenReturn(record);
+        when(detailMapper.selectListByRecordId(id)).thenReturn(Collections.singletonList(detail(id, 5, null, "FAILURE", "000123", "配件", "单位不存在", "{\"code\":\"000123\",\"name\":\"配件\"}")));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+            service.downloadOwnImportFailureDetails(id, "erp_product", response);
+        }
+        try (Workbook workbook = workbook(response)) {
+            Sheet sheet = workbook.getSheetAt(0); int last = sheet.getRow(0).getLastCellNum() - 1;
+            assertEquals("原始行号",sheet.getRow(0).getCell(last-1).getStringCellValue());
+            assertEquals(5D,sheet.getRow(1).getCell(last-1).getNumericCellValue());
+            assertEquals("单位不存在",sheet.getRow(1).getCell(last).getStringCellValue());
+            assertEquals("000123",sheet.getRow(1).getCell(0).getStringCellValue());
+        }
+        org.junit.jupiter.api.Assertions.assertTrue(response.getHeader("Content-Disposition").endsWith(".xlsx"));
     }
 
     private void assertCell(Sheet sheet, int rowIndex, int columnIndex, String value) {

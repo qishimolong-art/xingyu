@@ -26,6 +26,8 @@ public enum ErpBizTypeEnum implements ArrayValuable<Integer> {
     SALE_RETURN(22, "销售退货"),
     SALE_PRICE_ADJUST(23, "销售调价"),
     RECEIVABLE_MISC(24, "其他应收"),
+
+    ASSEMBLY_ORDER(30, "套件组装单"),
     ;
 
     public static final Integer[] ARRAYS = Arrays.stream(values()).map(ErpBizTypeEnum::getType).toArray(Integer[]::new);

@@ -9,6 +9,8 @@ import java.util.List;
  */
 public interface ErpCustomerMemberService {
 
+    cn.iocoder.yudao.framework.common.pojo.PageResult<ErpCustomerMemberDO> getCustomerMemberPage(Long customerId, cn.iocoder.yudao.framework.common.pojo.PageParam page);
+
     Long createCustomerMember(Long customerId, Long memberUserId, String remark);
 
     void updateCustomerMemberStatus(Long id, Integer status);

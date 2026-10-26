@@ -14,8 +14,10 @@ import java.util.Arrays;
 public enum ErpWarehouseMoveStatusEnum implements ArrayValuable<Integer> {
 
     DRAFT(0, "草稿"),
-    PROCESS(10, "待审核"),
+    PROCESS(10, "待下单确认"),
+    PICKING(15, "待拣货"),
     APPROVE(20, "已审核"),
+    VOIDED(30, "已作废"),
     ;
 
     public static final Integer[] ARRAYS = Arrays.stream(values())

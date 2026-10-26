@@ -67,7 +67,7 @@ public final class ErpPayableExpenseDetailReportModels {
         private String documentNo;
         @ExcelProperty(value = "费用项目名称", index = 3)
         private String itemName;
-        @ExcelProperty(value = "金额", index = 4)
+        @ExcelProperty(value = "金额", index = 4, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal amount;
         @ExcelProperty(value = "凭证号", index = 5)
         private String voucherNo;

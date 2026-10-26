@@ -49,6 +49,11 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
             + "AND ssi.tenant_id = t.tenant_id AND ssi.out_id = t.id), 0) * COALESCE(t.discount_percent, 0) / 100, 2) "
             + "+ COALESCE(t.fee_amount, t.other_price, t.extra_fee, 0)) ELSE t.total_price END)";
 
+    String SETTLEMENT_STATUS_EXPRESSION = "(CASE WHEN ROUND(ABS(COALESCE("
+            + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION + ", 0)), 2) - ROUND(ABS("
+            + EFFECTIVE_RECEIPT_PRICE_EXPRESSION + "), 2) <= 0 THEN 2 WHEN ROUND(ABS("
+            + EFFECTIVE_RECEIPT_PRICE_EXPRESSION + "), 2) > 0 THEN 1 ELSE 0 END)";
+
     String RECEIVABLE_ACCOUNT_SALE_AMOUNT_EXPRESSION = "(CASE WHEN EXISTS (SELECT 1 FROM erp_sale_out_items ssi "
             + "WHERE ssi.deleted = 0 AND ssi.tenant_id = t.tenant_id AND ssi.out_id = t.id "
             + "AND ssi.original_product_price IS NOT NULL) THEN "
@@ -94,18 +99,15 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
                 .eqIfPresent(ErpSaleOutDO::getSaleUserId, reqVO.getSaleUserId())
                 .likeIfPresent(ErpSaleOutDO::getReceiverName, reqVO.getReceiverName())
                 .inIfPresent(ErpSaleOutDO::getId, reqVO.getIds());
-        // 收款状态。为什么需�?t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
-        if (Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_NONE)) {
-            query.apply(EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " = 0");
-        } else if (Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_PART)) {
-            query.apply(EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " > 0")
-                    .apply(EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " < " + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION);
-        } else if (Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_ALL)) {
-            query.apply(EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " >= " + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION);
+        // 收款状态按未收金额统一计算；t. 是联表分页中的销售单主表别名。
+        if (Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_NONE)
+                || Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_PART)
+                || Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_ALL)) {
+            query.apply(SETTLEMENT_STATUS_EXPRESSION + " = {0}", reqVO.getReceiptStatus());
         }
         if (Boolean.TRUE.equals(reqVO.getReceiptEnable())) {
             query.eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                    .apply(EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " < " + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION);
+                    .apply(SETTLEMENT_STATUS_EXPRESSION + " < 2");
         }
         ErpKeywordQuery.appendProductItemFilter(query, "erp_sale_out_items", "out_id",
                 reqVO.getProductId(), reqVO.getWarehouseId(), null, null,
@@ -127,6 +129,16 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
     }
 
     static void orderByIfPresent(MPJLambdaWrapperX<ErpSaleOutDO> wrapper, ErpSaleOutPageReqVO reqVO) {
+        if ("settleStatus".equals(reqVO.getOrderField())) {
+            if ("asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+                wrapper.orderByAsc(SETTLEMENT_STATUS_EXPRESSION).orderByAsc("t.id");
+            } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+                wrapper.orderByDesc(SETTLEMENT_STATUS_EXPRESSION).orderByAsc("t.id");
+            } else {
+                wrapper.orderByDesc(ErpSaleOutDO::getId);
+            }
+            return;
+        }
         SFunction<ErpSaleOutDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
         if (orderColumn == null) {
             wrapper.orderByDesc(ErpSaleOutDO::getId);

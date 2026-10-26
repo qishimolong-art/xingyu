@@ -5,6 +5,9 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutExpressFilePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutExpressFileRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutReceiptSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
@@ -38,15 +41,18 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.Test;
+import cn.idev.excel.annotation.format.NumberFormat;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.lang.reflect.Method;
+import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -54,6 +60,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -409,6 +416,38 @@ public class ErpSaleOutControllerTest extends BaseMockitoUnitTest {
         assertEquals(Integer.valueOf(2), received.getReceiptStatus());
     }
 
+    @Test
+    public void testGetSaleOutReceiptSummaryZeroReceivableIsSettled() {
+        when(saleOutService.getSaleOut(11L)).thenReturn(
+                new ErpSaleOutDO().setId(11L).setTotalPrice(BigDecimal.ZERO));
+        when(saleOutService.getSaleOutItemListByOutId(11L)).thenReturn(Collections.emptyList());
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                11L, ErpBizTypeEnum.SALE_OUT.getType())).thenReturn(BigDecimal.ZERO);
+
+        ErpSaleOutReceiptSummaryRespVO data = controller.getSaleOutReceiptSummary(11L).getData();
+
+        assertEquals(0, BigDecimal.ZERO.compareTo(data.getUnreceivedAmount()));
+        assertEquals(Integer.valueOf(2), data.getReceiptStatus());
+    }
+
+    @Test
+    public void testGetSaleOutRecalculatesStaleSettlementStatus() {
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(12L)
+                .setTotalPrice(new BigDecimal("700.00")).setReceiptPrice(BigDecimal.ZERO).setSettleStatus(0);
+        when(saleOutService.getSaleOut(12L)).thenReturn(saleOut);
+        when(saleOutService.getSaleOutItemListByOutId(12L)).thenReturn(Collections.emptyList());
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                12L, ErpBizTypeEnum.SALE_OUT.getType())).thenReturn(new BigDecimal("700"));
+        when(saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(stockOutBillService.getStockOutBillListBySaleOutId(12L)).thenReturn(Collections.emptyList());
+
+        ErpSaleOutRespVO data = controller.getSaleOut(12L).getData();
+
+        assertEquals(new BigDecimal("700"), data.getReceiptPrice());
+        assertEquals(Integer.valueOf(2), data.getSettleStatus());
+    }
+
     // ========== getSaleOutPage ==========
 
     @Test
@@ -508,6 +547,7 @@ public class ErpSaleOutControllerTest extends BaseMockitoUnitTest {
         when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
         when(stockOutBillService.getStockOutBillListBySaleOutIds(any())).thenReturn(Collections.emptyList());
         when(salePickDeliveryService.getSummaryMapBySaleOutIds(any())).thenReturn(Collections.emptyMap());
+        when(salePickDeliveryService.getSaleOutIdsWithDeliveryFiles(any())).thenReturn(Set.of(5L));
         when(saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(any())).thenReturn(Collections.emptyMap());
 
         PageResult<ErpSaleOutRespVO> result = controller.getSaleOutPage(reqVO).getData();
@@ -515,9 +555,47 @@ public class ErpSaleOutControllerTest extends BaseMockitoUnitTest {
         ErpSaleOutRespVO respVO = result.getList().get(0);
         assertEquals(2, respVO.getAdjustStatus());
         assertEquals(0, respVO.getReturnStatus());
+        assertEquals(Boolean.TRUE, respVO.getHasExpressFile());
         assertNull(respVO.getItems());
         verify(saleOutService, never()).getSaleOutItemListByOutIds(any());
         verify(saleOutItemMapper).selectLightListByOutIds(any());
+        verify(salePickDeliveryService).getSaleOutIdsWithDeliveryFiles(Set.of(5L));
+    }
+
+    @Test
+    public void testGetSaleOutExpressFilePage_mergesFilesWithQueryPermission() throws NoSuchMethodException {
+        ErpSaleOutExpressFilePageReqVO reqVO = new ErpSaleOutExpressFilePageReqVO();
+        reqVO.setOutId(5L);
+        ErpSaleOutExpressFileRespVO file = new ErpSaleOutExpressFileRespVO()
+                .setFileUrl("https://example.com/delivery.jpg").setSourceType("DELIVERY");
+        when(saleOutService.getSaleOut(5L)).thenReturn(new ErpSaleOutDO().setId(5L));
+        when(fieldPermissionMasker.isFieldHidden("erp_sale_out", "expressFileUrl")).thenReturn(false);
+        when(salePickDeliveryService.getSaleOutExpressFilePage(5L, reqVO))
+                .thenReturn(new PageResult<>(Collections.singletonList(file), 1L));
+
+        PageResult<ErpSaleOutExpressFileRespVO> page = controller.getSaleOutExpressFilePage(reqVO).getData();
+
+        assertEquals(1L, page.getTotal());
+        assertEquals("DELIVERY", page.getList().get(0).getSourceType());
+        Method method = ErpSaleOutController.class.getMethod(
+                "getSaleOutExpressFilePage", ErpSaleOutExpressFilePageReqVO.class);
+        GetMapping mapping = method.getAnnotation(GetMapping.class);
+        assertNotNull(mapping);
+        assertTrue(Arrays.asList(mapping.value()).contains("/express-file-page"));
+        assertTrue(method.getAnnotation(PreAuthorize.class).value().contains("erp:sale-out:query"));
+    }
+
+    @Test
+    public void testGetSaleOutExpressFilePage_hiddenFieldReturnsEmptyWithoutReadingFiles() {
+        ErpSaleOutExpressFilePageReqVO reqVO = new ErpSaleOutExpressFilePageReqVO();
+        reqVO.setOutId(5L);
+        when(saleOutService.getSaleOut(5L)).thenReturn(new ErpSaleOutDO().setId(5L));
+        when(fieldPermissionMasker.isFieldHidden("erp_sale_out", "expressFileUrl")).thenReturn(true);
+
+        PageResult<ErpSaleOutExpressFileRespVO> page = controller.getSaleOutExpressFilePage(reqVO).getData();
+
+        assertTrue(page.getList().isEmpty());
+        verify(salePickDeliveryService, never()).getSaleOutExpressFilePage(any(), any());
     }
 
     private ErpSaleOutItemDO saleOutItem(Long id, Long outId, Boolean adjusted, String count) {
@@ -556,6 +634,27 @@ public class ErpSaleOutControllerTest extends BaseMockitoUnitTest {
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-out:export"));
+    }
+
+    @Test
+    public void testExportSaleOutExcel_numberFormats() throws NoSuchFieldException {
+        assertNumberFormat("totalCount", "0.######");
+        assertNumberFormat("unitWeight", "0.######");
+        assertNumberFormat("totalWeight", "0.######");
+        assertNumberFormat("itemCount", "0.######");
+        assertNumberFormat("itemTaxPercent", "0.######");
+        assertNumberFormat("totalPrice", "0.00####");
+        assertNumberFormat("feeAmount", "0.00####");
+        assertNumberFormat("productPrice", "0.00####");
+        assertNumberFormat("itemTotalPrice", "0.00####");
+        assertNumberFormat("itemTaxPrice", "0.00####");
+    }
+
+    private void assertNumberFormat(String fieldName, String expectedFormat) throws NoSuchFieldException {
+        Field field = ErpSaleOutExportRespVO.class.getDeclaredField(fieldName);
+        NumberFormat numberFormat = field.getAnnotation(NumberFormat.class);
+        assertNotNull(numberFormat);
+        assertEquals(expectedFormat, numberFormat.value());
     }
 
 }

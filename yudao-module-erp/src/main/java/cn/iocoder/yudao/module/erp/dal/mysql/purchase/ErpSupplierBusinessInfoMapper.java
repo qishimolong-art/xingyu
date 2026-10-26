@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.purchase;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierBusinessInfoDO;
@@ -12,6 +14,12 @@ import java.util.List;
 
 @Mapper
 public interface ErpSupplierBusinessInfoMapper extends BaseMapperX<ErpSupplierBusinessInfoDO> {
+
+    default PageResult<ErpSupplierBusinessInfoDO> selectPage(ErpSupplierItemPageReqVO reqVO) {
+        return selectPage(reqVO, new LambdaQueryWrapperX<ErpSupplierBusinessInfoDO>()
+                .eq(ErpSupplierBusinessInfoDO::getSupplierId, reqVO.getSupplierId())
+                .orderByDesc(ErpSupplierBusinessInfoDO::getId));
+    }
 
     default List<ErpSupplierBusinessInfoDO> selectListBySupplierId(Long supplierId) {
         return selectList(new LambdaQueryWrapperX<ErpSupplierBusinessInfoDO>()
@@ -25,6 +33,15 @@ public interface ErpSupplierBusinessInfoMapper extends BaseMapperX<ErpSupplierBu
         }
         return selectList(new LambdaQueryWrapperX<ErpSupplierBusinessInfoDO>()
                 .in(ErpSupplierBusinessInfoDO::getSupplierId, supplierIds));
+    }
+
+    /** List flags need at most one id per supplier, never every OCR payload. */
+    default List<ErpSupplierBusinessInfoDO> selectSyncedSupplierIds(Collection<Long> supplierIds) {
+        if (CollUtil.isEmpty(supplierIds)) return Collections.emptyList();
+        return selectList(new LambdaQueryWrapperX<ErpSupplierBusinessInfoDO>()
+                .select(ErpSupplierBusinessInfoDO::getSupplierId)
+                .in(ErpSupplierBusinessInfoDO::getSupplierId, supplierIds)
+                .groupBy(ErpSupplierBusinessInfoDO::getSupplierId));
     }
 
 }

@@ -84,7 +84,7 @@ public final class ErpPurchaseOrderDetailReportModels {
         private BigDecimal count;
         @ExcelProperty(value = "单价", index = 16)
         private BigDecimal productPrice;
-        @ExcelProperty(value = "金额", index = 17)
+        @ExcelProperty(value = "金额", index = 17, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal totalPrice;
         @ExcelProperty(value = "在途数", index = 18)
         private BigDecimal inTransitCount;

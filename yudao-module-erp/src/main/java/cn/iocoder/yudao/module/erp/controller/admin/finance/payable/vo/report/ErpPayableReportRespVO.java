@@ -32,13 +32,13 @@ public class ErpPayableReportRespVO {
     @ExcelProperty("经手人")
     private String handlerName;
 
-    @ExcelProperty("其他应付金额")
+    @ExcelProperty(value = "其他应付金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal otherPayableAmount;
 
-    @ExcelProperty("已付金额")
+    @ExcelProperty(value = "已付金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal settledAmount;
 
-    @ExcelProperty("应付余额")
+    @ExcelProperty(value = "应付余额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal balance;
 
     @ExcelProperty("最近业务时间")

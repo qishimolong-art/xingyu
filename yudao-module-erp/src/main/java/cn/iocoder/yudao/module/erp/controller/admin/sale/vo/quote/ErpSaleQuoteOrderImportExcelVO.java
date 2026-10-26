@@ -39,15 +39,18 @@ public class ErpSaleQuoteOrderImportExcelVO {
 
     @ExcelRequired
     @ExcelProperty("数量")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "itemCount最多支持 6 位小数")
     private BigDecimal itemCount;
 
     @ExcelProperty("单价")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "productPrice最多支持 6 位小数")
     private BigDecimal productPrice;
 
     @ExcelColumnSelect(functionName = ErpYesNoExcelColumnSelectFunction.NAME)
     @ExcelProperty(value = "赠品", converter = YesNoBooleanConvert.class)
     private Boolean giftFlag;
 
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "taxPercent最多支持 6 位小数")
     private BigDecimal taxPercent;
 
     @ExcelProperty("明细备注")

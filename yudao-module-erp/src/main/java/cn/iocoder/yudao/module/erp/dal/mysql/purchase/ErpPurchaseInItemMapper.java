@@ -200,12 +200,12 @@ public interface ErpPurchaseInItemMapper extends BaseMapperX<ErpPurchaseInItemDO
                 .apply("COALESCE(count, 0) > COALESCE((SELECT SUM(COALESCE(pri.count, 0)) "
                                 + "FROM erp_purchase_return_items pri "
                                 + "INNER JOIN erp_purchase_return pr ON pr.id = pri.return_id "
-                                + "AND pr.deleted = b'0' AND pr.tenant_id = pri.tenant_id "
-                                + "AND pr.status = {0} "
-                                + "WHERE pri.deleted = b'0' "
+                                + "AND pr.deleted = 0 AND pr.tenant_id = pri.tenant_id "
+                                + "AND pr.status IN ({0}, {1}) "
+                                + "WHERE pri.deleted = 0 "
                                 + "AND pri.tenant_id = erp_purchase_in_items.tenant_id "
                                 + "AND pri.source_in_item_id = erp_purchase_in_items.id), 0)",
-                        ErpAuditStatus.APPROVE.getStatus());
+                        ErpAuditStatus.PROCESS.getStatus(), ErpAuditStatus.APPROVE.getStatus());
         appendProductKeyword(query, reqVO.getProductKeyword());
         query.orderByAsc("id");
         return selectPage(reqVO, query);
@@ -498,6 +498,50 @@ public interface ErpPurchaseInItemMapper extends BaseMapperX<ErpPurchaseInItemDO
     List<ErpStockPendingInDetailRespVO> selectPendingInDetailRows(@Param("productId") Long productId,
                                                                   @Param("warehouseId") Long warehouseId,
                                                                   @Param("statuses") Collection<Integer> statuses);
+
+    @Select({
+            "<script>",
+            "SELECT t.batch_no,",
+            "       t.in_count - COALESCE(o.out_count, 0) AS available_count,",
+            "       t.first_in_time",
+            "  FROM (",
+            "        SELECT pii.batch_no,",
+            "               SUM(pii.count) AS in_count,",
+            "               MIN(pi.in_time) AS first_in_time",
+            "          FROM erp_purchase_in_items pii",
+            "         INNER JOIN erp_purchase_in pi ON pi.id = pii.in_id",
+            "           AND pi.deleted = 0",
+            "           AND pi.status = #{approveStatus}",
+            "         WHERE pii.deleted = 0",
+            "           AND pii.product_id = #{productId}",
+            "           AND pii.warehouse_id = #{warehouseId}",
+            "           AND pii.batch_no IS NOT NULL",
+            "           AND pii.batch_no != ''",
+            "         GROUP BY pii.batch_no",
+            "       ) t",
+            "  LEFT JOIN (",
+            "        SELECT soi.batch_no,",
+            "               SUM(soi.count) AS out_count",
+            "          FROM erp_sale_out_items soi",
+            "         INNER JOIN erp_sale_out so ON so.id = soi.out_id",
+            "           AND so.deleted = 0",
+            "           AND so.status = #{approveStatus}",
+            "         WHERE soi.deleted = 0",
+            "           AND soi.product_id = #{productId}",
+            "           AND soi.warehouse_id = #{warehouseId}",
+            "           AND soi.batch_no IS NOT NULL",
+            "           AND soi.batch_no != ''",
+            "         GROUP BY soi.batch_no",
+            "       ) o ON o.batch_no = t.batch_no",
+            " WHERE t.in_count - COALESCE(o.out_count, 0) > 0",
+            "<if test='keyword != null and keyword != &quot;&quot;'> AND t.batch_no LIKE CONCAT('%', #{keyword}, '%')</if>",
+            " ORDER BY t.first_in_time ASC, t.batch_no ASC",
+            "</script>"
+    })
+    com.baomidou.mybatisplus.core.metadata.IPage<Map<String, Object>> selectAvailableBatchNoPage(
+            com.baomidou.mybatisplus.core.metadata.IPage<Map<String, Object>> page,
+            @Param("productId") Long productId, @Param("warehouseId") Long warehouseId,
+            @Param("approveStatus") Integer approveStatus, @Param("keyword") String keyword);
 
     @Select({
             "SELECT t.batch_no,",

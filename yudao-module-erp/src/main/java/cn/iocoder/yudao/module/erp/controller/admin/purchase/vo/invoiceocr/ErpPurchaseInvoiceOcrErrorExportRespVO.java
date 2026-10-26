@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoiceocr;
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.idev.excel.annotation.format.NumberFormat;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -32,6 +33,7 @@ public class ErpPurchaseInvoiceOcrErrorExportRespVO {
     private String invoiceType;
 
     @ExcelProperty("发票金额")
+    @NumberFormat("0.00####")
     private BigDecimal totalAmount;
 
     @ExcelProperty("OCR备注")
@@ -47,9 +49,11 @@ public class ErpPurchaseInvoiceOcrErrorExportRespVO {
     private String matchedPurchaseInNos;
 
     @ExcelProperty("入库金额")
+    @NumberFormat("0.00####")
     private BigDecimal purchaseInTotalAmount;
 
     @ExcelProperty("差额")
+    @NumberFormat("0.00####")
     private BigDecimal diffAmount;
 
     @ExcelProperty("异常信息")

@@ -198,8 +198,26 @@ public class ErpPurchasePriceAdjustRespVO {
         @Schema(description = "图号")
         private String drawingNo;
 
+        @Schema(description = "厂家编码")
+        private String factoryCode;
+
+        @Schema(description = "产品条码")
+        private String productBarCode;
+
+        @Schema(description = "入库条码")
+        private String barCode;
+
+        @Schema(description = "业务主体")
+        private String businessEntity;
+
+        @Schema(description = "整件数")
+        private Integer wholeQty;
+
         @Schema(description = "货架位")
         private String warehousePosition;
+
+        @Schema(description = "明细备注")
+        private String remark;
 
     }
 

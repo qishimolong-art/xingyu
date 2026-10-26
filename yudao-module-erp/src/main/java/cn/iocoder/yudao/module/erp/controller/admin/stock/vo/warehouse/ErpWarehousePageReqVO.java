@@ -7,12 +7,17 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
+import java.util.List;
+import javax.validation.constraints.Positive;
 
 @Schema(description = "管理后台 - ERP 仓库分页 Request VO")
 @Data
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
 public class ErpWarehousePageReqVO extends PageParam {
+
+    @Schema(description = "勾选的仓库ID，仍受数据权限限制")
+    private List<@Positive Long> ids;
 
     @Schema(description = "仓库名称", example = "李四")
     private String name;

@@ -145,6 +145,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Long createFinancePayment(ErpFinancePaymentSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         // 1.1 校验订单项的有效性
@@ -188,10 +189,14 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Long createFinancePaymentDraft(ErpFinancePaymentDraftSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         List<ErpFinancePaymentItemDO> paymentItems = buildFinancePaymentDraftItems(createReqVO.getItems());
-        if (CollUtil.isEmpty(paymentItems) && createReqVO.getSourcePayableMiscId() == null) {
+        if (CollUtil.isEmpty(paymentItems) && createReqVO.getSourcePayableMiscId() == null
+                && !ErpFinanceSettlementDraftHelper.hasHeaderContent(createReqVO.getSupplierId(),
+                        createReqVO.getTotalPrice(), createReqVO.getDiscountPrice(),
+                        createReqVO.getPaymentVoucherNo(), createReqVO.getRemark())) {
             throw exception(FINANCE_PAYMENT_DRAFT_ITEMS_REQUIRED);
         }
         String no = noRedisDAO.generate(ErpNoRedisDAO.FINANCE_PAYMENT_NO_PREFIX);
@@ -219,12 +224,14 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Long createAndSubmitFinancePayment(ErpFinancePaymentSaveReqVO createReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(createReqVO);
         return createFinancePayment(createReqVO);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void updateFinancePayment(ErpFinancePaymentSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         // 1.1 校验存在
         ErpFinancePaymentDO payment = financePaymentMapper.selectByIdForUpdate(updateReqVO.getId());
         if (payment == null) throw exception(FINANCE_PAYMENT_NOT_EXISTS);
@@ -292,6 +299,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void updateFinancePaymentDraft(ErpFinancePaymentDraftSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpFinancePaymentDO payment = financePaymentMapper.selectByIdForUpdate(updateReqVO.getId());
         if (payment == null) throw exception(FINANCE_PAYMENT_NOT_EXISTS);
         if (!ErpFinancePaymentStatusEnum.DRAFT.getStatus().equals(payment.getStatus())) {
@@ -349,6 +357,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void updateAndSubmitFinancePayment(ErpFinancePaymentSaveReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpFinancePaymentDraftSaveReqVO draftReqVO =
                 BeanUtils.toBean(updateReqVO, ErpFinancePaymentDraftSaveReqVO.class);
         updateFinancePaymentDraft(draftReqVO);
@@ -391,6 +400,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
 
     @Override
     public void updateFinancePaymentRemark(ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(updateReqVO);
         ErpFinancePaymentDO payment = validateFinancePaymentExists(updateReqVO.getId());
         financePaymentMapper.updateById(new ErpFinancePaymentDO()
                 .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
@@ -476,12 +486,13 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         }
         validatePayableMiscSettlement(payment);
         validateAndFillEffectiveItems(payment, pendingItems);
+        LocalDateTime now = LocalDateTime.now();
         int updateCount = financePaymentMapper.updateByIdAndStatus(id, payment.getStatus(),
-                new ErpFinancePaymentDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
+                new ErpFinancePaymentDO().setStatus(ErpAuditStatus.APPROVE.getStatus()).setApproveTime(now));
         if (updateCount == 0) {
             throw exception(FINANCE_PAYMENT_APPROVE_FAIL);
         }
-        LocalDateTime now = LocalDateTime.now();
+        payment.setApproveTime(now);
         Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
         pendingItems.forEach(item -> item.setWriteOffStatus(ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus())
                 .setWriteOffTime(now).setWriteOffUserId(loginUserId));
@@ -1376,6 +1387,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void writeOffFinancePayment(ErpFinancePaymentWriteOffReqVO reqVO) {
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(reqVO);
         ErpFinancePaymentDO payment = financePaymentMapper.selectByIdForUpdate(reqVO.getPaymentId());
         if (payment == null) {
             throw exception(FINANCE_PAYMENT_NOT_EXISTS);

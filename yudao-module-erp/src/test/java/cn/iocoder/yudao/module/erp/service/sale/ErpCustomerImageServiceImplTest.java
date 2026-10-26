@@ -30,6 +30,12 @@ public class ErpCustomerImageServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpCustomerService customerService;
 
+    @org.junit.jupiter.api.BeforeEach
+    void visibleCustomerFixture() {
+        org.mockito.Mockito.lenient().when(customerService.getCustomer(org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> new cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO().setId(invocation.getArgument(0)).setName("可见客户"));
+    }
+
     // ==================== createImage ====================
 
     @Test
@@ -89,7 +95,7 @@ public class ErpCustomerImageServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setImageUrl("http://example.com/new.jpg");
 
         // mock：存在校验通过
-        when(imageMapper.selectById(eq(10L))).thenReturn(new ErpCustomerImageDO().setId(10L));
+        when(imageMapper.selectById(eq(10L))).thenReturn(new ErpCustomerImageDO().setId(10L).setCustomerId(1L));
 
         // 执行
         customerImageService.updateImage(reqVO);
@@ -122,7 +128,7 @@ public class ErpCustomerImageServiceImplTest extends BaseMockitoUnitTest {
     @Test
     public void testDeleteImage_success() {
         // mock：存在
-        when(imageMapper.selectById(eq(20L))).thenReturn(new ErpCustomerImageDO().setId(20L));
+        when(imageMapper.selectById(eq(20L))).thenReturn(new ErpCustomerImageDO().setId(20L).setCustomerId(1L));
 
         // 执行
         customerImageService.deleteImage(20L);
@@ -156,8 +162,25 @@ public class ErpCustomerImageServiceImplTest extends BaseMockitoUnitTest {
 
         // 断言
         assertEquals(2, result.size());
-        verify(customerService).validateCustomer(eq(customerId));
+        verify(customerService).getCustomer(eq(customerId));
         verify(imageMapper).selectListByCustomerId(eq(customerId));
     }
 
+
+    @Test
+    void cannotMoveChildToAnotherCustomer() {
+        when(imageMapper.selectById(1L)).thenReturn(new ErpCustomerImageDO().setId(1L).setCustomerId(10L));
+        ErpCustomerImageSaveReqVO req = new ErpCustomerImageSaveReqVO(); req.setId(1L); req.setCustomerId(20L);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> customerImageService.updateImage(req));
+        org.mockito.Mockito.verify(imageMapper, org.mockito.Mockito.never()).updateById(org.mockito.ArgumentMatchers.<ErpCustomerImageDO>any());
+    }
+
+    @Test
+    void hiddenParentPreventsReadAndDelete() {
+        when(imageMapper.selectById(1L)).thenReturn(new ErpCustomerImageDO().setId(1L).setCustomerId(99L));
+        when(customerService.getCustomer(99L)).thenReturn(null);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> customerImageService.getImage(1L));
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> customerImageService.deleteImage(1L));
+        org.mockito.Mockito.verify(imageMapper, org.mockito.Mockito.never()).deleteById(1L);
+    }
 }

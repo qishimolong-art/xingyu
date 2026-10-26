@@ -50,16 +50,16 @@ public class ErpStockImportExcelVO {
     private String factoryCode;
 
     @ExcelRequired
-    @ExcelProperty("数量")
+    @ExcelProperty(value = "数量")
     private BigDecimal count;
 
-    @ExcelProperty("单价")
+    @ExcelProperty(value = "单价")
     private BigDecimal productPrice;
 
-    @ExcelProperty("账面库存")
+    @ExcelProperty(value = "账面库存")
     private BigDecimal stockCount;
 
-    @ExcelProperty("实际库存")
+    @ExcelProperty(value = "实际库存")
     private BigDecimal actualCount;
 
     @ExcelProperty("单据备注")

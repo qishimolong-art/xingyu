@@ -75,10 +75,12 @@ public class ErpWarehouseMoveSaveReqVO {
         private Long productId;
 
         @Schema(description = "移货单价")
-        private BigDecimal productPrice;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal productPrice;
 
         @Schema(description = "移货数量", requiredMode = Schema.RequiredMode.REQUIRED)
-        private BigDecimal count;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal count;
 
         @Schema(description = "移出货架")
         private String fromShelf;
@@ -87,13 +89,15 @@ public class ErpWarehouseMoveSaveReqVO {
         private String toShelf;
 
         @Schema(description = "成本单价")
-        private BigDecimal costPrice;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal costPrice;
 
         @Schema(description = "包装数")
         private Integer packageQty;
 
         @Schema(description = "单重")
-        private BigDecimal weight;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal weight;
 
         @Schema(description = "批次号")
         private String batchNo;

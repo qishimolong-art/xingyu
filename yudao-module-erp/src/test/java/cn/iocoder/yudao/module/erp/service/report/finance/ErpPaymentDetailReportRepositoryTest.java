@@ -138,15 +138,15 @@ class ErpPaymentDetailReportRepositoryTest {
         }
 
         List<Map<String, Object>> allocationCases = jdbc.queryForList("WITH inputs AS ("
-                + "SELECT 1 payment_id,1 item_id,CAST(60 AS DECIMAL(18,2)) settlement_amount,"
-                + "CAST(89 AS DECIMAL(18,2)) payment_actual UNION ALL SELECT 1,2,40,89"
+                + "SELECT 1 payment_id,1 item_id,CAST(60 AS DECIMAL(18,6)) settlement_amount,"
+                + "CAST(89 AS DECIMAL(18,6)) payment_actual UNION ALL SELECT 1,2,40,89"
                 + " UNION ALL SELECT 2,3,-100,-90 UNION ALL SELECT 3,4,50,20 UNION ALL SELECT 3,5,-50,20),"
                 + "raw AS (SELECT inputs.*,SUM(settlement_amount) OVER(PARTITION BY payment_id) allocation_total,"
                 + "ROW_NUMBER() OVER(PARTITION BY payment_id ORDER BY item_id DESC) allocation_rank FROM inputs),"
                 + "allocated AS (SELECT raw.*,CASE WHEN allocation_total=0 THEN NULL WHEN allocation_rank=1 THEN"
                 + " ROUND(payment_actual-COALESCE(SUM(CASE WHEN allocation_rank>1 THEN ROUND(payment_actual*"
-                + "settlement_amount/allocation_total,2) ELSE 0 END) OVER(PARTITION BY payment_id),0),2) ELSE"
-                + " ROUND(payment_actual*settlement_amount/allocation_total,2) END actual_amount FROM raw)"
+                + "settlement_amount/allocation_total,6) ELSE 0 END) OVER(PARTITION BY payment_id),0),6) ELSE"
+                + " ROUND(payment_actual*settlement_amount/allocation_total,6) END actual_amount FROM raw)"
                 + " SELECT payment_id,SUM(actual_amount) actual_amount,COUNT(actual_amount) allocated_count"
                 + " FROM allocated GROUP BY payment_id ORDER BY payment_id");
         assertEquals(0, decimal(allocationCases.get(0).get("actual_amount")).compareTo(new BigDecimal("89.00")));

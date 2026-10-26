@@ -141,6 +141,10 @@ public class ErpFinanceFieldPermissionMasker {
         return getHiddenFieldSet(module).contains(fieldKey);
     }
 
+    public Set<String> getHiddenFields(String module) {
+        return getHiddenFieldSet(module);
+    }
+
     private Set<String> getHiddenFieldSet(String module) {
         List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(module);
         if (CollUtil.isEmpty(hiddenFields)) {

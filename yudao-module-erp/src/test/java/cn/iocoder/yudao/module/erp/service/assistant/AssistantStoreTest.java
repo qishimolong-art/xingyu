@@ -32,6 +32,14 @@ class AssistantStoreTest {
         assertNull(store.previousContext(Arrays.asList(row("CLARIFY","{\"legacyPlan\":{\"clarification\":\"请补充对象\"}}"),row("SUCCESS",stale))));
     }
 
+    @Test void partialAndNestedTaskChoicesKeepOnlyTheImmediateStructuredContext() {
+        AssistantStore store=new AssistantStore();
+        String tasks="{\"understanding\":{\"tasks\":[]},\"subtasks\":[{\"arguments\":{\"pendingEntities\":[{\"id\":7}]}}]}";
+        assertEquals(tasks,store.previousContext(Collections.singletonList(row("PARTIAL_SUCCESS",tasks))));
+        assertEquals(tasks,store.previousContext(Collections.singletonList(row("TASKS_INCOMPLETE",tasks))));
+        assertNull(store.previousContext(Arrays.asList(row("SEMANTIC_INVALID",null),row("PARTIAL_SUCCESS",tasks))));
+    }
+
     private static Map<String,Object> row(String status,String plan) {
         Map<String,Object> row=new LinkedHashMap<>();row.put("status",status);row.put("plan_json",plan);return row;
     }

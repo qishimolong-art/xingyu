@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import javax.validation.Valid;
+import javax.validation.constraints.Digits;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -27,12 +29,15 @@ public class ErpPurchaseOrderSaveReqVO {
     private LocalDateTime orderTime;
 
     @Schema(description = "优惠率，百分比", requiredMode = Schema.RequiredMode.REQUIRED, example = "99.88")
+    @Digits(integer = 18, fraction = 6, message = "优惠率最多支持 6 位小数")
     private BigDecimal discountPercent;
 
     @Schema(description = "费用金额，单位：元", example = "7127")
+    @Digits(integer = 18, fraction = 6, message = "费用金额最多支持 6 位小数")
     private BigDecimal feeAmount;
 
     @Schema(description = "定金金额，单位：元", example = "7127")
+    @Digits(integer = 18, fraction = 6, message = "定金金额最多支持 6 位小数")
     private BigDecimal depositPrice;
 
     @Schema(description = "附件地址", example = "https://www.iocoder.cn")
@@ -42,6 +47,7 @@ public class ErpPurchaseOrderSaveReqVO {
     private String remark;
 
     @Schema(description = "订单清单列表")
+    @Valid
     private List<Item> items;
 
     // ========== 汽配扩展字段 ==========
@@ -100,6 +106,7 @@ public class ErpPurchaseOrderSaveReqVO {
     private String orderCompany;
 
     @Schema(description = "税率(%)", example = "13.00")
+    @Digits(integer = 18, fraction = 6, message = "税率最多支持 6 位小数")
     private BigDecimal taxPercent;
 
     // ========== 八期：单据类型 + 最近订货日期 ==========
@@ -125,6 +132,12 @@ public class ErpPurchaseOrderSaveReqVO {
         @Schema(description = "产品单位名称", example = "件")
         private String productUnitName;
 
+        @Schema(description = "产品名称（导入回显）")
+        private String productName;
+
+        @Schema(description = "产品条码（导入回显）")
+        private String productBarCode;
+
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         @NotNull(message = "产品编号不能为空")
         private Long productId;
@@ -134,13 +147,16 @@ public class ErpPurchaseOrderSaveReqVO {
         private Long productUnitId;
 
         @Schema(description = "产品单价", example = "100.00")
+        @Digits(integer = 18, fraction = 6, message = "产品单价最多支持 6 位小数")
         private BigDecimal productPrice;
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @NotNull(message = "产品数量不能为空")
+        @Digits(integer = 18, fraction = 6, message = "产品数量最多支持 6 位小数")
         private BigDecimal count;
 
         @Schema(description = "税率，百分比", example = "99.88")
+        @Digits(integer = 18, fraction = 6, message = "明细税率最多支持 6 位小数")
         private BigDecimal taxPercent;
 
         @Schema(description = "备注", example = "随便")
@@ -150,6 +166,9 @@ public class ErpPurchaseOrderSaveReqVO {
 
         @Schema(description = "仓库编号", example = "1")
         private Long warehouseId;
+
+        @Schema(description = "是否开启批次号管理（导入回显）")
+        private Boolean batchNoEnabled;
 
         @Schema(description = "所属部门", example = "100")
         private Long deptId;
@@ -186,6 +205,18 @@ public class ErpPurchaseOrderSaveReqVO {
 
         @Schema(description = "是否赠品", example = "false")
         private Boolean gift;
+
+        @Schema(description = "产品采购价（导入回显）")
+        private BigDecimal productPurchasePrice;
+        private BigDecimal salePrice;
+        private BigDecimal minPrice;
+        private BigDecimal referencePrice;
+        private BigDecimal retailPrice;
+        private BigDecimal lastPurchasePrice;
+        private BigDecimal grossProfitRate;
+        private BigDecimal backupPrice1;
+        private BigDecimal wholesalePrice;
+        private BigDecimal sharePrice;
 
     }
 

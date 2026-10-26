@@ -103,7 +103,7 @@ public class ErpStockInBillRespVO {
     private Integer printCount;
 
     @Schema(description = "总重")
-    @ExcelProperty("总重")
+    @ExcelProperty(value = "总重", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal totalWeight;
 
     @Schema(description = "备注")
@@ -115,19 +115,19 @@ public class ErpStockInBillRespVO {
     private Boolean timeoutFlag;
 
     @Schema(description = "整件数")
-    @ExcelProperty("整件数")
+    @ExcelProperty(value = "整件数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal wholeQty;
 
     @Schema(description = "散件数")
-    @ExcelProperty("散件数")
+    @ExcelProperty(value = "散件数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal looseQty;
 
     @Schema(description = "应提数量")
-    @ExcelProperty("应提数量")
+    @ExcelProperty(value = "应提数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal totalCount;
 
     @Schema(description = "已提数量")
-    @ExcelProperty("已提数量")
+    @ExcelProperty(value = "已提数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal pickedCount;
 
 }

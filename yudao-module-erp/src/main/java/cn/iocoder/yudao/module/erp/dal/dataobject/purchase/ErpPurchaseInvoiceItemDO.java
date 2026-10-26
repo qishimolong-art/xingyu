@@ -85,6 +85,18 @@ public class ErpPurchaseInvoiceItemDO extends BaseDO {
     private Integer packageQty;
 
     /**
+     * 来源明细扩展展示字段，仅用于详情及导出，不落库。
+     */
+    @TableField(exist = false)
+    private Long sourceDeptId;
+    @TableField(exist = false)
+    private Integer wholeQty;
+    @TableField(exist = false)
+    private String batchNo;
+    @TableField(exist = false)
+    private String businessEntity;
+
+    /**
      * 产品编号
      */
     private Long productId;

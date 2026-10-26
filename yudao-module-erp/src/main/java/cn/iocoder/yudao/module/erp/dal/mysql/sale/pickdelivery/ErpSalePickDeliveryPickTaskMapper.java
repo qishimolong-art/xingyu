@@ -3,10 +3,11 @@ package cn.iocoder.yudao.module.erp.dal.mysql.sale.pickdelivery;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
-import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSaleDeliveryPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.pickdelivery.ErpSalePickDeliveryPickTaskDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleDeliveryStatusEnum;
 import org.apache.ibatis.annotations.Mapper;
 import org.springframework.util.StringUtils;
@@ -32,6 +33,10 @@ public interface ErpSalePickDeliveryPickTaskMapper extends BaseMapperX<ErpSalePi
     }
 
     default PageResult<ErpSalePickDeliveryPickTaskDO> selectPage(ErpSalePickPageReqVO reqVO) {
+        return selectPage(reqVO, buildPickQuery(reqVO));
+    }
+
+    static LambdaQueryWrapperX<ErpSalePickDeliveryPickTaskDO> buildPickQuery(ErpSalePickPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpSalePickDeliveryPickTaskDO> wrapper = new LambdaQueryWrapperX<ErpSalePickDeliveryPickTaskDO>()
                 .inIfPresent(ErpSalePickDeliveryPickTaskDO::getId, reqVO.getIds())
                 .eqIfPresent(ErpSalePickDeliveryPickTaskDO::getCustomerId, reqVO.getCustomerId())
@@ -41,6 +46,11 @@ public interface ErpSalePickDeliveryPickTaskMapper extends BaseMapperX<ErpSalePi
                 .betweenIfPresent(ErpSalePickDeliveryPickTaskDO::getCreateTime, reqVO.getCreateTime())
                 .betweenIfPresent(ErpSalePickDeliveryPickTaskDO::getCompleteTime, reqVO.getCompleteTime())
                 .orderByDesc(ErpSalePickDeliveryPickTaskDO::getId);
+        if (ErpSaleBizSourceTypeEnum.DIRECT_SALE_OUT_TYPE.equals(reqVO.getSourceType())) {
+            wrapper.isNull(ErpSalePickDeliveryPickTaskDO::getSourceType);
+        } else {
+            wrapper.eqIfPresent(ErpSalePickDeliveryPickTaskDO::getSourceType, reqVO.getSourceType());
+        }
         if (StringUtils.hasText(reqVO.getSaleOutNo())) {
             wrapper.and(query -> query.like(ErpSalePickDeliveryPickTaskDO::getSaleOutNo, reqVO.getSaleOutNo())
                     .or().like(ErpSalePickDeliveryPickTaskDO::getSourceNo, reqVO.getSaleOutNo()));
@@ -50,7 +60,7 @@ public interface ErpSalePickDeliveryPickTaskMapper extends BaseMapperX<ErpSalePi
                 ErpSalePickDeliveryPickTaskDO::getSourceNo,
                 ErpSalePickDeliveryPickTaskDO::getCustomerName,
                 ErpSalePickDeliveryPickTaskDO::getWarehouseName);
-        return selectPage(reqVO, wrapper);
+        return wrapper;
     }
 
     default PageResult<ErpSalePickDeliveryPickTaskDO> selectDeliveryPage(ErpSaleDeliveryPageReqVO reqVO) {
@@ -62,6 +72,12 @@ public interface ErpSalePickDeliveryPickTaskMapper extends BaseMapperX<ErpSalePi
                         .eqIfPresent(ErpSalePickDeliveryPickTaskDO::getStatus, reqVO.getPickStatus())
                         .betweenIfPresent(ErpSalePickDeliveryPickTaskDO::getCreateTime, reqVO.getCreateTime())
                         .orderByDesc(ErpSalePickDeliveryPickTaskDO::getId);
+        wrapper.and(query -> query.notIn(ErpSalePickDeliveryPickTaskDO::getSourceType,
+                        ErpSaleBizSourceTypeEnum.SALE_RETURN.getType(),
+                        ErpSaleBizSourceTypeEnum.WAREHOUSE_MOVE.getType(),
+                        ErpSaleBizSourceTypeEnum.STOCK_IN.getType(),
+                        ErpSaleBizSourceTypeEnum.STOCK_OUT.getType())
+                .or().isNull(ErpSalePickDeliveryPickTaskDO::getSourceType));
         if (StringUtils.hasText(reqVO.getSaleOutNo())) {
             wrapper.and(query -> query.like(ErpSalePickDeliveryPickTaskDO::getSaleOutNo, reqVO.getSaleOutNo())
                     .or().like(ErpSalePickDeliveryPickTaskDO::getSourceNo, reqVO.getSaleOutNo()));

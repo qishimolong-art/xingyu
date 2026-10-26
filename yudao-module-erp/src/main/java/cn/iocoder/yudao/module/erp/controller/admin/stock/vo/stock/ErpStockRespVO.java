@@ -26,15 +26,15 @@ public class ErpStockRespVO {
     private Long warehouseId;
 
     @Schema(description = "库存数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "21935")
-    @ExcelProperty("库存数量")
+    @ExcelProperty(value = "库存数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal count;
 
     @Schema(description = "成本均价（移动加权平均），单位：元", example = "12.345678")
-    @ExcelProperty("成本均价")
+    @ExcelProperty(value = "成本均价", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal costPrice;
 
     @Schema(description = "成本金额 = 库存 × 成本均价，单位：元", example = "1234.5678")
-    @ExcelProperty("成本金额")
+    @ExcelProperty(value = "成本金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal costAmount;
 
     // ========== 产品信息 ==========
@@ -93,7 +93,7 @@ public class ErpStockRespVO {
     @ExcelProperty("产地")
     private String originPlace;
     @Schema(description = "货架")
-    @ExcelProperty("货架")
+    @ExcelProperty(value = "货架")
     private String shelf;
     @Schema(description = "库存行维护的进价")
     private BigDecimal purchasePrice;
@@ -102,7 +102,7 @@ public class ErpStockRespVO {
     @Schema(description = "产品分类编号")
     private Long categoryId;
     @Schema(description = "最近采购价")
-    @ExcelProperty("进价")
+    @ExcelProperty(value = "进价", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal lastPurchasePrice;
     @Schema(description = "最近销售价")
     private BigDecimal lastSalePrice;
@@ -154,22 +154,22 @@ public class ErpStockRespVO {
     @ExcelProperty("批次号")
     private String batchNo;
     @Schema(description = "当前批次首次入库时间")
-    @ExcelProperty("批次首次入库时间")
+    @ExcelProperty(value = "批次首次入库时间")
     private LocalDateTime firstInTime;
     @Schema(description = "重量（kg）")
     private BigDecimal weight;
 
     // ========== 动态聚合字段 ==========
     @Schema(description = "占用数（已下销售单未出库数量）")
-    @ExcelProperty("占用数")
+    @ExcelProperty(value = "占用数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal occupiedCount;
     @Schema(description = "可用库存（库存数 - 占用数）")
     private BigDecimal availableCount;
     @Schema(description = "未入数（已下采购单未入库数量）")
-    @ExcelProperty("未入数")
+    @ExcelProperty(value = "未入数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal pendingInCount;
     @Schema(description = "在途数（= 未入数）")
-    @ExcelProperty("在途数")
+    @ExcelProperty(value = "在途数", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal inTransitCount;
 
     @Schema(description = "是否仅通过销售部门仓库分配获得查看权限")
@@ -180,10 +180,10 @@ public class ErpStockRespVO {
 
     // ========== 价格体系动态列（priceSystemId 有值时填充） ==========
     @Schema(description = "所选价格体系单价")
-    @ExcelProperty("备用价1")
+    @ExcelProperty(value = "备用价1", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal currentPrice;
     @Schema(description = "所选价格体系金额 = count × currentPrice")
-    @ExcelProperty("备用价1金额")
+    @ExcelProperty(value = "备用价1金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal currentPriceAmount;
 
 }

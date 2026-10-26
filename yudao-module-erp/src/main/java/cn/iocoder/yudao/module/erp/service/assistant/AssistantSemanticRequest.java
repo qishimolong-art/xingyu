@@ -18,6 +18,7 @@ public class AssistantSemanticRequest {
     public enum QueryMode { DATA, KNOWLEDGE, MIXED }
 
     private int schemaVersion = 4;
+    private AssistantUnderstandingResult understanding;
     private String requestId;
     private String conversationId;
     private String question;

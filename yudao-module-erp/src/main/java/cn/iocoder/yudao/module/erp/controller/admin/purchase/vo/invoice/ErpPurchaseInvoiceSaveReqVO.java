@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import javax.validation.Valid;
+import javax.validation.constraints.Digits;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
@@ -60,6 +62,7 @@ public class ErpPurchaseInvoiceSaveReqVO {
     private List<String> excludedSourceItemKeys;
 
     @Schema(description = "票据明细", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Valid
     private List<Item> items;
 
     @Data
@@ -87,7 +90,9 @@ public class ErpPurchaseInvoiceSaveReqVO {
         private String sourceDocNo;
         private Long sourceItemId;
         private Integer amountDirection;
+        @Digits(integer = 18, fraction = 6, message = "来源总数量最多支持 6 位小数")
         private BigDecimal sourceTotalCount;
+        @Digits(integer = 18, fraction = 6, message = "来源可开数量最多支持 6 位小数")
         private BigDecimal sourceRemainingCount;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "300")
@@ -108,13 +113,16 @@ public class ErpPurchaseInvoiceSaveReqVO {
 
         @Schema(description = "数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
         @NotNull(message = "数量不能为空")
+        @Digits(integer = 18, fraction = 6, message = "数量最多支持 6 位小数")
         private BigDecimal count;
 
         @Schema(description = "不含税单价", requiredMode = Schema.RequiredMode.REQUIRED, example = "12.50")
         @NotNull(message = "产品单价不能为空")
+        @Digits(integer = 18, fraction = 6, message = "产品单价最多支持 6 位小数")
         private BigDecimal productPrice;
 
         @Schema(description = "税率(%)", example = "13")
+        @Digits(integer = 18, fraction = 6, message = "税率最多支持 6 位小数")
         private BigDecimal taxPercent;
 
         @Schema(description = "备注", example = "票据拆分")

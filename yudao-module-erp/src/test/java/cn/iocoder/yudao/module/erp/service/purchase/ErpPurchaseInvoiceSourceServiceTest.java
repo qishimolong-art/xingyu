@@ -257,6 +257,37 @@ class ErpPurchaseInvoiceSourceServiceTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void fillSourceDisplayFieldsInheritsAdjustmentSourceMetadataInBatches() {
+        ErpPurchaseInvoiceItemDO invoiceItem = new ErpPurchaseInvoiceItemDO()
+                .setSourceType(ErpPurchaseInvoiceSourceTypeEnum.PRICE_ADJUST.getType())
+                .setSourceItemId(201L);
+        ErpPurchasePriceAdjustItemDO adjustItem = adjustItem(201L, 20L, 301L, "10", "12", "5", "10")
+                .setInItemId(101L)
+                .setWarehouseId(501L)
+                .setDeptId(601L)
+                .setPackageQty(12);
+        when(priceAdjustItemMapper.selectBatchIds(anyCollection()))
+                .thenReturn(Collections.singletonList(adjustItem));
+        when(priceAdjustMapper.selectBatchIds(anyCollection())).thenReturn(Collections.singletonList(
+                new ErpPurchasePriceAdjustDO().setId(20L).setNo("CGTJ001").setDeptId(600L)));
+        when(purchaseInItemMapper.selectBatchIds(anyCollection())).thenReturn(Collections.singletonList(
+                new ErpPurchaseInItemDO().setId(101L).setWholeQty(4).setBatchNo("B-202610")
+                        .setBusinessEntity("星宇汽配")));
+        when(allocationMapper.selectAllocatedCountMap(eq(20), anyCollection()))
+                .thenReturn(Collections.emptyMap());
+
+        sourceService.fillSourceDisplayFields(Collections.singletonList(invoiceItem));
+
+        assertEquals(Long.valueOf(501L), invoiceItem.getWarehouseId());
+        assertEquals(Long.valueOf(601L), invoiceItem.getSourceDeptId());
+        assertEquals(Integer.valueOf(12), invoiceItem.getPackageQty());
+        assertEquals(Integer.valueOf(4), invoiceItem.getWholeQty());
+        assertEquals("B-202610", invoiceItem.getBatchNo());
+        assertEquals("星宇汽配", invoiceItem.getBusinessEntity());
+        verify(purchaseInItemMapper).selectBatchIds(anyCollection());
+    }
+
+    @Test
     void getSourceItemPage_rejectsOtherSupplier() {
         ErpPurchaseInvoiceSourceItemPageReqVO reqVO = new ErpPurchaseInvoiceSourceItemPageReqVO();
         reqVO.setSourceType(ErpPurchaseInvoiceSourceTypeEnum.PURCHASE_RETURN.getType());

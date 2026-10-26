@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.dal.mysql.stock;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -10,6 +11,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.github.yulichang.wrapper.MPJLambdaWrapper;
@@ -78,6 +80,13 @@ public interface ErpWarehouseMoveMapper extends BaseMapperX<ErpWarehouseMoveDO> 
                 .eqIfPresent(ErpWarehouseMoveDO::getToWarehouseId, reqVO.getToWarehouseId())
                 .likeIfPresent(ErpWarehouseMoveDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpWarehouseMoveDO::getCreator, reqVO.getCreator());
+        if (reqVO.getPickStatus() != null) {
+            query.apply("EXISTS (SELECT 1 FROM erp_sale_pick_delivery_order pdo "
+                            + "WHERE pdo.source_type = {0} AND pdo.source_id = t.id "
+                            + "AND pdo.pick_status = {1} AND pdo.deleted = b'0' "
+                            + "AND pdo.tenant_id = t.tenant_id)",
+                    ErpSaleBizSourceTypeEnum.WAREHOUSE_MOVE.getType(), reqVO.getPickStatus());
+        }
         ErpKeywordQuery.appendProductItemFilter(query, "erp_warehouse_move_item", "move_id",
                 reqVO.getProductId(), null, null, null,
                 reqVO.getProductKeyword(), true);
@@ -260,6 +269,20 @@ public interface ErpWarehouseMoveMapper extends BaseMapperX<ErpWarehouseMoveDO> 
                 .eq(ErpWarehouseMoveDO::getId, id).eq(ErpWarehouseMoveDO::getStatus, status));
     }
 
+    default int cancelConfirmByIdAndStatus(Long id, Integer status, Integer targetStatus) {
+        return update(null, new LambdaUpdateWrapper<ErpWarehouseMoveDO>()
+                .eq(ErpWarehouseMoveDO::getId, id)
+                .eq(ErpWarehouseMoveDO::getStatus, status)
+                .set(ErpWarehouseMoveDO::getStatus, targetStatus)
+                .set(ErpWarehouseMoveDO::getConfirmUserId, null)
+                .set(ErpWarehouseMoveDO::getConfirmTime, null));
+    }
+
+    default ErpWarehouseMoveDO selectByIdForUpdate(Long id) {
+        return selectOne(new LambdaQueryWrapperX<ErpWarehouseMoveDO>()
+                .eq(ErpWarehouseMoveDO::getId, id).last("FOR UPDATE"));
+    }
+
     default int updateDraftByIdAndStatus(Long id, Integer status, ErpWarehouseMoveDO updateObj) {
         return update(null, new LambdaUpdateWrapper<ErpWarehouseMoveDO>()
                 .eq(ErpWarehouseMoveDO::getId, id)
@@ -281,6 +304,14 @@ public interface ErpWarehouseMoveMapper extends BaseMapperX<ErpWarehouseMoveDO> 
 
     default ErpWarehouseMoveDO selectByNo(String no) {
         return selectOne(ErpWarehouseMoveDO::getNo, no);
+    }
+
+    default ErpWarehouseMoveDO selectBySource(Integer sourceType, Long sourceId) {
+        return selectOne(new LambdaQueryWrapperX<ErpWarehouseMoveDO>()
+                .eq(ErpWarehouseMoveDO::getSourceType, sourceType)
+                .eq(ErpWarehouseMoveDO::getSourceId, sourceId)
+                .orderByDesc(ErpWarehouseMoveDO::getId)
+                .last("LIMIT 1"));
     }
 
 }

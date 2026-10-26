@@ -80,7 +80,7 @@ public class ErpReceivableAgingReportRepository {
         String customerScope = customerScope(scope.customerScope, "c", "customer", sql.params);
         sql.cte += ",aged_events AS (SELECT raw_events.*,DATEDIFF(:analysisDate,DATE(event_date)) age_days "
                 + "FROM raw_events WHERE event_date<DATE_ADD(:analysisDate,INTERVAL 1 DAY)),"
-                + "event_sums AS (SELECT customer_id,dept_id,ROUND(SUM(amount),2) balance,"
+                + "event_sums AS (SELECT customer_id,dept_id,ROUND(SUM(amount),6) balance,"
                 + bucket("within1_month", "age_days BETWEEN 0 AND 30") + ","
                 + bucket("within2_months", "age_days BETWEEN 31 AND 60") + ","
                 + bucket("within3_months", "age_days BETWEEN 61 AND 90") + ","
@@ -93,7 +93,7 @@ public class ErpReceivableAgingReportRepository {
                 + "c.developer_user_id,c.name customer_name,ct.name customer_type_name,e.balance,"
                 + "COALESCE(cdc.credit_limit,c.credit_limit) credit_limit,"
                 + "CASE WHEN COALESCE(cdc.credit_limit,c.credit_limit) IS NULL THEN NULL "
-                + "ELSE ROUND(COALESCE(cdc.credit_limit,c.credit_limit)-e.balance,2) END credit_balance,"
+                + "ELSE ROUND(COALESCE(cdc.credit_limit,c.credit_limit)-e.balance,6) END credit_balance,"
                 + "e.within1_month,e.within2_months,e.within3_months,e.months3_to6,e.months6_to12,e.over1_year,"
                 + "area.name area_name,su.nickname sale_user_name,COALESCE(d.name,'未归属部门') dept_name,"
                 + "du.nickname developer_name FROM event_sums e INNER JOIN erp_customer c ON c.id=e.customer_id "
@@ -107,7 +107,7 @@ public class ErpReceivableAgingReportRepository {
                 + "LEFT JOIN system_users su ON su.id=c.sale_user_id AND su.tenant_id=c.tenant_id AND su.deleted=b'0' "
                 + "LEFT JOIN system_users du ON du.id=c.developer_user_id AND du.tenant_id=c.tenant_id AND du.deleted=b'0' "
                 + "LEFT JOIN system_dept d ON d.id=e.dept_id AND d.tenant_id=c.tenant_id AND d.deleted=b'0' "
-                + "WHERE ROUND(e.balance,2)<>0" + customerScope + ")";
+                + "WHERE ROUND(e.balance,6)<>0" + customerScope + ")";
         applyFilters(sql, filter);
         return sql;
     }
@@ -189,7 +189,7 @@ public class ErpReceivableAgingReportRepository {
                 + collate("'" + code + "'") + " document_type_code," + alias + ".id business_id,"
                 + alias + ".customer_id," + alias + ".dept_id," + businessUserId + " business_user_id,"
                 + eventDate + " event_date," + collate("'" + name + "'") + " business_type," + eventOrder
-                + " event_order," + collate(alias + ".no") + " document_no,ROUND(" + amount + ",2) amount,"
+                + " event_order," + collate(alias + ".no") + " document_no,ROUND(" + amount + ",6) amount,"
                 + collate(description) + " description";
     }
 
@@ -198,7 +198,7 @@ public class ErpReceivableAgingReportRepository {
     }
 
     private String bucket(String alias, String condition) {
-        return "ROUND(SUM(CASE WHEN " + condition + " THEN amount ELSE 0 END),2) " + alias;
+        return "ROUND(SUM(CASE WHEN " + condition + " THEN amount ELSE 0 END),6) " + alias;
     }
 
     private String customerTypeCode(String column) {

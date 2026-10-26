@@ -51,6 +51,48 @@ class ErpProductMapperKeywordTest {
     }
 
     @Test
+    void appendProductStockListKeywordCondition_keepsPureNumberContinuous() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendProductStockListKeywordCondition(wrapper, "138145");
+
+        wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(values.contains("%138145%"), values.toString());
+        assertFalse(values.contains("%1%3%8%1%4%5%"), values.toString());
+    }
+
+    @Test
+    void appendProductStockListKeywordCondition_doesNotExpandCompactViscosity() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendProductStockListKeywordCondition(wrapper, "美孚 530");
+
+        String sql = wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(sql.contains(" AND "), sql);
+        assertTrue(values.contains("%美孚%530%"), values.toString());
+        assertTrue(values.contains("%美孚%"), values.toString());
+        assertTrue(values.contains("%530%"), values.toString());
+        assertFalse(values.contains("%5W-30%"), values.toString());
+        assertFalse(values.contains("%5%3%0%"), values.toString());
+    }
+
+    @Test
+    void appendProductStockListKeywordCondition_keepsLiteralViscosityAndExplicitTokens() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendProductStockListKeywordCondition(wrapper, "美孚/5W-30");
+
+        String sql = wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(sql.contains(" AND "), sql);
+        assertTrue(values.contains("%美孚%"), values.toString());
+        assertTrue(values.contains("%5W-30%"), values.toString());
+        assertFalse(values.contains("%美孚/5W-30%"), values.toString());
+    }
+
+    @Test
     void appendStockProductNameKeywordCondition_combinesTokensButOnlySearchesName() {
         LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
 
@@ -79,6 +121,47 @@ class ErpProductMapperKeywordTest {
         LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
 
         ErpProductMapper.appendStockProductNameKeywordCondition(wrapper, "305");
+
+        wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(values.contains("%3%0%5%"), values.toString());
+        assertFalse(values.contains("%5%3%0%"), values.toString());
+        assertFalse(values.contains("%5W-30%"), values.toString());
+    }
+
+    @Test
+    void appendStockProductCodeNameKeywordCondition_combinesTokensAcrossCodeAndNameOnly() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendStockProductCodeNameKeywordCondition(wrapper, "BKR6E 530");
+
+        String sql = wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(sql.contains("code"), sql);
+        assertTrue(sql.contains("name"), sql);
+        assertTrue(sql.contains(" AND "), sql);
+        assertTrue(sql.contains(" OR "), sql);
+        assertFalse(sql.contains("pinyin_code"), sql);
+        assertFalse(sql.contains("wubi_code"), sql);
+        assertFalse(sql.contains("bar_code"), sql);
+        assertFalse(sql.contains("factory_code"), sql);
+        assertFalse(sql.contains("brand"), sql);
+        assertFalse(sql.contains("vehicle_model"), sql);
+        assertFalse(sql.contains("standard"), sql);
+        assertTrue(values.contains("%BKR6E%"), values.toString());
+        assertTrue(values.contains("%B%K%R%6%E%"), values.toString());
+        assertTrue(values.contains("%530%"), values.toString());
+        assertTrue(values.contains("%5W-30%"), values.toString());
+        assertTrue(values.contains("%5W30%"), values.toString());
+        assertTrue(values.contains("%5-30%"), values.toString());
+        assertTrue(values.contains("%5%3%0%"), values.toString());
+    }
+
+    @Test
+    void appendStockProductCodeNameKeywordCondition_keepsOrderedCharacterDirection() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendStockProductCodeNameKeywordCondition(wrapper, "305");
 
         wrapper.getCustomSqlSegment();
         Collection<Object> values = wrapper.getParamNameValuePairs().values();

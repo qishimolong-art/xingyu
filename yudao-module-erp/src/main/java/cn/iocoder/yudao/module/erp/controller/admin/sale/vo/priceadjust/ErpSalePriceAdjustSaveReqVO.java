@@ -79,12 +79,14 @@ public class ErpSalePriceAdjustSaveReqVO {
         private String unit;
 
         @Schema(description = "重量")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "重量最多支持 6 位小数")
         private BigDecimal weight;
 
         @Schema(description = "包装数")
         private Integer packageQty;
 
         @Schema(description = "出库数")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "出库数最多支持 6 位小数")
         private BigDecimal outCount;
 
         @Schema(description = "仓库编号")
@@ -103,9 +105,11 @@ public class ErpSalePriceAdjustSaveReqVO {
         private String batchNo;
 
         @Schema(description = "原售价")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "原售价最多支持 6 位小数")
         private BigDecimal oldPrice;
 
         @Schema(description = "调后价")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "调后价最多支持 6 位小数")
         private BigDecimal newPrice;
 
         @Schema(description = "产品ID")

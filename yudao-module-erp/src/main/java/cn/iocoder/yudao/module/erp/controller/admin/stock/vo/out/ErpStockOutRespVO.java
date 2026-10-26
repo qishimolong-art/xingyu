@@ -6,6 +6,7 @@ import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
+import cn.idev.excel.annotation.format.NumberFormat;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -45,11 +46,12 @@ public class ErpStockOutRespVO {
     private LocalDateTime outTime;
 
     @Schema(description = "合计数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "15663")
-    @ExcelProperty("合计数量")
+    @ExcelProperty(value = "合计数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+    @NumberFormat("0.####################")
     private BigDecimal totalCount;
 
     @Schema(description = "合计金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "24906")
-    @ExcelProperty("合计金额")
+    @ExcelProperty(value = "合计金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal totalPrice;
 
     @Schema(description = "整单总重", example = "125.00")
@@ -59,6 +61,42 @@ public class ErpStockOutRespVO {
     @ExcelProperty(value = "状态", converter = DictConvert.class)
     @DictFormat(AUDIT_STATUS)
     private Integer status;
+
+    @Schema(description = "状态名称")
+    private String statusName;
+
+    @Schema(description = "下单确认人")
+    private Long confirmUserId;
+
+    @Schema(description = "下单确认人名称")
+    private String confirmUserName;
+
+    @Schema(description = "下单确认时间")
+    private LocalDateTime confirmTime;
+
+    @Schema(description = "审批人")
+    private Long approveUserId;
+
+    @Schema(description = "审批人名称")
+    private String approveUserName;
+
+    @Schema(description = "审批时间")
+    private LocalDateTime approveTime;
+
+    @Schema(description = "拣货状态")
+    private Integer pickStatus;
+
+    @Schema(description = "拣货状态名称")
+    private String pickStatusName;
+
+    @Schema(description = "拣货明细总数")
+    private Integer pickTotalItemCount;
+
+    @Schema(description = "已拣货明细数")
+    private Integer pickedItemCount;
+
+    @Schema(description = "拣货进度")
+    private String pickProgress;
 
     @Schema(description = "备注", example = "随便")
     @ExcelProperty("备注")
@@ -92,7 +130,7 @@ public class ErpStockOutRespVO {
     private String productNames;
 
     @Schema(description = "产品编码")
-    @ExcelProperty("产品编码")
+    @ExcelProperty(value = "产品编码")
     private String productCodes;
 
     @Schema(description = "仓库名称")

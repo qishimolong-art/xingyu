@@ -11,30 +11,33 @@ import java.time.LocalDateTime;
 @Data
 public class ErpSettlementOffsetDetailExportRespVO {
 
-    @ExcelProperty("往来类型")
+    @ExcelProperty(value = "审批日期", index = 0)
+    private LocalDateTime approveTime;
+
+    @ExcelProperty(value = "往来类型", index = 1)
     private String direction;
 
-    @ExcelProperty("单据类型")
+    @ExcelProperty(value = "单据类型", index = 2)
     private String docType;
 
-    @ExcelProperty("单据日期")
-    private LocalDateTime docDate;
-
-    @ExcelProperty("单据编号")
+    @ExcelProperty(value = "单据编号", index = 3)
     private String docNo;
 
-    @ExcelProperty("所属部门")
+    @ExcelProperty(value = "所属部门", index = 4)
     private String deptName;
 
-    @ExcelProperty("上笔余额")
+    @ExcelProperty(value = "上笔余额", index = 5, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal prevBalance;
 
-    @ExcelProperty("增加金额")
+    @ExcelProperty(value = "增加金额", index = 6, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal increaseAmount;
 
-    @ExcelProperty("减少金额")
+    @ExcelProperty(value = "减少金额", index = 7, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal decreaseAmount;
 
-    @ExcelProperty("余额")
+    @ExcelProperty(value = "余额", index = 8, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal balance;
+
+    @ExcelProperty(value = "单据时间", index = 9)
+    private LocalDateTime docDate;
 }

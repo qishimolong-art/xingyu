@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.Valid;
+import javax.validation.constraints.Digits;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -69,15 +70,19 @@ public class ErpPurchasePriceAdjustSaveReqVO {
         private Long deptId;
 
         @Schema(description = "调价前单价", requiredMode = Schema.RequiredMode.REQUIRED, example = "12.5")
+        @Digits(integer = 18, fraction = 6, message = "调价前单价最多支持 6 位小数")
         private BigDecimal oldPrice;
 
         @Schema(description = "调价后单价", requiredMode = Schema.RequiredMode.REQUIRED, example = "13.5")
+        @Digits(integer = 18, fraction = 6, message = "调价后单价最多支持 6 位小数")
         private BigDecimal newPrice;
 
         @Schema(description = "入库数量快照", requiredMode = Schema.RequiredMode.REQUIRED, example = "100")
+        @Digits(integer = 18, fraction = 6, message = "入库数量最多支持 6 位小数")
         private BigDecimal count;
 
         @Schema(description = "调价比率（按入库单方式填；添加明细方式为空）", example = "1.08")
+        @Digits(integer = 18, fraction = 6, message = "调价比率最多支持 6 位小数")
         private BigDecimal adjustRatio;
 
         // ========== 产品冗余字段 ==========
@@ -91,6 +96,7 @@ public class ErpPurchasePriceAdjustSaveReqVO {
         private String productUnitName;
 
         @Schema(description = "产品重量")
+        @Digits(integer = 18, fraction = 6, message = "产品重量最多支持 6 位小数")
         private BigDecimal weight;
 
         @Schema(description = "包装数")
@@ -116,6 +122,9 @@ public class ErpPurchasePriceAdjustSaveReqVO {
 
         @Schema(description = "货架位")
         private String warehousePosition;
+
+        @Schema(description = "明细备注")
+        private String remark;
 
     }
 

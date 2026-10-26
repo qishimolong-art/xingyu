@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.system.service.user;
 
 import cn.hutool.core.util.RandomUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.ArrayUtils;
@@ -12,6 +13,7 @@ import cn.iocoder.yudao.module.infra.api.file.FileApi;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.profile.UserProfileUpdatePasswordReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.profile.UserProfileUpdateReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserBatchUpdateReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.TenantVisitScopeSaveReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserImportExcelVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserImportRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserPageReqVO;
@@ -37,6 +39,7 @@ import cn.iocoder.yudao.module.system.service.oauth2.OAuth2TokenService;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.permission.RoleService;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
+import cn.iocoder.yudao.module.system.service.tenant.TenantVisitScopeService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -104,6 +107,8 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     private PasswordEncoder passwordEncoder;
     @MockBean
     private TenantService tenantService;
+    @MockBean
+    private TenantVisitScopeService tenantVisitScopeService;
     @MockBean
     private FileApi fileApi;
     @MockBean
@@ -335,6 +340,93 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         verify(batchUpdateExtension).update(eq(dbUser.getId()), eq(reqVO));
         AdminUserDO user = userMapper.selectById(dbUser.getId());
         assertPojoEquals(dbUser, user);
+    }
+
+    @Test
+    public void testUpdateUserBatch_tenantVisitScope_validatesBeforeSavingAllUsers() {
+        AdminUserDO first = randomAdminUserDO(o -> o.setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        AdminUserDO second = randomAdminUserDO(o -> o.setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        userMapper.insert(first);
+        userMapper.insert(second);
+        TenantVisitScopeSaveReqVO scope = new TenantVisitScopeSaveReqVO();
+        scope.setScopeType(TenantVisitScopeService.SCOPE_CUSTOM);
+        scope.setTenantIds(asSet(162L));
+        UserBatchUpdateReqVO reqVO = new UserBatchUpdateReqVO()
+                .setIds(newArrayList(first.getId(), second.getId()))
+                .setUpdateTenantVisitScope(true)
+                .setTenantVisitScope(scope);
+
+        userService.updateUserBatch(reqVO);
+
+        verify(tenantVisitScopeService).validateUserTenantVisitScopes(
+                asSet(first.getId(), second.getId()), scope);
+        verify(tenantVisitScopeService).saveUserTenantVisitScope(first.getId(), scope);
+        verify(tenantVisitScopeService).saveUserTenantVisitScope(second.getId(), scope);
+    }
+
+    @Test
+    public void testUpdateUserBatch_tenantVisitScopeRejectsDisableAndOpen() {
+        AdminUserDO user = randomAdminUserDO(o -> o.setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        userMapper.insert(user);
+        TenantVisitScopeSaveReqVO scope = new TenantVisitScopeSaveReqVO();
+        scope.setScopeType(TenantVisitScopeService.SCOPE_ALL);
+        UserBatchUpdateReqVO reqVO = new UserBatchUpdateReqVO()
+                .setIds(singletonList(user.getId()))
+                .setUpdateStatus(true)
+                .setStatus(CommonStatusEnum.DISABLE.getStatus())
+                .setUpdateTenantVisitScope(true)
+                .setTenantVisitScope(scope);
+
+        ServiceException exception = assertThrows(ServiceException.class, () -> userService.updateUserBatch(reqVO));
+
+        assertEquals("停用用户时不能同时开放租户访问范围", exception.getMessage());
+        verify(tenantVisitScopeService, never()).saveUserTenantVisitScope(anyLong(), any());
+    }
+
+    @Test
+    public void testUpdateUserBatch_disableAndClearTenantVisitScope() {
+        AdminUserDO user = randomAdminUserDO(o -> o.setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        userMapper.insert(user);
+        TenantVisitScopeSaveReqVO scope = new TenantVisitScopeSaveReqVO();
+        scope.setClear(true);
+        UserBatchUpdateReqVO reqVO = new UserBatchUpdateReqVO()
+                .setIds(singletonList(user.getId()))
+                .setUpdateStatus(true)
+                .setStatus(CommonStatusEnum.DISABLE.getStatus())
+                .setUpdateTenantVisitScope(true)
+                .setTenantVisitScope(scope);
+
+        userService.updateUserBatch(reqVO);
+
+        assertEquals(CommonStatusEnum.DISABLE.getStatus(), userMapper.selectById(user.getId()).getStatus());
+        verify(tenantVisitScopeService).saveUserTenantVisitScope(user.getId(), scope);
+        verify(oauth2TokenService).removeAccessToken(user.getId(), UserTypeEnum.ADMIN.getValue());
+    }
+
+    @Test
+    public void testUpdateUserBatch_tenantVisitScopeFailureRollsBackUserFields() {
+        AdminUserDO first = randomAdminUserDO(o -> o.setNickname("first-old"));
+        AdminUserDO second = randomAdminUserDO(o -> o.setNickname("second-old"));
+        userMapper.insert(first);
+        userMapper.insert(second);
+        TenantVisitScopeSaveReqVO scope = new TenantVisitScopeSaveReqVO();
+        scope.setScopeType(TenantVisitScopeService.SCOPE_ALL);
+        UserBatchUpdateReqVO reqVO = new UserBatchUpdateReqVO()
+                .setIds(newArrayList(first.getId(), second.getId()))
+                .setUpdateNickname(true)
+                .setNickname("new-name")
+                .setUpdateTenantVisitScope(true)
+                .setTenantVisitScope(scope);
+        doNothing().doThrow(new IllegalStateException("scope save failed"))
+                .when(tenantVisitScopeService).saveUserTenantVisitScope(anyLong(), same(scope));
+
+        assertThrows(IllegalStateException.class, () -> userService.updateUserBatch(reqVO));
+
+        assertEquals("first-old", userMapper.selectById(first.getId()).getNickname());
+        assertEquals("second-old", userMapper.selectById(second.getId()).getNickname());
+        verify(tenantVisitScopeService).validateUserTenantVisitScopes(
+                asSet(first.getId(), second.getId()), scope);
+        verify(tenantVisitScopeService, times(2)).saveUserTenantVisitScope(anyLong(), same(scope));
     }
 
     @Test
@@ -586,9 +678,10 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         PageResult<AdminUserDO> pageResult = userService.getUserPage(reqVO);
 
         assertEquals(3, pageResult.getTotal());
-        assertEquals(userA.getId(), pageResult.getList().get(0).getId());
-        assertEquals(userB.getId(), pageResult.getList().get(1).getId());
-        assertEquals(userNoDept.getId(), pageResult.getList().get(2).getId());
+        // 与关联字段排序约定一致：升序空值在前，降序空值在后。
+        assertEquals(userNoDept.getId(), pageResult.getList().get(0).getId());
+        assertEquals(userA.getId(), pageResult.getList().get(1).getId());
+        assertEquals(userB.getId(), pageResult.getList().get(2).getId());
 
         reqVO.setOrderDirection("desc");
         pageResult = userService.getUserPage(reqVO);
@@ -616,9 +709,10 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         PageResult<AdminUserDO> pageResult = userService.getUserPage(reqVO);
 
         assertEquals(3, pageResult.getTotal());
-        assertEquals(userAlpha.getId(), pageResult.getList().get(0).getId());
-        assertEquals(userBeta.getId(), pageResult.getList().get(1).getId());
-        assertEquals(userNoRole.getId(), pageResult.getList().get(2).getId());
+        // 与关联字段排序约定一致：升序空值在前，降序空值在后。
+        assertEquals(userNoRole.getId(), pageResult.getList().get(0).getId());
+        assertEquals(userAlpha.getId(), pageResult.getList().get(1).getId());
+        assertEquals(userBeta.getId(), pageResult.getList().get(2).getId());
 
         reqVO.setOrderDirection("desc");
         pageResult = userService.getUserPage(reqVO);

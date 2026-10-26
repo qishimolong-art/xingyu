@@ -37,6 +37,7 @@ public interface ErpStockOutBillMapper extends BaseMapperX<ErpStockOutBillDO> {
 
     static MPJLambdaWrapperX<ErpStockOutBillDO> buildQuery(ErpStockOutBillPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpStockOutBillDO> wrapper = new MPJLambdaWrapperX<ErpStockOutBillDO>()
+                .inIfPresent(ErpStockOutBillDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpStockOutBillDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpStockOutBillDO::getBillDate, reqVO.getBillDate())
                 .eqIfPresent(ErpStockOutBillDO::getWarehouseId, reqVO.getWarehouseId())

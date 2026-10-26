@@ -27,10 +27,13 @@ public class ErpSaleCartSaveReqVO {
     @Schema(description = "开单时间，由系统自动生成")
     private LocalDateTime cartTime;
 
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "开单时间，由系统自动生成最多支持 6 位小数")
     private BigDecimal discountPercent;
 
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "开单时间，由系统自动生成最多支持 6 位小数")
     private BigDecimal feeAmount;
 
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "开单时间，由系统自动生成最多支持 6 位小数")
     private BigDecimal otherPrice;
 
     private Integer sourceType;
@@ -58,7 +61,9 @@ public class ErpSaleCartSaveReqVO {
     private String contactPhone;
     private String deliveryAddress;
     private LocalDateTime deliveryDate;
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "taxRate最多支持 6 位小数")
     private BigDecimal taxRate;
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "totalFreight最多支持 6 位小数")
     private BigDecimal totalFreight;
     private LocalDateTime paymentDate;
     private String businessEntity;
@@ -82,17 +87,21 @@ public class ErpSaleCartSaveReqVO {
 
         private Long productId;
 
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "明细操作类型：insert 新增，update 修改，delete 删除最多支持 6 位小数")
         private BigDecimal productPrice;
 
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "明细操作类型：insert 新增，update 修改，delete 删除最多支持 6 位小数")
         private BigDecimal weight;
 
         private Integer packageQty;
 
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "count最多支持 6 位小数")
         private BigDecimal count;
 
         @Schema(description = "是否赠品", example = "false")
         private Boolean giftFlag;
 
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "是否赠品最多支持 6 位小数")
         private BigDecimal taxPercent;
 
         private String warehousePosition;

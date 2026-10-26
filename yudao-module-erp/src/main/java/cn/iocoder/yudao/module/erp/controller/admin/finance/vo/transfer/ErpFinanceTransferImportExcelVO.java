@@ -24,13 +24,16 @@ public class ErpFinanceTransferImportExcelVO {
 
     @ExcelRequired
     @ExcelProperty("转账金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal transferPrice;
 
     @ExcelRequired
     @ExcelProperty("汇率")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField(integer = 12)
     private BigDecimal exchangeRate;
 
     @ExcelProperty("手续费")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal feePrice;
 
     @ExcelProperty("费用项目")

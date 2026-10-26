@@ -10,6 +10,7 @@ import lombok.ToString;
 @ToString(callSuper = true)
 public class ErpCustomerTaskPageReqVO extends PageParam {
 
+    @javax.validation.constraints.NotNull
     private Long customerId;
     private Integer year;
     private Integer month;

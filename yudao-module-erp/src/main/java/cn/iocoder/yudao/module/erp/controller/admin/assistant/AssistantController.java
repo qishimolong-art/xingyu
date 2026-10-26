@@ -80,8 +80,8 @@ public class AssistantController {
     @DeleteMapping("/conversation") public CommonResult<Boolean> delete(@RequestParam String id) {
         if(executionService.isConversationBusy(id)) throw new AssistantFailure("BUSY","请先停止当前查询"); store.delete(id);return success(true);
     }
-    @GetMapping("/details") public CommonResult<Map<String,Object>> details(@RequestParam String messageId,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int pageSize) throws IOException {
-        return success(orchestrator.details(codec.read(store.queryPlan(messageId),null),page,pageSize));
+    @GetMapping("/details") public CommonResult<Map<String,Object>> details(@RequestParam String messageId,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int pageSize,@RequestParam(required=false) String taskId) throws IOException {
+        return success(orchestrator.details(codec.read(store.queryPlan(messageId),null),page,pageSize,taskId));
     }
     @GetMapping("/messages/{messageId}/audit")
     @PreAuthorize("@ss.hasPermission('erp:assistant:query') && @ss.hasPermission('erp:assistant:audit')")

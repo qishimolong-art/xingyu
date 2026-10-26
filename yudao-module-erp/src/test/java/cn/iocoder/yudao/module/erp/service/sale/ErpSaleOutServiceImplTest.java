@@ -117,6 +117,10 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Mock
+    private ErpSaleDirectDeptPermissionService saleDirectDeptPermissionService;
+    @Mock
+    private ErpSalePickDeliveryService salePickDeliveryService;
+    @Mock
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Mock
     private ErpOperateLogService operateLogService;
@@ -145,10 +149,13 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
         when(saleOutMapper.selectPage(reqVO)).thenReturn(page);
         when(financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(any(), eq(21)))
                 .thenReturn(Collections.singletonMap(60L, new BigDecimal("110")));
+        when(saleOutItemMapper.selectOriginalSettlementProductPriceMap(anyCollection()))
+                .thenReturn(Collections.emptyMap());
 
         PageResult<ErpSaleOutDO> result = saleOutService.getSaleOutPage(reqVO);
 
         assertEquals(new BigDecimal("110"), result.getList().get(0).getReceiptPrice());
+        assertEquals(2, result.getList().get(0).getSettleStatus());
     }
 
     @Test
@@ -163,15 +170,14 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
                 new PageResult<>(Collections.singletonList(saleOut), 1L));
         when(financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(any(), eq(21)))
                 .thenReturn(Collections.singletonMap(61L, new BigDecimal("560")));
-        when(saleOutItemMapper.selectListByOutIds(anyCollection())).thenReturn(Collections.singletonList(
-                new ErpSaleOutItemDO().setOutId(61L).setCount(BigDecimal.ONE)
-                        .setProductPrice(new BigDecimal("560"))
-                        .setOriginalProductPrice(new BigDecimal("700"))));
+        when(saleOutItemMapper.selectOriginalSettlementProductPriceMap(anyCollection()))
+                .thenReturn(Collections.singletonMap(61L, new BigDecimal("700")));
 
         PageResult<ErpSaleOutDO> result = saleOutService.getSaleOutPage(reqVO);
 
         assertEquals(0, new BigDecimal("700").compareTo(result.getList().get(0).getTotalPrice()));
         assertEquals(new BigDecimal("560"), result.getList().get(0).getReceiptPrice());
+        assertEquals(1, result.getList().get(0).getSettleStatus());
     }
     @Mock
     private FileApi fileApi;
@@ -701,6 +707,51 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetReturnableItemsByOutId_crossDept_returnMultipleSourceWarehouses() {
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(42L).setNo("XSCK008")
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        when(saleOutMapper.selectById(42L)).thenReturn(saleOut);
+        ErpSaleOutItemDO item = new ErpSaleOutItemDO()
+                .setId(502L).setOutId(42L).setProductId(600L)
+                .setWarehouseId(700L).setDeptId(800L)
+                .setSourceWarehouseId(701L).setSourceDeptId(801L)
+                .setCount(new BigDecimal("2")).setProductPrice(new BigDecimal("12.34"));
+        ErpSaleOutItemDO secondItem = new ErpSaleOutItemDO()
+                .setId(503L).setOutId(42L).setProductId(601L)
+                .setWarehouseId(700L).setDeptId(800L)
+                .setSourceWarehouseId(702L).setSourceDeptId(802L)
+                .setCount(BigDecimal.ONE).setProductPrice(new BigDecimal("20"));
+        when(saleOutItemMapper.selectListByOutId(42L)).thenReturn(Arrays.asList(item, secondItem));
+        Map<Long, ErpProductRespVO> productMap = new HashMap<>();
+        productMap.put(600L, new ErpProductRespVO().setId(600L).setName("产品600"));
+        productMap.put(601L, new ErpProductRespVO().setId(601L).setName("产品601"));
+        when(productService.getProductVOMap(anyCollection())).thenReturn(productMap);
+        Map<Long, ErpWarehouseDO> warehouseMap = new HashMap<>();
+        warehouseMap.put(701L, new ErpWarehouseDO().setId(701L).setName("来源仓A").setDeptId(801L));
+        warehouseMap.put(702L, new ErpWarehouseDO().setId(702L).setName("来源仓B").setDeptId(802L));
+        when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(warehouseMap);
+        DeptRespDTO firstDept = new DeptRespDTO();
+        firstDept.setId(801L);
+        firstDept.setName("来源部门A");
+        DeptRespDTO secondDept = new DeptRespDTO();
+        secondDept.setId(802L);
+        secondDept.setName("来源部门B");
+        when(deptApi.getDeptMap(anyCollection())).thenReturn(Map.of(801L, firstDept, 802L, secondDept));
+        when(saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(anyCollection()))
+                .thenReturn(Collections.emptyMap());
+
+        List<ErpSaleReturnableItemRespVO> result = saleOutService.getReturnableItemsByOutId(42L);
+        ErpSaleReturnableItemRespVO vo = result.get(0);
+
+        assertEquals(701L, vo.getWarehouseId());
+        assertEquals("来源仓A", vo.getWarehouseName());
+        assertEquals(801L, vo.getDeptId());
+        assertEquals("来源部门A", vo.getDeptName());
+        assertEquals(702L, result.get(1).getWarehouseId());
+        assertEquals(802L, result.get(1).getDeptId());
+    }
+
+    @Test
     public void testGetReturnableItemsByOutId_allReturned_returnEmpty() {
         ErpSaleOutDO saleOut = new ErpSaleOutDO()
                 .setId(41L).setNo("XSCK007")
@@ -738,7 +789,49 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
 
         verify(saleOutMapper).updateById(argThat((ErpSaleOutDO updateObj) ->
                 Long.valueOf(50L).equals(updateObj.getId())
-                        && new BigDecimal("60").equals(updateObj.getReceiptPrice())));
+                        && new BigDecimal("60").equals(updateObj.getReceiptPrice())
+                        && Integer.valueOf(1).equals(updateObj.getSettleStatus())));
+    }
+
+    @Test
+    public void testUpdateSaleInReceiptPrice_fullReceiptUpdatesSettledStatus() {
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(51L)
+                .setReceiptPrice(new BigDecimal("60.00")).setSettleStatus(1)
+                .setTotalPrice(new BigDecimal("100.00"));
+        when(saleOutMapper.selectById(51L)).thenReturn(saleOut);
+
+        saleOutService.updateSaleInReceiptPrice(51L, new BigDecimal("100"));
+
+        verify(saleOutMapper).updateById(argThat((ErpSaleOutDO updateObj) ->
+                new BigDecimal("100").equals(updateObj.getReceiptPrice())
+                        && Integer.valueOf(2).equals(updateObj.getSettleStatus())));
+    }
+
+    @Test
+    public void testUpdateSaleInReceiptPrice_sameAmountRepairsStaleStatus() {
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(52L)
+                .setReceiptPrice(new BigDecimal("100.00")).setSettleStatus(0)
+                .setTotalPrice(new BigDecimal("100.00"));
+        when(saleOutMapper.selectById(52L)).thenReturn(saleOut);
+
+        saleOutService.updateSaleInReceiptPrice(52L, new BigDecimal("100"));
+
+        verify(saleOutMapper).updateById(argThat((ErpSaleOutDO updateObj) ->
+                Integer.valueOf(2).equals(updateObj.getSettleStatus())));
+    }
+
+    @Test
+    public void testUpdateSaleInReceiptPrice_reverseWriteOffRollsStatusBack() {
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(53L)
+                .setReceiptPrice(new BigDecimal("100.00")).setSettleStatus(2)
+                .setTotalPrice(new BigDecimal("100.00"));
+        when(saleOutMapper.selectById(53L)).thenReturn(saleOut);
+
+        saleOutService.updateSaleInReceiptPrice(53L, BigDecimal.ZERO);
+
+        verify(saleOutMapper).updateById(argThat((ErpSaleOutDO updateObj) ->
+                BigDecimal.ZERO.equals(updateObj.getReceiptPrice())
+                        && Integer.valueOf(0).equals(updateObj.getSettleStatus())));
     }
 
     // ==================== 工具方法 ====================

@@ -2,6 +2,9 @@ package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustItemDO;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -14,6 +17,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.when;
 
 class ErpPurchaseFieldPermissionMaskerTest extends BaseMockitoUnitTest {
@@ -53,6 +57,32 @@ class ErpPurchaseFieldPermissionMaskerTest extends BaseMockitoUnitTest {
 
         assertNull(item.getSalePrice());
         assertNull(item.getBackupPrice1());
+    }
+
+    @Test
+    void masksAndPreservesPurchasePriceAdjustItemRemark() {
+        when(permissionApi.getCurrentUserHiddenFields("erp_purchase_price_adjust"))
+                .thenReturn(Collections.singletonList("item_remark"));
+        when(permissionApi.getCurrentUserHiddenFields("erp_product"))
+                .thenReturn(Collections.emptyList());
+        ErpPurchasePriceAdjustRespVO.Item responseItem = new ErpPurchasePriceAdjustRespVO.Item();
+        responseItem.setRemark("隐藏备注");
+
+        fieldPermissionMasker.clearHiddenItemFields("erp_purchase_price_adjust",
+                Collections.singletonList(responseItem));
+
+        assertNull(responseItem.getRemark());
+
+        ErpPurchasePriceAdjustSaveReqVO.Item targetItem = new ErpPurchasePriceAdjustSaveReqVO.Item();
+        targetItem.setId(10L);
+        ErpPurchasePriceAdjustItemDO sourceItem = new ErpPurchasePriceAdjustItemDO();
+        sourceItem.setId(10L);
+        sourceItem.setRemark("数据库原备注");
+
+        fieldPermissionMasker.preserveHiddenItemFields("erp_purchase_price_adjust",
+                Collections.singletonList(targetItem), Collections.singletonList(sourceItem));
+
+        assertEquals("数据库原备注", targetItem.getRemark());
     }
 
 }

@@ -27,6 +27,7 @@ public class ErpReceivableOtherSaveReqVO {
     private String voucherNo;
 
     @Schema(description = "已结金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal settledAmount;
 
     @Schema(description = "部门编号", requiredMode = Schema.RequiredMode.REQUIRED)
@@ -35,6 +36,7 @@ public class ErpReceivableOtherSaveReqVO {
 
     @Schema(description = "应收金额", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "应收金额不能为空")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal receivableAmount;
 
     @AssertTrue(message = "应收金额不能为 0")
@@ -55,6 +57,7 @@ public class ErpReceivableOtherSaveReqVO {
     private String receivableType;
 
     @Schema(description = "成本金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal costAmount;
 
     @Schema(description = "调账原因备注")

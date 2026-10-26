@@ -98,6 +98,7 @@ public class RoleServiceImpl implements RoleService {
         RoleDO updateObj = BeanUtils.toBean(updateReqVO, RoleDO.class);
         updateObj.setSort(ObjectUtil.defaultIfNull(updateReqVO.getSort(), role.getSort()));
         roleMapper.updateById(updateObj);
+        permissionService.reconcileTenantVisitScopesByRoleId(updateReqVO.getId());
 
         // 3. 记录操作日志上下文
         LogRecordContext.putVariable(DiffParseFunction.OLD_OBJECT, BeanUtils.toBean(role, RoleSaveReqVO.class));

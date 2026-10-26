@@ -36,6 +36,11 @@ public class ErpPayableExpenseRespVO {
     private String updater;
     private String updaterName;
     private LocalDateTime updateTime;
+    private String auditorName;
+    private LocalDateTime auditTime;
+    private String sourceType;
+    private Long sourceId;
+    private String sourceNo;
     private List<Item> items;
 
     @Data

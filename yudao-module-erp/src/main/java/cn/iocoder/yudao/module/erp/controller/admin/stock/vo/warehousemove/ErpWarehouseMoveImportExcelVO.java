@@ -33,7 +33,7 @@ public class ErpWarehouseMoveImportExcelVO {
     private String factoryCode;
 
     @ExcelRequired
-    @ExcelProperty("移货数量")
+    @ExcelProperty(value = "移货数量")
     private BigDecimal count;
 
     @ExcelProperty("移出货架")
@@ -45,7 +45,7 @@ public class ErpWarehouseMoveImportExcelVO {
     @ExcelProperty("批次号")
     private String batchNo;
 
-    @ExcelProperty("移货单价")
+    @ExcelProperty(value = "移货单价")
     private BigDecimal productPrice;
 
     @ExcelProperty("单据备注")

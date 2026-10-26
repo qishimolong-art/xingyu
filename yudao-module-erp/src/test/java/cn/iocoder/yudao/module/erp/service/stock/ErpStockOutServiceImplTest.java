@@ -2,13 +2,17 @@ package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockOutStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -19,9 +23,11 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_OUT_ITEM_DUPLICATE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_OUT_MANUAL_APPROVE_FORBIDDEN;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_OUT_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_STOCK_OUT_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -49,25 +55,36 @@ class ErpStockOutServiceImplTest extends BaseMockitoUnitTest {
     private ErpWarehouseService warehouseService;
     @Mock
     private ErpStockRecordService stockRecordService;
+    @Mock
+    private ErpSalePickDeliveryService salePickDeliveryService;
 
     @Test
-    void updateStockOutStatus_writesApproveTimeWithStatus() {
+    void updateStockOutStatus_rejectsManualApprove() {
+        assertServiceException(() -> stockOutService.updateStockOutStatus(1L, ErpAuditStatus.APPROVE.getStatus()),
+                STOCK_OUT_MANUAL_APPROVE_FORBIDDEN);
+        verify(stockOutMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void autoApproveAfterPick_postsInventoryAndApproveUser() {
         ErpStockOutDO stockOut = new ErpStockOutDO().setId(1L).setNo("OUT001")
-                .setStatus(ErpAuditStatus.PROCESS.getStatus()).setOutTime(LocalDateTime.of(2026, 10, 15, 9, 0));
-        ErpStockOutItemDO item = new ErpStockOutItemDO().setId(11L).setOutId(1L).setProductId(100L)
-                .setWarehouseId(20L).setCount(BigDecimal.ONE);
-        when(stockOutMapper.selectById(1L)).thenReturn(stockOut);
+                .setStatus(ErpStockOutStatusEnum.PICKING.getStatus())
+                .setOutTime(LocalDateTime.of(2026, 10, 20, 9, 0));
+        ErpStockOutItemDO item = new ErpStockOutItemDO().setId(11L).setOutId(1L)
+                .setProductId(100L).setWarehouseId(20L).setCount(BigDecimal.ONE);
+        when(stockOutMapper.selectByIdForUpdate(1L)).thenReturn(stockOut);
+        when(salePickDeliveryService.getSummaryMapByStockOutIds(Collections.singleton(1L))).thenReturn(Map.of(
+                1L, new ErpSalePickDeliverySummaryRespVO().setPickStatus(ErpSalePickStatusEnum.DONE.getStatus())));
+        when(stockOutItemMapper.selectListByOutIdForUpdate(1L)).thenReturn(Collections.singletonList(item));
         when(stockOutMapper.updateByIdAndStatus(any(), any(), any())).thenReturn(1);
-        when(stockOutItemMapper.selectListByOutId(1L)).thenReturn(Collections.singletonList(item));
 
-        stockOutService.updateStockOutStatus(1L, ErpAuditStatus.APPROVE.getStatus());
+        stockOutService.autoApproveAfterPick(1L, 9L);
 
-        ArgumentCaptor<ErpStockOutDO> updateCaptor = ArgumentCaptor.forClass(ErpStockOutDO.class);
-        verify(stockOutMapper).updateByIdAndStatus(
-                org.mockito.ArgumentMatchers.eq(1L),
-                org.mockito.ArgumentMatchers.eq(ErpAuditStatus.PROCESS.getStatus()), updateCaptor.capture());
-        assertEquals(ErpAuditStatus.APPROVE.getStatus(), updateCaptor.getValue().getStatus());
-        assertNotNull(updateCaptor.getValue().getApproveTime());
+        ArgumentCaptor<ErpStockOutDO> captor = ArgumentCaptor.forClass(ErpStockOutDO.class);
+        verify(stockOutMapper).updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.eq(ErpStockOutStatusEnum.PICKING.getStatus()), captor.capture());
+        assertEquals(ErpStockOutStatusEnum.APPROVE.getStatus(), captor.getValue().getStatus());
+        assertEquals(9L, captor.getValue().getApproveUserId());
         verify(stockRecordService).createStockRecord(any());
     }
 
@@ -111,7 +128,7 @@ class ErpStockOutServiceImplTest extends BaseMockitoUnitTest {
                 new ErpStockOutItemDO().setId(12L).setOutId(1L).setProductId(100L).setWarehouseId(20L)));
 
         assertServiceException(() -> stockOutService.batchUpdateStockOutItems(buildReq(1L, 20L, 11L)),
-                STOCK_OUT_ITEM_DUPLICATE, "100-20");
+                STOCK_OUT_ITEM_DUPLICATE, "100-20-");
         verify(stockOutItemMapper, never()).updateBatch(anyList());
     }
 

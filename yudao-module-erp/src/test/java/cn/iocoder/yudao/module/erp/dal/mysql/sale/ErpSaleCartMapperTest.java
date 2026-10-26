@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
@@ -76,5 +77,19 @@ class ErpSaleCartMapperTest {
 
         assertFalse(sql.contains("source_type"));
         assertFalse(sql.contains("remark"));
+    }
+
+    @Test
+    void shouldBuildLightweightLatestOnlineOrderQueryByMallSource() {
+        LambdaQueryWrapper<ErpSaleCartDO> wrapper = ErpSaleCartMapper.buildLatestOnlineOrderQuery();
+        String sql = wrapper.getSqlSegment().toLowerCase(Locale.ROOT);
+
+        assertTrue(sql.contains("source_type"));
+        assertTrue(sql.contains("order by"));
+        assertTrue(sql.contains("id") && sql.contains("desc"));
+        assertTrue(sql.contains("limit 1"));
+        assertFalse(sql.contains("remark"));
+        assertFalse(sql.contains("status"));
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(ErpSaleBizSourceTypeEnum.MALL_ORDER.getType()));
     }
 }

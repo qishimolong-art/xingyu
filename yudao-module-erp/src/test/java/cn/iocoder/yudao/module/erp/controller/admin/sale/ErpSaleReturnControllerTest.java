@@ -2,8 +2,10 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPickPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreatePurchaseReturnReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTargetDraftRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTransferOutReqVO;
@@ -15,6 +17,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSummaryRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickSourceDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
@@ -26,6 +29,7 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -35,6 +39,9 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -48,9 +55,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -64,6 +73,8 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
 
     @Mock
     private ErpSaleReturnService saleReturnService;
+    @Mock
+    private ErpSalePickDeliveryService salePickDeliveryService;
     @Mock
     private ErpStockService stockService;
     @Mock
@@ -136,12 +147,9 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
     // ========== updateSaleReturnStatus ==========
 
     @Test
-    public void testUpdateSaleReturnStatus_paramPassThrough() {
-        CommonResult<Boolean> result = controller.updateSaleReturnStatus(33L, 20, null);
-
-        assertEquals(0, result.getCode());
-        assertEquals(Boolean.TRUE, result.getData());
-        verify(saleReturnService).updateSaleReturnStatus(eq(33L), eq(20));
+    public void testUpdateSaleReturnStatus_manualApproveRejected() {
+        assertThrows(ServiceException.class, () -> controller.updateSaleReturnStatus(33L, 20, null));
+        verify(saleReturnService, never()).updateSaleReturnStatus(eq(33L), eq(20));
     }
 
     @Test
@@ -151,6 +159,59 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-return:update-status"));
+    }
+
+    @Test
+    public void testConfirmAndCancelConfirm_passThroughAndKeepPermissions() throws NoSuchMethodException {
+        assertEquals(Boolean.TRUE, controller.confirmSaleReturn(33L, "basis-1").getData());
+        verify(saleReturnService).confirmSaleReturn(33L, "basis-1");
+        assertEquals(Boolean.TRUE, controller.cancelConfirmSaleReturn(33L).getData());
+        verify(saleReturnService).cancelConfirmSaleReturn(33L);
+
+        assertTrue(ErpSaleReturnController.class
+                .getMethod("confirmSaleReturn", Long.class, String.class)
+                .getAnnotation(PreAuthorize.class).value().contains("erp:sale-return:confirm"));
+        assertTrue(ErpSaleReturnController.class
+                .getMethod("cancelConfirmSaleReturn", Long.class)
+                .getAnnotation(PreAuthorize.class).value().contains("erp:sale-return:cancel-confirm"));
+    }
+
+    @Test
+    public void testPickDetailEndpoints_validateSourceAndKeepQueryPermission() throws NoSuchMethodException {
+        when(saleReturnService.getSaleReturn(33L)).thenReturn(new ErpSaleReturnDO().setId(33L));
+        ErpSalePickSourceDetailRespVO detail = new ErpSalePickSourceDetailRespVO();
+        when(salePickDeliveryService.getSourcePickDetail(70, 33L)).thenReturn(detail);
+        ErpSaleReturnPickPageReqVO pageReqVO = new ErpSaleReturnPickPageReqVO();
+        pageReqVO.setReturnId(33L);
+        when(salePickDeliveryService.getSourcePickItemPage(70, 33L, pageReqVO))
+                .thenReturn(PageResult.empty());
+        when(salePickDeliveryService.getSourcePickOperationItemPage(70, 33L, pageReqVO))
+                .thenReturn(PageResult.empty());
+
+        assertEquals(detail, controller.getSaleReturnPickDetail(33L).getData());
+        assertEquals(0L, controller.getSaleReturnPickItemPage(pageReqVO).getData().getTotal());
+        assertEquals(0L, controller.getSaleReturnPickOperationItemPage(pageReqVO).getData().getTotal());
+        verify(saleReturnService, times(3)).getSaleReturn(33L);
+        verify(salePickDeliveryService).getSourcePickDetail(70, 33L);
+        verify(salePickDeliveryService).getSourcePickItemPage(70, 33L, pageReqVO);
+        verify(salePickDeliveryService).getSourcePickOperationItemPage(70, 33L, pageReqVO);
+
+        for (String methodName : List.of("getSaleReturnPickDetail", "getSaleReturnPickItemPage",
+                "getSaleReturnPickOperationItemPage")) {
+            Method method = methodName.equals("getSaleReturnPickDetail")
+                    ? ErpSaleReturnController.class.getMethod(methodName, Long.class)
+                    : ErpSaleReturnController.class.getMethod(methodName, ErpSaleReturnPickPageReqVO.class);
+            assertTrue(method.getAnnotation(PreAuthorize.class).value().contains("erp:sale-return:query"));
+        }
+    }
+
+    @Test
+    public void testPickDetailEndpoint_rejectsMissingSaleReturnBeforeReadingFulfillment() {
+        when(saleReturnService.getSaleReturn(404L)).thenReturn(null);
+
+        assertThrows(ServiceException.class, () -> controller.getSaleReturnPickDetail(404L));
+
+        verify(salePickDeliveryService, never()).getSourcePickDetail(any(), any());
     }
 
     @Test
@@ -458,6 +519,20 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-return:export"));
+    }
+
+    @Test
+    public void testWholeOrderImportEndpoints_areSeparatedFromDetailImport() throws NoSuchMethodException {
+        Method orderImport = ErpSaleReturnController.class.getMethod("importSaleReturnOrder", MultipartFile.class);
+        Method orderTemplate = ErpSaleReturnController.class
+                .getMethod("getOrderImportTemplate", javax.servlet.http.HttpServletResponse.class);
+        Method detailImport = ErpSaleReturnController.class.getMethod("importSaleReturn", MultipartFile.class);
+
+        assertEquals("/import-order", orderImport.getAnnotation(PostMapping.class).value()[0]);
+        assertEquals("/get-order-import-template", orderTemplate.getAnnotation(GetMapping.class).value()[0]);
+        assertEquals("/import", detailImport.getAnnotation(PostMapping.class).value()[0]);
+        assertTrue(orderImport.getAnnotation(PreAuthorize.class).value().contains("erp:sale-return:create"));
+        assertTrue(orderTemplate.getAnnotation(PreAuthorize.class).value().contains("erp:sale-return:create"));
     }
 
 }

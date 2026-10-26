@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust;
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.idev.excel.annotation.format.NumberFormat;
 import cn.iocoder.yudao.framework.excel.core.annotations.DictFormat;
 import lombok.Data;
 
@@ -37,10 +38,23 @@ public class ErpPurchasePriceAdjustExportRespVO {
     private String adjusterName;
 
     @ExcelProperty("调价总额")
+    @NumberFormat("0.00####")
     private BigDecimal totalAdjustPrice;
 
     @ExcelProperty("已结算金额")
+    @NumberFormat("0.00####")
     private BigDecimal paymentPrice;
+
+    @ExcelProperty("原单金额")
+    @NumberFormat("0.00####")
+    private BigDecimal originalTotalPrice;
+
+    @ExcelProperty("调后金额")
+    @NumberFormat("0.00####")
+    private BigDecimal adjustedTotalPrice;
+
+    @ExcelProperty("审核人")
+    private String approverName;
 
     @ExcelProperty("审批通过时间")
     private LocalDateTime approveTime;
@@ -72,11 +86,22 @@ public class ErpPurchasePriceAdjustExportRespVO {
     @ExcelProperty("单位")
     private String productUnitName;
 
+    @ExcelProperty("明细所属部门")
+    private String itemDeptName;
+
+    @ExcelProperty("库存")
+    @NumberFormat("0.######")
+    private BigDecimal stockCount;
+
     @ExcelProperty("重量")
+    @NumberFormat("0.######")
     private BigDecimal weight;
 
     @ExcelProperty("包装数")
     private Integer packageQty;
+
+    @ExcelProperty("件数")
+    private Integer wholeQty;
 
     @ExcelProperty("车型")
     private String vehicleModel;
@@ -96,6 +121,18 @@ public class ErpPurchasePriceAdjustExportRespVO {
     @ExcelProperty("图号")
     private String drawingNo;
 
+    @ExcelProperty("厂家编码")
+    private String factoryCode;
+
+    @ExcelProperty("产品条码")
+    private String productBarCode;
+
+    @ExcelProperty("入库条码")
+    private String barCode;
+
+    @ExcelProperty("业务主体")
+    private String businessEntity;
+
     @ExcelProperty("仓库")
     private String warehouseName;
 
@@ -106,17 +143,29 @@ public class ErpPurchasePriceAdjustExportRespVO {
     private String inNo;
 
     @ExcelProperty("原单价")
+    @NumberFormat("0.00####")
     private BigDecimal oldPrice;
 
-    @ExcelProperty("调价后单价")
-    private BigDecimal newPrice;
-
     @ExcelProperty("数量")
+    @NumberFormat("0.######")
     private BigDecimal count;
 
+    @ExcelProperty("调价后单价")
+    @NumberFormat("0.00####")
+    private BigDecimal newPrice;
+
+    @ExcelProperty("最近采购价")
+    @NumberFormat("0.00####")
+    private BigDecimal lastPurchasePrice;
+
     @ExcelProperty("调价比率(%)")
+    @NumberFormat("0.######")
     private BigDecimal adjustRatio;
 
     @ExcelProperty("调价差额")
+    @NumberFormat("0.00####")
     private BigDecimal adjustPrice;
+
+    @ExcelProperty("明细备注")
+    private String itemRemark;
 }

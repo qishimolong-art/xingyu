@@ -8,7 +8,6 @@ import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
@@ -807,7 +806,8 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         BigDecimal feeAmount = resolveFeeAmount(purchaseIn.getFeeAmount(), purchaseIn.getOtherPrice());
         purchaseIn.setFeeAmount(feeAmount);
         purchaseIn.setOtherPrice(feeAmount);
-        purchaseIn.setDiscountPrice(MoneyUtils.priceMultiplyPercent(purchaseIn.getTotalPrice(), purchaseIn.getDiscountPercent()));
+        purchaseIn.setDiscountPrice(ErpPurchaseDecimalUtils.multiplyPercent(
+                purchaseIn.getTotalPrice(), purchaseIn.getDiscountPercent()));
         purchaseIn.setTotalPrice(purchaseIn.getTotalPrice().subtract(purchaseIn.getDiscountPrice()).add(feeAmount));
     }
 
@@ -1127,7 +1127,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             }
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
-            item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+            item.setTotalPrice(ErpPurchaseDecimalUtils.multiply(item.getProductPrice(), item.getCount()));
         }));
     }
 
@@ -1432,6 +1432,9 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
 
         Set<Long> itemIds = convertSet(items, ErpPurchaseInItemDO::getId);
         Map<Long, BigDecimal> returnedMap = getApprovedReturnCountMapByInItemIds(itemIds);
+        // 可退额度需扣除待审核占用；已退数量仍保持已审核口径。
+        Map<Long, BigDecimal> usedMap = purchaseReturnItemMapper
+                .selectProcessingAndApprovedReturnedCountMapBySourceInItemIdsExcludeReturn(itemIds, null);
 
         Set<Long> productIds = convertSet(items, ErpPurchaseInItemDO::getProductId);
         Map<Long, ErpProductDO> productMap = convertMap(
@@ -1451,7 +1454,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             vo.setTaxPercent(item.getTaxPercent());
             BigDecimal returned = returnedMap.getOrDefault(item.getId(), BigDecimal.ZERO);
             vo.setReturnedCount(returned);
-            BigDecimal returnable = item.getCount().subtract(returned);
+            BigDecimal returnable = item.getCount().subtract(usedMap.getOrDefault(item.getId(), BigDecimal.ZERO));
             // 可退不能为负
             if (returnable.compareTo(BigDecimal.ZERO) < 0) {
                 returnable = BigDecimal.ZERO;

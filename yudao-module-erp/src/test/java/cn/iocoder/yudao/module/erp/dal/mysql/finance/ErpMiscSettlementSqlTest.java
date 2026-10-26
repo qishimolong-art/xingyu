@@ -182,9 +182,9 @@ class ErpMiscSettlementSqlTest {
     static Connection database(boolean receivable) throws Exception {
         Connection c = DriverManager.getConnection("jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE", "sa", "");
         String m = receivable ? "receivable" : "payable", d = receivable ? "receipt" : "payment", party = receivable ? "customer" : "supplier";
-        execute(c, "CREATE TABLE erp_" + m + "_misc (id BIGINT, tenant_id BIGINT, deleted INT DEFAULT 0, status INT DEFAULT 20, amount DECIMAL(18,2), source_type VARCHAR(100), source_id BIGINT, source_misc_id BIGINT, no VARCHAR(64), remark VARCHAR(255), file_url VARCHAR(255), " + party + "_id BIGINT DEFAULT 1, dept_id BIGINT DEFAULT 1, handler_id BIGINT DEFAULT 1, biz_time TIMESTAMP DEFAULT '2026-09-01 00:00:00')");
-        execute(c, "CREATE TABLE erp_finance_" + d + " (id BIGINT, tenant_id BIGINT, deleted INT DEFAULT 0, status INT DEFAULT 20, source_" + m + "_misc_id BIGINT, " + d + "_price DECIMAL(18,2), " + d + "_time TIMESTAMP DEFAULT '2026-09-03 00:00:00', dept_id BIGINT DEFAULT 1, finance_user_id BIGINT DEFAULT 1, no VARCHAR(64), account_id BIGINT, remark VARCHAR(255))");
-        execute(c, "CREATE TABLE erp_finance_" + d + "_item (id BIGINT, tenant_id BIGINT, deleted INT DEFAULT 0, " + d + "_id BIGINT, biz_type INT, biz_id BIGINT, " + d + "_price DECIMAL(18,2), write_off_status INT)");
+        execute(c, "CREATE TABLE erp_" + m + "_misc (id BIGINT, tenant_id BIGINT, deleted INT DEFAULT 0, status INT DEFAULT 20, amount DECIMAL(24,6), source_type VARCHAR(100), source_id BIGINT, source_misc_id BIGINT, no VARCHAR(64), remark VARCHAR(255), file_url VARCHAR(255), " + party + "_id BIGINT DEFAULT 1, dept_id BIGINT DEFAULT 1, handler_id BIGINT DEFAULT 1, biz_time TIMESTAMP DEFAULT '2026-09-01 00:00:00', approve_time TIMESTAMP DEFAULT '2026-09-01 00:00:00')");
+        execute(c, "CREATE TABLE erp_finance_" + d + " (id BIGINT, tenant_id BIGINT, deleted INT DEFAULT 0, status INT DEFAULT 20, source_" + m + "_misc_id BIGINT, " + d + "_price DECIMAL(24,6), " + d + "_time TIMESTAMP DEFAULT '2026-09-03 00:00:00', dept_id BIGINT DEFAULT 1, finance_user_id BIGINT DEFAULT 1, no VARCHAR(64), account_id BIGINT, remark VARCHAR(255), approve_time TIMESTAMP DEFAULT '2026-09-03 00:00:00')");
+        execute(c, "CREATE TABLE erp_finance_" + d + "_item (id BIGINT, tenant_id BIGINT, deleted INT DEFAULT 0, " + d + "_id BIGINT, biz_type INT, biz_id BIGINT, " + d + "_price DECIMAL(24,6), write_off_status INT)");
         return c;
     }
 

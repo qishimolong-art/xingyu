@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.Erp
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
@@ -40,6 +41,8 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -160,6 +163,18 @@ class ErpPayableOtherControllerTest extends BaseMockitoUnitTest {
         verify(payableOtherService).createPayableOther(captor.capture());
         assertEquals(1, result.getData().getSuccessCount());
         assertEquals(LocalDate.now(), captor.getValue().getBizTime());
+    }
+
+    @Test
+    void exportFields_includeExtendedFieldsAndApplyPermission() {
+        when(fieldPermissionMasker.getHiddenFields("erp_finance_payable_other"))
+                .thenReturn(Collections.singleton("fileUrl"));
+
+        CommonResult<List<ErpExportFieldRespVO>> result = controller.getExportFields();
+
+        assertTrue(result.getData().stream().anyMatch(item -> "outstandingAmount".equals(item.getField())));
+        assertTrue(result.getData().stream().anyMatch(item -> "auditorName".equals(item.getField())));
+        assertFalse(result.getData().stream().anyMatch(item -> "fileUrl".equals(item.getField())));
     }
 
     private MockMultipartFile excelFile(String[] headers, Object[] values) throws Exception {

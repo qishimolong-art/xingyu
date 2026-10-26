@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS erp_sale_return_current_cost_confirmation (
  request_hash CHAR(64) CHARACTER SET ascii NOT NULL,
  source_signature CHAR(64) CHARACTER SET ascii NOT NULL,
  stock_signature CHAR(64) CHARACTER SET ascii NOT NULL,
+ stock_basis LONGTEXT NULL COMMENT '下单确认冻结库存成本依据',
  evidence VARCHAR(500) NOT NULL,
  confirmed_by BIGINT NOT NULL,
  confirmed_at DATETIME(6) NOT NULL,

@@ -573,7 +573,7 @@ public class ErpStockMoveController {
         });
     }
 
-    private List<ErpStockMoveRespVO.Item> buildStockMoveItemVOList(List<ErpStockMoveItemDO> itemList,
+    public List<ErpStockMoveRespVO.Item> buildStockMoveItemVOList(List<ErpStockMoveItemDO> itemList,
                                                                   boolean includeStockCount) {
         if (CollUtil.isEmpty(itemList)) {
             return Collections.emptyList();

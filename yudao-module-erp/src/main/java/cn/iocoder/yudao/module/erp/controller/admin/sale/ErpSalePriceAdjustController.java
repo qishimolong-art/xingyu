@@ -18,6 +18,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleO
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustOrderImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
@@ -67,6 +69,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import javax.validation.Valid;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -193,6 +196,15 @@ public class ErpSalePriceAdjustController {
         return success(salePriceAdjustService.importSalePriceAdjustItems(list));
     }
 
+    @PostMapping("/import-order")
+    @Operation(summary = "导入销售调价整单")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:create')")
+    public CommonResult<ErpSaleImportResultRespVO> importSalePriceAdjustOrder(
+            @RequestParam("file") MultipartFile file) throws Exception {
+        return success(salePriceAdjustService.importSalePriceAdjustOrderList(
+                ExcelUtils.read(file, ErpSalePriceAdjustOrderImportExcelVO.class)));
+    }
+
     @GetMapping("/import-failure-details/download")
     @Operation(summary = "下载销售调价导入错误数据")
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:create')")
@@ -218,6 +230,29 @@ public class ErpSalePriceAdjustController {
                 ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
                         ErpFieldConfigModuleEnum.SALE_PRICE_ADJUST, ErpSalePriceAdjustImportExcelVO.class,
                         DETAIL_IMPORT_FIELD_ALIAS_MAP));
+    }
+
+    @GetMapping("/get-order-import-template")
+    @Operation(summary = "获取销售调价整单导入模板")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:create')")
+    public void getOrderImportTemplate(HttpServletResponse response) throws IOException {
+        ErpSalePriceAdjustOrderImportExcelVO first = new ErpSalePriceAdjustOrderImportExcelVO();
+        first.setImportNo("XSTJ-001");
+        first.setAdjustType(10);
+        first.setSettleMethod("挂账");
+        first.setDeliveryMethod("送货");
+        first.setRemark("整单备注");
+        first.setSaleOutNo("XSCK202610220001");
+        first.setProductCode("P000001");
+        first.setWarehouseName("默认仓");
+        first.setNewPrice(new BigDecimal("100.00"));
+        ErpSalePriceAdjustOrderImportExcelVO second = new ErpSalePriceAdjustOrderImportExcelVO();
+        second.setSaleOutNo("XSCK202610220001");
+        second.setProductCode("P000002");
+        second.setWarehouseName("默认仓");
+        second.setNewPrice(new BigDecimal("120.00"));
+        ExcelUtils.writeImportTemplate(response, "销售调价整单导入模板.xls", "销售调价整单",
+                ErpSalePriceAdjustOrderImportExcelVO.class, Arrays.asList(first, second), null, null);
     }
 
     @PutMapping("/update-status")
@@ -563,10 +598,8 @@ public class ErpSalePriceAdjustController {
         Map<Long, DeptRespDTO> deptMap = deptIds.isEmpty() ? new HashMap<>() : deptApi.getDeptMap(deptIds);
 
         // 2. 拼装
-        return BeanUtils.toBean(pageResult, ErpSalePriceAdjustRespVO.class, respVO -> {
+        PageResult<ErpSalePriceAdjustRespVO> result = BeanUtils.toBean(pageResult, ErpSalePriceAdjustRespVO.class, respVO -> {
             respVO.setItems(BeanUtils.toBean(itemMap.get(respVO.getId()), ErpSalePriceAdjustRespVO.Item.class));
-            fillItemWarehouseSnapshots(respVO.getItems());
-            itemPriceReferenceFiller.fill(respVO.getItems());
             MapUtils.findAndThen(customerMap, respVO.getCustomerId(), customer -> respVO.setCustomerName(customer.getName()));
             MapUtils.findAndThen(deptMap, respVO.getDeptId(), d -> respVO.setDeptName(d.getName()));
             if (respVO.getAdjustUserId() != null) {
@@ -588,6 +621,13 @@ public class ErpSalePriceAdjustController {
             }
             fillAdjustSummary(respVO, respVO.getItems());
         });
+        List<ErpSalePriceAdjustRespVO.Item> allItems = result.getList().stream()
+                .flatMap(respVO -> (respVO.getItems() == null
+                        ? Collections.<ErpSalePriceAdjustRespVO.Item>emptyList() : respVO.getItems()).stream())
+                .toList();
+        fillItemWarehouseSnapshots(allItems);
+        itemPriceReferenceFiller.fill(allItems);
+        return result;
     }
 
     private PageResult<ErpSalePriceAdjustRespVO> buildSalePriceAdjustVOPageResultWithoutItems(
@@ -722,6 +762,9 @@ public class ErpSalePriceAdjustController {
         row.setUnit(item.getUnit());
         row.setWeight(item.getWeight());
         row.setPackageQty(item.getPackageQty());
+        row.setWarehouseName(item.getWarehouseName());
+        row.setWarehouseDeptName(item.getWarehouseDeptName());
+        row.setLastSalePrice(item.getLastSalePrice());
         row.setBatchNo(item.getBatchNo());
         row.setOutCount(item.getOutCount());
         row.setOldPrice(item.getOldPrice());
@@ -785,7 +828,17 @@ public class ErpSalePriceAdjustController {
         map.put("status", "main");
         map.put("adjustDate", "main");
         map.put("adjustUserName", "main");
+        map.put("adjustType", "main");
+        map.put("deptName", "main");
+        map.put("settleMethod", "main");
+        map.put("deliveryMethod", "main");
+        map.put("logisticsCompany", "main");
+        map.put("totalOriginalPrice", "main");
+        map.put("totalAdjustedPrice", "main");
         map.put("totalAdjustPrice", "main");
+        map.put("receiptPrice", "main");
+        map.put("creatorName", "system");
+        map.put("createTime", "system");
         map.put("remark", "main");
         map.put("saleOutNo", "detail");
         map.put("partCode", "detail");
@@ -796,6 +849,9 @@ public class ErpSalePriceAdjustController {
         map.put("unit", "detail");
         map.put("weight", "detail");
         map.put("packageQty", "detail");
+        map.put("warehouseName", "detail");
+        map.put("warehouseDeptName", "detail");
+        map.put("lastSalePrice", "detail");
         map.put("batchNo", "detail");
         map.put("outCount", "detail");
         map.put("oldPrice", "detail");
@@ -810,6 +866,7 @@ public class ErpSalePriceAdjustController {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("customerName", "customerId");
         map.put("adjustUserName", "adjustUserId");
+        map.put("deptName", "deptId");
         map.put("saleOutNo", "item_saleOutNo");
         map.put("partCode", "item_partCode");
         map.put("partName", "item_partName");
@@ -819,6 +876,9 @@ public class ErpSalePriceAdjustController {
         map.put("unit", "item_unit");
         map.put("weight", "item_weight");
         map.put("packageQty", "item_packageQty");
+        map.put("warehouseName", "item_warehouseId");
+        map.put("warehouseDeptName", "item_deptId");
+        map.put("lastSalePrice", "item_lastSalePrice");
         map.put("batchNo", "item_batchNo");
         map.put("outCount", "item_outCount");
         map.put("oldPrice", "item_oldPrice");

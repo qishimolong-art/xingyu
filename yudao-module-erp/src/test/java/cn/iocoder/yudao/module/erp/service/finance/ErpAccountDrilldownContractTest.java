@@ -96,7 +96,8 @@ class ErpAccountDrilldownContractTest {
                 .thenReturn(Collections.singletonList(receivableRow));
         ErpReceivableAccountController receivableController = new ErpReceivableAccountController();
         ReflectionTestUtils.setField(receivableController, "receivableAccountService", receivableService);
-        assertCategorizedExport(receivableController, receivableReq, true, "-10000");
+        ReflectionTestUtils.setField(receivableController, "fieldPermissionMasker", emptyFieldPermissionMasker());
+        assertCategorizedExport(receivableController, receivableReq, true, "-10000.00");
 
         ErpPayableDetailRespVO payableRow = new ErpPayableDetailRespVO();
         payableRow.setDocType("其他应付");
@@ -109,7 +110,15 @@ class ErpAccountDrilldownContractTest {
         when(payableService.getPayableDrilldownList(payableReq)).thenReturn(Collections.singletonList(payableRow));
         ErpPayableAccountController payableController = new ErpPayableAccountController();
         ReflectionTestUtils.setField(payableController, "payableAccountService", payableService);
-        assertCategorizedExport(payableController, payableReq, false, "-200");
+        ReflectionTestUtils.setField(payableController, "fieldPermissionMasker", emptyFieldPermissionMasker());
+        assertCategorizedExport(payableController, payableReq, false, "-200.00");
+    }
+
+    private ErpFinanceFieldPermissionMasker emptyFieldPermissionMasker() {
+        ErpFinanceFieldPermissionMasker masker = mock(ErpFinanceFieldPermissionMasker.class);
+        when(masker.getHiddenFields(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(Collections.emptySet());
+        return masker;
     }
 
     private void assertCategorizedExport(Object controller, Object reqVO, boolean receivable,

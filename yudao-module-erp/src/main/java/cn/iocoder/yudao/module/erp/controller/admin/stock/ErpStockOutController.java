@@ -14,6 +14,10 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryOperationItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliveryItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickSourceDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockItemMatchReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockItemMatchRespVO;
@@ -23,6 +27,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImp
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutPickPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
@@ -31,10 +36,14 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutItemMapper;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockOutStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockImportService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutService;
@@ -73,6 +82,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.HashMap;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutExportRespVO;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -98,6 +110,8 @@ public class ErpStockOutController {
 
     @Resource
     private ErpStockOutService stockOutService;
+    @Resource
+    private ErpSalePickDeliveryService pickDeliveryService;
     @Resource
     private ErpImportExportRecordService importExportRecordService;
     @Resource
@@ -128,6 +142,13 @@ public class ErpStockOutController {
     @PreAuthorize("@ss.hasPermission('erp:stock-out:create')")
     public CommonResult<Long> createStockOut(@Valid @RequestBody ErpStockOutSaveReqVO createReqVO) {
         return success(stockOutService.createStockOut(createReqVO));
+    }
+
+    @PostMapping("/create-draft")
+    @Operation(summary = "保存其它出库草稿")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:create')")
+    public CommonResult<Long> createStockOutDraft(@Valid @RequestBody ErpStockOutSaveReqVO createReqVO) {
+        return success(stockOutService.createStockOutDraft(createReqVO));
     }
 
     @PutMapping("/update")
@@ -173,6 +194,22 @@ public class ErpStockOutController {
         return success(true);
     }
 
+    @PutMapping("/confirm")
+    @Operation(summary = "Confirm stock out and generate pick tasks")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:confirm')")
+    public CommonResult<Boolean> confirmStockOut(@RequestParam("id") Long id) {
+        stockOutService.confirmStockOut(id);
+        return success(true);
+    }
+
+    @PutMapping("/cancel-confirm")
+    @Operation(summary = "Cancel stock out confirmation")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:cancel-confirm')")
+    public CommonResult<Boolean> cancelConfirmStockOut(@RequestParam("id") Long id) {
+        stockOutService.cancelConfirmStockOut(id);
+        return success(true);
+    }
+
     @DeleteMapping("/delete")
     @Operation(summary = "Delete stock out")
     @Parameter(name = "ids", description = "ids", required = true)
@@ -200,6 +237,8 @@ public class ErpStockOutController {
         Set<Long> userIds = new HashSet<>();
         addUserId(userIds, stockOut.getCreator());
         addUserId(userIds, stockOut.getUpdater());
+        addUserId(userIds, stockOut.getConfirmUserId());
+        addUserId(userIds, stockOut.getApproveUserId());
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         DeptRespDTO dept = stockOut.getDeptId() == null ? null : deptApi.getDept(stockOut.getDeptId());
 
@@ -214,11 +253,51 @@ public class ErpStockOutController {
                 vo.setDeptName(dept.getName());
             }
             fillUserNames(vo, userMap);
+            fillWorkflowInfo(vo, pickDeliveryService.getSummaryMapByStockOutIds(
+                    Collections.singleton(id)).get(id));
         });
         fillSummary(respVO, stockOutItemMapper.selectSummaryMapByOutIds(Collections.singleton(id)).get(id));
         itemPriceReferenceFiller.fill(respVO.getItems());
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
+    }
+
+    @GetMapping("/pick-detail")
+    @Operation(summary = "获得其它出库拣货详情")
+    @Parameter(name = "id", description = "其它出库编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:query')")
+    public CommonResult<ErpSalePickSourceDetailRespVO> getStockOutPickDetail(@RequestParam("id") Long id) {
+        validateReadableStockOut(id);
+        return success(pickDeliveryService.getSourcePickDetail(
+                ErpSaleBizSourceTypeEnum.STOCK_OUT.getType(), id));
+    }
+
+    @GetMapping("/pick-item-page")
+    @Operation(summary = "获得其它出库累计拣货明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:query')")
+    public CommonResult<PageResult<ErpSalePickDeliveryItemRespVO>> getStockOutPickItemPage(
+            @Valid ErpStockOutPickPageReqVO pageReqVO) {
+        validateReadableStockOut(pageReqVO.getOutId());
+        return success(pickDeliveryService.getSourcePickItemPage(
+                ErpSaleBizSourceTypeEnum.STOCK_OUT.getType(), pageReqVO.getOutId(), pageReqVO));
+    }
+
+    @GetMapping("/pick-operation-item-page")
+    @Operation(summary = "获得其它出库分批拣货人员明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:query')")
+    public CommonResult<PageResult<ErpSaleOutPickDeliveryOperationItemRespVO>>
+    getStockOutPickOperationItemPage(@Valid ErpStockOutPickPageReqVO pageReqVO) {
+        validateReadableStockOut(pageReqVO.getOutId());
+        return success(pickDeliveryService.getSourcePickOperationItemPage(
+                ErpSaleBizSourceTypeEnum.STOCK_OUT.getType(), pageReqVO.getOutId(), pageReqVO));
+    }
+
+    private ErpStockOutDO validateReadableStockOut(Long id) {
+        ErpStockOutDO stockOut = stockOutService.getStockOut(id);
+        if (stockOut == null) {
+            throw exception(STOCK_OUT_NOT_EXISTS);
+        }
+        return stockOut;
     }
 
     @GetMapping("/item-page")
@@ -265,8 +344,12 @@ public class ErpStockOutController {
     @PreAuthorize("@ss.hasPermission('erp:stock-out:query')")
     public CommonResult<PageResult<ErpStockOutRespVO>> getStockOutPage(@Valid ErpStockOutPageReqVO pageReqVO) {
         PageResult<ErpStockOutDO> pageResult = stockOutService.getStockOutPage(pageReqVO);
-        return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
-                ? buildStockOutVOPageResultWithoutItems(pageResult) : buildStockOutVOPageResult(pageResult));
+        PageResult<ErpStockOutRespVO> result = Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                ? buildStockOutVOPageResultWithoutItems(pageResult) : buildStockOutVOPageResult(pageResult);
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, result.getList());
+        Set<String> hidden = otherExportHiddenFields();
+        result.getList().forEach(row -> ErpStockBillExportSupport.mask(row, hidden));
+        return success(result);
     }
 
     @GetMapping("/summary")
@@ -275,6 +358,7 @@ public class ErpStockOutController {
     public CommonResult<ErpStockDocumentSummaryRespVO> getStockOutSummary(@Valid ErpStockOutPageReqVO pageReqVO) {
         ErpStockDocumentSummaryRespVO summary = stockOutService.getStockOutSummary(pageReqVO);
         fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, summary);
+        ErpStockBillExportSupport.mask(summary, otherExportHiddenFields());
         return success(summary);
     }
 
@@ -304,15 +388,48 @@ public class ErpStockOutController {
     @PreAuthorize("@ss.hasPermission('erp:stock-out:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportStockOutExcel(@Valid ErpStockOutPageReqVO pageReqVO,
-                                    HttpServletResponse response) throws IOException {
-        pageReqVO.setPageNo(1);
-        pageReqVO.setPageSize(EXPORT_MAX_COUNT);
-        PageResult<ErpStockOutDO> pageResult = stockOutService.getStockOutPage(pageReqVO);
-        if (pageResult.getTotal() > EXPORT_MAX_COUNT) {
-            throw exception(EXPORT_COUNT_EXCEEDED);
-        }
-        List<ErpStockOutRespVO> list = buildStockOutVOPageResult(pageResult).getList();
-        ExcelUtils.write(response, "stock-out.xls", "data", ErpStockOutRespVO.class, list);
+            @RequestParam(value = "fields", required = false) String fields,
+            HttpServletResponse response) throws IOException {
+        ErpStockMovementExportSupport.write(response, "stock-out", fields,
+                ErpStockOutRespVO.class, ErpStockOutExportRespVO.class, otherExportHiddenFields(),
+                pageNo -> { pageReqVO.setPageNo(pageNo); pageReqVO.setPageSize(100); pageReqVO.setIncludeItems(false); return stockOutService.getStockOutPage(pageReqVO); },
+                page -> buildStockOutVOPageResultWithoutItems(page).getList(),
+                (ids, pageNo) -> stockOutItemMapper.selectExportPageByOutIds(ids, pageNo).getList(),
+                ErpStockOutItemDO::getOutId,
+                batch -> buildOtherExportItems(batch));
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "Get other stock out export fields")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getStockOutExportFields() {
+        return success(ErpStockMovementExportSupport.fields(ErpStockOutExportRespVO.class, otherExportHiddenFields()));
+    }
+
+    private Set<String> otherExportHiddenFields() {
+        return ErpOtherStockExportSupport.hidden(ErpStockOutExportRespVO.class,
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE));
+    }
+
+    private List<ErpOtherStockExportSupport.Item> buildOtherExportItems(List<ErpStockOutItemDO> batch) {
+        Map<Long, ErpWarehouseDO> warehouses = warehouseService.getWarehouseMap(convertSet(batch, ErpStockOutItemDO::getWarehouseId));
+        Map<Long, DeptRespDTO> departments = deptApi.getDeptMap(convertSet(warehouses.values(), ErpWarehouseDO::getDeptId));
+        Map<Long, ErpProductRespVO> products = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(convertSet(batch, ErpStockOutItemDO::getProductId)));
+        return convertList(batch, item -> {
+            ErpOtherStockExportSupport.Item display = BeanUtils.toBean(item, ErpOtherStockExportSupport.Item.class);
+            ErpProductRespVO product = products.get(item.getProductId());
+            if (product != null) display.setProductCode(product.getCode()).setProductName(product.getName())
+                    .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                    .setFactoryCode(product.getFactoryCode()).setDrawingNo(product.getDrawingNo()).setBrand(product.getBrand())
+                    .setVehicleModel(product.getVehicleModel()).setOriginPlace(product.getOriginPlace()).setShelf(product.getShelf());
+            ErpWarehouseDO warehouse = warehouses.get(item.getWarehouseId());
+            if (warehouse != null) {
+                display.setWarehouseName(warehouse.getName());
+                DeptRespDTO department = departments.get(warehouse.getDeptId());
+                if (department != null) display.setWarehouseDeptName(department.getName());
+            }
+            return display;
+        });
     }
 
     @GetMapping("/get-import-template")
@@ -372,8 +489,12 @@ public class ErpStockOutController {
         pageResult.getList().forEach(stockOut -> {
             addUserId(userIds, stockOut.getCreator());
             addUserId(userIds, stockOut.getUpdater());
+            addUserId(userIds, stockOut.getConfirmUserId());
+            addUserId(userIds, stockOut.getApproveUserId());
         });
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        Map<Long, ErpSalePickDeliverySummaryRespVO> pickSummaryMap = pickDeliveryService.getSummaryMapByStockOutIds(
+                convertSet(pageResult.getList(), ErpStockOutDO::getId));
 
         return BeanUtils.toBean(pageResult, ErpStockOutRespVO.class, vo -> {
             vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpStockOutRespVO.Item.class,
@@ -384,6 +505,7 @@ public class ErpStockOutController {
             MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             fillUserNames(vo, userMap);
+            fillWorkflowInfo(vo, pickSummaryMap.get(vo.getId()));
         });
     }
 
@@ -400,13 +522,18 @@ public class ErpStockOutController {
         pageResult.getList().forEach(stockOut -> {
             addUserId(userIds, stockOut.getCreator());
             addUserId(userIds, stockOut.getUpdater());
+            addUserId(userIds, stockOut.getConfirmUserId());
+            addUserId(userIds, stockOut.getApproveUserId());
         });
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        Map<Long, ErpSalePickDeliverySummaryRespVO> pickSummaryMap = pickDeliveryService.getSummaryMapByStockOutIds(
+                convertSet(pageResult.getList(), ErpStockOutDO::getId));
         return BeanUtils.toBean(pageResult, ErpStockOutRespVO.class, vo -> {
             fillSummary(vo, summaryMap.get(vo.getId()));
             MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             fillUserNames(vo, userMap);
+            fillWorkflowInfo(vo, pickSummaryMap.get(vo.getId()));
         });
     }
 
@@ -499,12 +626,36 @@ public class ErpStockOutController {
         if (updaterId != null) {
             MapUtils.findAndThen(userMap, updaterId, user -> stockOut.setUpdaterName(user.getNickname()));
         }
+        MapUtils.findAndThen(userMap, stockOut.getConfirmUserId(),
+                user -> stockOut.setConfirmUserName(user.getNickname()));
+        MapUtils.findAndThen(userMap, stockOut.getApproveUserId(),
+                user -> stockOut.setApproveUserName(user.getNickname()));
+    }
+
+    private void fillWorkflowInfo(ErpStockOutRespVO stockOut, ErpSalePickDeliverySummaryRespVO summary) {
+        stockOut.setStatusName(ErpStockOutStatusEnum.getNameByStatus(stockOut.getStatus()));
+        if (summary == null) {
+            return;
+        }
+        stockOut.setPickStatus(summary.getPickStatus())
+                .setPickStatusName(Arrays.stream(ErpSalePickStatusEnum.values())
+                        .filter(value -> value.getStatus().equals(summary.getPickStatus()))
+                        .map(ErpSalePickStatusEnum::getName).findFirst().orElse(null))
+                .setPickTotalItemCount(summary.getTotalItemCount())
+                .setPickedItemCount(summary.getPickedItemCount())
+                .setPickProgress(summary.getPickProgress());
     }
 
     private void addUserId(Set<Long> userIds, String userId) {
         Long parsed = parseUserId(userId);
         if (parsed != null) {
             userIds.add(parsed);
+        }
+    }
+
+    private void addUserId(Set<Long> userIds, Long userId) {
+        if (userId != null) {
+            userIds.add(userId);
         }
     }
 

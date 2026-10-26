@@ -10,6 +10,6 @@ public class ErpSalePickDeliverySubmitItemReqVO {
     private Long itemId;
     @NotNull
     @DecimalMin(value = "0", inclusive = false)
-    @Digits(integer = 18, fraction = 0, message = "本次数量必须为整数，最多18位")
+    @Digits(integer = 18, fraction = 6, message = "本次数量最多18位整数、6位小数")
     private BigDecimal quantity;
 }

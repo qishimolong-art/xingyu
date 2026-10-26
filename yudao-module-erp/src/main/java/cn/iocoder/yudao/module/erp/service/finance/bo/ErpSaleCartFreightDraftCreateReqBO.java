@@ -5,6 +5,7 @@ import lombok.experimental.Accessors;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
  * 销售手推车运费财务草稿创建参数。
@@ -16,6 +17,7 @@ public class ErpSaleCartFreightDraftCreateReqBO {
     private Long cartId;
     private String cartNo;
     private LocalDate bizTime;
+    private LocalDateTime approveTime;
     private Long customerId;
     private String settleMethod;
     private Long accountId;

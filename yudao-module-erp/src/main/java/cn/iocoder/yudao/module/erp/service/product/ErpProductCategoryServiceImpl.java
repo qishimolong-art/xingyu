@@ -281,14 +281,32 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
     }
 
     @Override
+    public cn.iocoder.yudao.framework.common.pojo.PageResult<ErpProductCategoryDO> getProductCategoryPage(
+            ErpProductCategoryListReqVO pageReqVO) {
+        cn.iocoder.yudao.framework.common.pojo.PageResult<ErpProductCategoryDO> pageResult =
+                erpProductCategoryMapper.selectPage(pageReqVO);
+        List<ErpProductCategoryDO> list = pageResult.getList().stream()
+                .map(this::applyProductCategoryFieldPermissions)
+                .collect(java.util.stream.Collectors.toList());
+        return new cn.iocoder.yudao.framework.common.pojo.PageResult<>(list, pageResult.getTotal());
+    }
+
+    @Override
     public List<ErpProductCategoryDO> getProductCategoryList(Collection<Long> ids) {
         return erpProductCategoryMapper.selectByIds(ids);
     }
 
     @Override
     public ErpProductCategoryImportRespVO importProductCategoryList(List<ErpProductCategoryImportExcelVO> list) {
+        return importProductCategoryList(list, ErpSimpleArchiveImportProgressListener.NOOP);
+    }
+
+    @Override
+    public ErpProductCategoryImportRespVO importProductCategoryList(List<ErpProductCategoryImportExcelVO> list,
+                                                                    ErpSimpleArchiveImportProgressListener listener) {
         ErpProductCategoryImportRespVO result = new ErpProductCategoryImportRespVO();
         if (CollUtil.isEmpty(list)) {
+            listener.onFinalizing(0, 0, 0, 0, 0);
             return result;
         }
         Map<String, ErpProductCategoryDO> categoryMap = buildCategoryCodeMap();
@@ -308,8 +326,13 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
                 result.setFailureCount(result.getFailureCount() + 1);
                 result.getFailureDetails().add(new ErpProductCategoryImportRespVO.FailureItem(
                         rowNo, row == null ? null : row.getCode(), ex.getMessage()));
+            } finally {
+                listener.onRowsProgress(i + 1, list.size(), result.getSuccessCount(), result.getCreateCount(),
+                        result.getUpdateCount(), result.getFailureCount());
             }
         }
+        listener.onFinalizing(list.size(), result.getSuccessCount(), result.getCreateCount(),
+                result.getUpdateCount(), result.getFailureCount());
         return result;
     }
 

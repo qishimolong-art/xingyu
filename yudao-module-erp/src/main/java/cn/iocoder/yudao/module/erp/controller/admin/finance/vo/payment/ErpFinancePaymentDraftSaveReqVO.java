@@ -37,12 +37,15 @@ public class ErpFinancePaymentDraftSaveReqVO {
     private String sourcePayableMiscNo;
 
     @Schema(description = "优惠金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal discountPrice;
 
     @Schema(description = "合计付款")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal totalPrice;
 
     @Schema(description = "实际付款")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal paymentPrice;
 
     @Schema(description = "凭证号（供应商收款编号等业务侧手工凭据）")

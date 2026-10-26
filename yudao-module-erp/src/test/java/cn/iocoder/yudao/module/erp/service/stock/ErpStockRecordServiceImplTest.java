@@ -101,12 +101,12 @@ public class ErpStockRecordServiceImplTest extends BaseMockitoUnitTest {
 
         ErpStockRecordSummaryVO summary = stockRecordService.getStockRecordSummary(new ErpStockRecordPageReqVO());
 
-        assertEquals(new BigDecimal("4"), summary.getTotalInCount());
-        assertEquals(new BigDecimal("10.00"), summary.getTotalInAmount());
-        assertEquals(new BigDecimal("3"), summary.getTotalOutCount());
-        assertEquals(new BigDecimal("15.00"), summary.getTotalOutAmount());
-        assertEquals(new BigDecimal("14"), summary.getBalanceCount());
-        assertEquals(new BigDecimal("140.00"), summary.getBalanceAmount());
+        assertDecimalEquals(new BigDecimal("4"), summary.getTotalInCount());
+        assertDecimalEquals(new BigDecimal("10.00"), summary.getTotalInAmount());
+        assertDecimalEquals(new BigDecimal("3"), summary.getTotalOutCount());
+        assertDecimalEquals(new BigDecimal("15.00"), summary.getTotalOutAmount());
+        assertDecimalEquals(new BigDecimal("14"), summary.getBalanceCount());
+        assertDecimalEquals(new BigDecimal("140.00"), summary.getBalanceAmount());
         assertEquals(2L, summary.getRecordCount());
     }
 
@@ -127,7 +127,7 @@ public class ErpStockRecordServiceImplTest extends BaseMockitoUnitTest {
 
         ErpStockRecordSummaryVO summary = stockRecordService.getStockRecordSummary(new ErpStockRecordPageReqVO());
 
-        assertEquals(new BigDecimal("10.00"), summary.getTotalInAmount());
+        assertDecimalEquals(new BigDecimal("10.00"), summary.getTotalInAmount());
         assertEquals(1L, summary.getRecordCount());
     }
 
@@ -149,8 +149,8 @@ public class ErpStockRecordServiceImplTest extends BaseMockitoUnitTest {
         PageResult<ErpStockRecordDO> page = stockRecordService.getStockRecordPage(new ErpStockRecordPageReqVO());
         ErpStockRecordDO row = page.getList().get(0);
 
-        assertEquals(new BigDecimal("12.00"), row.getUnitPrice());
-        assertEquals(new BigDecimal("-36.00"), row.getTotalPrice());
+        assertDecimalEquals(new BigDecimal("12.00"), row.getUnitPrice());
+        assertDecimalEquals(new BigDecimal("-36.00"), row.getTotalPrice());
     }
 
     @Test
@@ -203,15 +203,15 @@ public class ErpStockRecordServiceImplTest extends BaseMockitoUnitTest {
 
         PageResult<ErpStockRecordDO> page = stockRecordService.getStockRecordPage(reqVO);
 
-        assertEquals(new BigDecimal("8"), page.getList().get(0).getTotalCount());
-        assertEquals(new BigDecimal("16"), page.getList().get(0).getCostAmount());
-        assertEquals(new BigDecimal("6"), page.getList().get(1).getTotalCount());
-        assertEquals(new BigDecimal("12"), page.getList().get(1).getCostAmount());
+        assertDecimalEquals(new BigDecimal("8"), page.getList().get(0).getTotalCount());
+        assertDecimalEquals(new BigDecimal("16"), page.getList().get(0).getCostAmount());
+        assertDecimalEquals(new BigDecimal("6"), page.getList().get(1).getTotalCount());
+        assertDecimalEquals(new BigDecimal("12"), page.getList().get(1).getCostAmount());
         verify(stockRecordMapper).selectBatchRunningBalanceRecords(10L, 20L, " B-001 ", null);
 
         ErpStockRecordSummaryVO summary = stockRecordService.getStockRecordSummary(reqVO);
-        assertEquals(new BigDecimal("8"), summary.getBalanceCount());
-        assertEquals(new BigDecimal("16"), summary.getBalanceAmount());
+        assertDecimalEquals(new BigDecimal("8"), summary.getBalanceCount());
+        assertDecimalEquals(new BigDecimal("16"), summary.getBalanceAmount());
     }
 
     @Test
@@ -222,15 +222,15 @@ public class ErpStockRecordServiceImplTest extends BaseMockitoUnitTest {
 
         ErpStockRecordSummaryVO summary = stockRecordService.getStockRecordSummary(reqVO);
 
-        assertEquals(BigDecimal.ZERO, summary.getTotalInAmount());
-        assertEquals(BigDecimal.ZERO, summary.getTotalOutAmount());
+        assertDecimalEquals(BigDecimal.ZERO, summary.getTotalInAmount());
+        assertDecimalEquals(BigDecimal.ZERO, summary.getTotalOutAmount());
         assertEquals(0L, summary.getRecordCount());
     }
 
     @Test
     public void testCreateStockRecord_fillsDeptIdFromStock() {
-        when(stockService.updateStockCountAndCost(eq(10L), eq(20L), eq(new BigDecimal("-1")),
-                eq(new BigDecimal("10")), eq(ErpStockRecordBizTypeEnum.PURCHASE_RETURN.getType())))
+        when(stockService.updateStockCountAndCost(eq(10L), eq(20L), decimalEq(new BigDecimal("-1")),
+                decimalEq(new BigDecimal("10")), eq(ErpStockRecordBizTypeEnum.PURCHASE_RETURN.getType())))
                 .thenReturn(new ErpStockService.StockUpdateResult(
                         new BigDecimal("9"), new BigDecimal("12.555556"), new BigDecimal("113")));
         when(stockService.getStock(10L, 20L)).thenReturn(new ErpStockDO().setDeptId(30L));
@@ -246,13 +246,13 @@ public class ErpStockRecordServiceImplTest extends BaseMockitoUnitTest {
         ErpStockRecordDO record = captor.getValue();
         assertEquals("B-001", record.getBatchNo());
         assertEquals(30L, record.getDeptId());
-        assertEquals(new BigDecimal("113"), record.getCostAmount());
+        assertDecimalEquals(new BigDecimal("113"), record.getCostAmount());
     }
 
     @Test
     public void testCreateStockRecord_fillsDeptIdFromWarehouseWhenStockDeptMissing() {
-        when(stockService.updateStockCountAndCost(eq(10L), eq(20L), eq(new BigDecimal("2")),
-                eq(new BigDecimal("10")), eq(ErpStockRecordBizTypeEnum.PURCHASE_IN.getType())))
+        when(stockService.updateStockCountAndCost(eq(10L), eq(20L), decimalEq(new BigDecimal("2")),
+                decimalEq(new BigDecimal("10")), eq(ErpStockRecordBizTypeEnum.PURCHASE_IN.getType())))
                 .thenReturn(new ErpStockService.StockUpdateResult(
                         new BigDecimal("12"), new BigDecimal("11.916667"), new BigDecimal("143")));
         when(stockService.getStock(10L, 20L)).thenReturn(new ErpStockDO().setDeptId(null));
@@ -268,7 +268,15 @@ public class ErpStockRecordServiceImplTest extends BaseMockitoUnitTest {
         verify(stockRecordMapper).insert(captor.capture());
         ErpStockRecordDO record = captor.getValue();
         assertEquals(40L, record.getDeptId());
-        assertEquals(new BigDecimal("143"), record.getCostAmount());
+        assertDecimalEquals(new BigDecimal("143"), record.getCostAmount());
+    }
+
+    private static void assertDecimalEquals(BigDecimal expected, BigDecimal actual) {
+        org.junit.jupiter.api.Assertions.assertNotNull(actual);
+        org.junit.jupiter.api.Assertions.assertEquals(0, expected.compareTo(actual));
+    }
+    private static BigDecimal decimalEq(BigDecimal expected) {
+        return org.mockito.ArgumentMatchers.argThat(actual -> actual != null && expected.compareTo(actual) == 0);
     }
 
 }

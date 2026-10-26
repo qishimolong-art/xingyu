@@ -180,6 +180,9 @@ public class ErpImportExportRecordAspect {
         }
         String methodName = method.getName().toLowerCase(Locale.ROOT);
         String normalizedPath = normalizePath(getMethodPath(method));
+        if (normalizedPath.contains("import-task")) {
+            return false;
+        }
         return methodName.contains("import") || normalizedPath.contains("import");
     }
 

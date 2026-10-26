@@ -12,6 +12,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentDraftSaveReqVO;
@@ -39,6 +40,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
@@ -70,6 +72,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -87,6 +90,14 @@ import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.Er
 @RequestMapping("/erp/finance-payment")
 @Validated
 public class ErpFinancePaymentController {
+
+    private static final String FIELD_PERMISSION_MODULE = "erp_finance_payment";
+    private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
+    private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
+    private static final Set<String> LEGACY_EXPORT_FIELDS = new LinkedHashSet<>(Arrays.asList(
+            "no", "status", "paymentTime", "financeUserName", "supplierName", "accountName", "totalPrice",
+            "discountPrice", "paymentPrice", "paymentVoucherNo", "voucherNo", "remark", "creatorName", "createTime",
+            "bizTypeName", "bizNo", "itemTotalPrice", "itemPaidPrice", "itemPaymentPrice", "itemRemark"));
 
     public static final Set<String> PAYMENT_IMPORT_TEMPLATE_FIELDS = Collections.unmodifiableSet(new LinkedHashSet<>(
             Arrays.asList("financeUserName", "deptName", "supplierName", "accountName",
@@ -360,6 +371,7 @@ public class ErpFinancePaymentController {
     @PreAuthorize("@ss.hasPermission('erp:finance-payment:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportFinancePaymentExcel(@Valid ErpFinancePaymentPageReqVO pageReqVO,
+                                          @RequestParam(value = "fields", required = false) String fields,
                                           HttpServletResponse response) throws IOException {
         clearHiddenVoucherFilters(pageReqVO);
         List<ErpFinancePaymentDO> exportList = getFinancePaymentExportList(pageReqVO);
@@ -374,9 +386,24 @@ public class ErpFinancePaymentController {
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(exportList,
                 payment -> Stream.of(NumberUtils.parseLong(payment.getCreator()), payment.getFinanceUserId())));
         Map<Long, String> voucherNoMap = getVoucherNoMap(convertSet(exportList, ErpFinancePaymentDO::getId));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(exportList, ErpFinancePaymentDO::getDeptId));
+        Set<String> requestedFields = fields == null || fields.trim().isEmpty()
+                ? LEGACY_EXPORT_FIELDS : ErpExportFieldUtils.parseFieldParam(fields);
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpFinancePaymentExportRespVO.class,
+                requestedFields, permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE),
+                EXPORT_FIELD_PERMISSION_MAP);
         ExcelUtils.write(response, "付款单.xls", "数据", ErpFinancePaymentExportRespVO.class,
                 buildFinancePaymentExportList(exportList, financePaymentItemMap, supplierMap, accountMap, userMap,
-                        voucherNoMap));
+                        voucherNoMap, deptMap), includeFields);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得付款单导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:finance-payment:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getFinancePaymentExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpFinancePaymentExportRespVO.class,
+                EXPORT_FIELD_GROUP_MAP, permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE),
+                EXPORT_FIELD_PERMISSION_MAP));
     }
 
     @GetMapping("/get-import-template")
@@ -656,6 +683,9 @@ public class ErpFinancePaymentController {
     }
 
     private List<ErpFinancePaymentDO> getFinancePaymentExportList(ErpFinancePaymentPageReqVO pageReqVO) {
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            return financePaymentService.getFinancePaymentList(pageReqVO.getIds());
+        }
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         return financePaymentService.getFinancePaymentPage(pageReqVO).getList();
     }
@@ -665,18 +695,24 @@ public class ErpFinancePaymentController {
                                                                               Map<Long, ErpSupplierDO> supplierMap,
                                                                               Map<Long, ErpAccountDO> accountMap,
                                                                               Map<Long, AdminUserRespDTO> userMap,
-                                                                              Map<Long, String> voucherNoMap) {
+                                                                              Map<Long, String> voucherNoMap,
+                                                                              Map<Long, DeptRespDTO> deptMap) {
         List<ErpFinancePaymentExportRespVO> rows = new ArrayList<>();
         for (ErpFinancePaymentDO payment : list) {
             List<ErpFinancePaymentItemDO> items = financePaymentItemMap.getOrDefault(payment.getId(), Collections.emptyList());
+            BigDecimal allocatedPrice = items.stream()
+                    .filter(item -> ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus().equals(item.getWriteOffStatus()))
+                    .map(ErpFinancePaymentItemDO::getPaymentPrice)
+                    .filter(java.util.Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
             if (CollUtil.isEmpty(items)) {
                 rows.add(buildFinancePaymentExportRow(payment, null, true, supplierMap, accountMap, userMap,
-                        voucherNoMap));
+                        voucherNoMap, deptMap, allocatedPrice));
                 continue;
             }
             for (int i = 0; i < items.size(); i++) {
                 rows.add(buildFinancePaymentExportRow(payment, items.get(i), i == 0, supplierMap, accountMap, userMap,
-                        voucherNoMap));
+                        voucherNoMap, deptMap, allocatedPrice));
             }
         }
         return rows;
@@ -688,16 +724,28 @@ public class ErpFinancePaymentController {
                                                                        Map<Long, ErpSupplierDO> supplierMap,
                                                                        Map<Long, ErpAccountDO> accountMap,
                                                                        Map<Long, AdminUserRespDTO> userMap,
-                                                                       Map<Long, String> voucherNoMap) {
+                                                                       Map<Long, String> voucherNoMap,
+                                                                       Map<Long, DeptRespDTO> deptMap,
+                                                                       BigDecimal allocatedPrice) {
         ErpFinancePaymentExportRespVO row = fillMainFields
                 ? BeanUtils.toBean(payment, ErpFinancePaymentExportRespVO.class)
                 : new ErpFinancePaymentExportRespVO();
         if (fillMainFields) {
-            MapUtils.findAndThen(supplierMap, payment.getSupplierId(), supplier -> row.setSupplierName(supplier.getName()));
-            MapUtils.findAndThen(accountMap, payment.getAccountId(), account -> row.setAccountName(account.getName()));
+            MapUtils.findAndThen(supplierMap, payment.getSupplierId(), supplier -> {
+                row.setSupplierName(supplier.getName());
+                row.setSettleMethod(supplier.getSettleMethod());
+            });
+            MapUtils.findAndThen(accountMap, payment.getAccountId(), account -> {
+                row.setAccountName(account.getName());
+                row.setBankName(account.getBankName());
+            });
+            MapUtils.findAndThen(deptMap, payment.getDeptId(), dept -> row.setDeptName(dept.getName()));
             MapUtils.findAndThen(userMap, payment.getFinanceUserId(), user -> row.setFinanceUserName(user.getNickname()));
             MapUtils.findAndThen(userMap, parseUserId(payment.getCreator()), user -> row.setCreatorName(user.getNickname()));
             row.setVoucherNo(voucherNoMap.get(payment.getId()));
+            row.setAllocatedPrice(allocatedPrice);
+            row.setUnallocatedPrice((payment.getTotalPrice() == null ? BigDecimal.ZERO : payment.getTotalPrice())
+                    .subtract(allocatedPrice));
             if (fieldPermissionMasker.isFieldHidden("erp_finance_payment", "paymentVoucherNo")) {
                 row.setPaymentVoucherNo(null);
             }
@@ -710,8 +758,40 @@ public class ErpFinancePaymentController {
         row.setItemTotalPrice(item.getTotalPrice());
         row.setItemPaidPrice(item.getPaidPrice());
         row.setItemPaymentPrice(item.getPaymentPrice());
+        row.setItemWriteOffStatus(item.getWriteOffStatus());
+        row.setItemWriteOffTime(item.getWriteOffTime());
+        row.setItemReverseReason(item.getReverseReason());
         row.setItemRemark(item.getRemark());
         return row;
+    }
+
+    private static Map<String, String> buildExportFieldGroupMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        for (String field : Arrays.asList("no", "status", "paymentTime", "financeUserName", "supplierName",
+                "accountName", "deptName", "settleMethod", "bankName", "sourcePayableMiscNo", "totalPrice",
+                "discountPrice", "paymentPrice", "allocatedPrice", "unallocatedPrice", "paymentVoucherNo",
+                "voucherNo", "remark")) map.put(field, "main");
+        for (String field : Arrays.asList("creatorName", "createTime", "approveTime")) map.put(field, "system");
+        for (String field : Arrays.asList("bizTypeName", "bizNo", "itemTotalPrice", "itemPaidPrice",
+                "itemPaymentPrice", "itemWriteOffStatus", "itemWriteOffTime", "itemReverseReason", "itemRemark"))
+            map.put(field, "detail");
+        return map;
+    }
+
+    private static Map<String, String> buildExportFieldPermissionMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("supplierName", "supplierId");
+        map.put("deptName", "deptId");
+        map.put("accountName", "accountId");
+        map.put("bankName", "accountId");
+        map.put("financeUserName", "financeUserId");
+        map.put("bizTypeName", "item_bizType");
+        map.put("bizNo", "item_bizNo");
+        map.put("itemTotalPrice", "item_totalPrice");
+        map.put("itemPaidPrice", "item_paidPrice");
+        map.put("itemPaymentPrice", "item_paymentPrice");
+        map.put("itemRemark", "item_remark");
+        return map;
     }
 
     private String getBizTypeName(Integer bizType) {

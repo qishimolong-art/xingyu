@@ -58,16 +58,19 @@ public class ErpStockOutSaveReqVO {
         private Integer packageQty;
 
         @Schema(description = "单重", example = "1.25")
-        private BigDecimal weight;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal weight;
 
         @Schema(description = "总重", example = "125.00")
         private BigDecimal totalWeight;
 
         @Schema(description = "产品单价", example = "100.00")
-        private BigDecimal productPrice;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal productPrice;
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        private BigDecimal count;
+        @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
+    private BigDecimal count;
 
         @Schema(description = "备注", example = "随便")
         private String remark;

@@ -285,6 +285,10 @@ yudao:
   security:
     mock-enable: true
   erp:
+    sale-pick-wecom-notification:
+      enabled: true # 按仓库拣货员手机号发送企微卡片
+      client-key: sale-pick
+      entry-url: http://erp.scxyltd.com/wecom-login.html
     vin:
       endpoint: ${ERP_VIN_ENDPOINT:https://slyvinstd.market.alicloudapi.com/vin/query}
       app-key: ${ERP_VIN_APP_KEY:205043684}

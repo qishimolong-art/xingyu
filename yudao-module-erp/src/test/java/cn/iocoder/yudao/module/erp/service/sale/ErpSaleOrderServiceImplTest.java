@@ -69,6 +69,8 @@ public class ErpSaleOrderServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Mock
+    private ErpSaleDirectDeptPermissionService saleDirectDeptPermissionService;
+    @Mock
     private ErpOperateLogService operateLogService;
 
     @BeforeEach

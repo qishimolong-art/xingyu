@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
@@ -38,6 +39,7 @@ public interface ErpStockInMapper extends BaseMapperX<ErpStockInDO> {
 
     static MPJLambdaWrapperX<ErpStockInDO> buildQuery(ErpStockInPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpStockInDO> query = new MPJLambdaWrapperX<ErpStockInDO>()
+                .inIfPresent(ErpStockInDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpStockInDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpStockInDO::getSupplierId, reqVO.getSupplierId())
                 .betweenIfPresent(ErpStockInDO::getInTime, reqVO.getInTime())
@@ -45,6 +47,12 @@ public interface ErpStockInMapper extends BaseMapperX<ErpStockInDO> {
                 .eqIfPresent(ErpStockInDO::getDeptId, reqVO.getDeptId())
                 .likeIfPresent(ErpStockInDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpStockInDO::getCreator, reqVO.getCreator());
+        if (reqVO.getPickStatus() != null) {
+            query.apply("EXISTS (SELECT 1 FROM erp_sale_pick_delivery_order pdo "
+                            + "WHERE pdo.source_type = {0} AND pdo.source_id = t.id "
+                            + "AND pdo.pick_status = {1} AND pdo.deleted = b'0')",
+                    ErpSaleBizSourceTypeEnum.STOCK_IN.getType(), reqVO.getPickStatus());
+        }
         ErpKeywordQuery.appendProductItemFilter(query, "erp_stock_in_item", "in_id",
                 reqVO.getProductId(), reqVO.getWarehouseId(), null, null,
                 reqVO.getProductKeyword(), true);
@@ -76,6 +84,17 @@ public interface ErpStockInMapper extends BaseMapperX<ErpStockInDO> {
     default int updateByIdAndStatus(Long id, Integer status, ErpStockInDO updateObj) {
         return update(updateObj, new LambdaUpdateWrapper<ErpStockInDO>()
                 .eq(ErpStockInDO::getId, id).eq(ErpStockInDO::getStatus, status));
+    }
+
+    default ErpStockInDO selectByIdForUpdate(Long id) {
+        return selectOne(new MPJLambdaWrapperX<ErpStockInDO>()
+                .eq(ErpStockInDO::getId, id).last("FOR UPDATE"));
+    }
+
+    default int cancelConfirmByIdAndStatus(Long id, Integer status, Integer targetStatus) {
+        return update(new ErpStockInDO().setStatus(targetStatus), new LambdaUpdateWrapper<ErpStockInDO>()
+                .eq(ErpStockInDO::getId, id).eq(ErpStockInDO::getStatus, status)
+                .set(ErpStockInDO::getConfirmUserId, null).set(ErpStockInDO::getConfirmTime, null));
     }
 
     default ErpStockInDO selectByNo(String no) {

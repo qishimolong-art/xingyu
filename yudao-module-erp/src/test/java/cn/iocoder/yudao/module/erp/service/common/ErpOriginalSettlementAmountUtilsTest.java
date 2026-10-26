@@ -105,7 +105,7 @@ class ErpOriginalSettlementAmountUtilsTest {
     }
 
     @Test
-    void calculateSaleOut_roundsEachLineAndDiscountLikeDocumentCalculation() {
+    void calculateSaleOut_keepsSixDecimalLineAndDiscountPrecision() {
         ErpSaleOutDO saleOut = ErpSaleOutDO.builder()
                 .totalPrice(BigDecimal.ZERO).discountPercent(new BigDecimal("10")).build();
         ErpSaleOutItemDO item = ErpSaleOutItemDO.builder()
@@ -117,7 +117,7 @@ class ErpOriginalSettlementAmountUtilsTest {
         BigDecimal result = ErpOriginalSettlementAmountUtils.calculateSaleOut(
                 saleOut, Collections.singletonList(item));
 
-        assertThat(result).isEqualByComparingTo("0.91");
+        assertThat(result).isEqualByComparingTo("0.9045");
     }
 
     @Test
@@ -141,6 +141,28 @@ class ErpOriginalSettlementAmountUtilsTest {
                 .isEqualByComparingTo("200.00");
         assertThat(ErpOriginalSettlementAmountUtils.calculateSaleOut(saleOut, (BigDecimal) null))
                 .isEqualByComparingTo("90.00");
+    }
+
+    @Test
+    void calculateSaleOutSettlementStatus_usesUnreceivedAmountAtFinancialPrecision() {
+        assertThat(ErpOriginalSettlementAmountUtils.calculateSaleOutSettlementStatus(
+                new BigDecimal("700.00"), BigDecimal.ZERO)).isEqualTo(0);
+        assertThat(ErpOriginalSettlementAmountUtils.calculateSaleOutSettlementStatus(
+                new BigDecimal("700.00"), new BigDecimal("300"))).isEqualTo(1);
+        assertThat(ErpOriginalSettlementAmountUtils.calculateSaleOutSettlementStatus(
+                new BigDecimal("700.00"), new BigDecimal("700"))).isEqualTo(2);
+        assertThat(ErpOriginalSettlementAmountUtils.calculateSaleOutSettlementStatus(
+                BigDecimal.ZERO, BigDecimal.ZERO)).isEqualTo(2);
+        assertThat(ErpOriginalSettlementAmountUtils.calculateSaleOutSettlementStatus(
+                new BigDecimal("700.004"), new BigDecimal("700.00"))).isEqualTo(1);
+    }
+
+    @Test
+    void calculateSaleOutUnreceivedAmount_normalizesScaleAndSign() {
+        assertThat(ErpOriginalSettlementAmountUtils.calculateSaleOutUnreceivedAmount(
+                new BigDecimal("700"), new BigDecimal("300.0"))).isEqualByComparingTo("400.00");
+        assertThat(ErpOriginalSettlementAmountUtils.calculateSaleOutUnreceivedAmount(
+                new BigDecimal("-700.00"), new BigDecimal("-700"))).isEqualByComparingTo("0.00");
     }
 
 }

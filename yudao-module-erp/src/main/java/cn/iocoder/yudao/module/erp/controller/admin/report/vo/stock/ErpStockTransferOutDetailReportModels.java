@@ -78,20 +78,16 @@ public final class ErpStockTransferOutDetailReportModels {
         private String originPlace;
         @ExcelProperty(value = "调出仓库", index = 6)
         private String fromWarehouseName;
-        @ExcelProperty(value = "数量", index = 7)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "数量", index = 7, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
+        @NumberFormat("0.####################")
         private BigDecimal count;
-        @ExcelProperty(value = "单价", index = 8)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "单价", index = 8, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal productPrice;
-        @ExcelProperty(value = "金额", index = 9)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "金额", index = 9, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal totalAmount;
-        @ExcelProperty(value = "成本单价", index = 10)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "成本单价", index = 10, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal costUnitPrice;
-        @ExcelProperty(value = "成本金额", index = 11)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "成本金额", index = 11, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal costAmount;
         @ExcelProperty(value = "制单人", index = 12)
         private String creatorName;
@@ -99,7 +95,7 @@ public final class ErpStockTransferOutDetailReportModels {
         private String toWarehouseName;
         @ExcelProperty(value = "规格", index = 14)
         private String standard;
-        @ExcelProperty(value = "图号", index = 15)
+        @ExcelProperty(value = "图号", index = 15, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
         private String drawingNo;
 
         private Boolean priceVisible;

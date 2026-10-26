@@ -11,6 +11,7 @@ import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherImportExcelVO;
@@ -21,6 +22,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.Erp
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
@@ -259,11 +261,37 @@ public class ErpPayableOtherController {
     @PreAuthorize("@ss.hasPermission('erp:payable-other:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportExcel(@Valid ErpPayableOtherPageReqVO reqVO,
+                            @RequestParam(value = "fields", required = false) String fields,
                             HttpServletResponse response) throws IOException {
         reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         PageResult<ErpPayableOtherRespVO> voPage = maskPageResult(buildPageResult(payableOtherService.getPayableOtherPage(reqVO)));
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(
+                ErpPayableOtherExportRespVO.class, ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFields(FIELD_PERMISSION_MODULE), Collections.emptyMap());
+        java.util.List<ErpPayableOtherExportRespVO> rows =
+                BeanUtils.toBean(voPage.getList(), ErpPayableOtherExportRespVO.class);
+        for (int i = 0; i < rows.size(); i++) {
+            ErpPayableOtherRespVO source = voPage.getList().get(i);
+            if (source.getPayableAmount() != null && source.getSettledAmount() != null) {
+                rows.get(i).setOutstandingAmount(source.getPayableAmount().subtract(source.getSettledAmount()));
+            }
+        }
         ExcelUtils.write(response, "应付调账.xls", "数据", ErpPayableOtherExportRespVO.class,
-                BeanUtils.toBean(voPage.getList(), ErpPayableOtherExportRespVO.class));
+                rows, includeFields);
+    }
+
+    public void exportExcel(ErpPayableOtherPageReqVO reqVO,
+                            HttpServletResponse response) throws IOException {
+        exportExcel(reqVO, null, response);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得应付调账导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:export')")
+    public CommonResult<java.util.List<ErpExportFieldRespVO>> getExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpPayableOtherExportRespVO.class,
+                Collections.emptyMap(), fieldPermissionMasker.getHiddenFields(FIELD_PERMISSION_MODULE),
+                Collections.emptyMap()));
     }
 
     @GetMapping("/get-import-template")

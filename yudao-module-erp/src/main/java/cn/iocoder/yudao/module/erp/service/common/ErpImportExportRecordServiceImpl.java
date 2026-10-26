@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordDetailPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordFailureDetailExportRespVO;
@@ -22,9 +23,11 @@ import cn.iocoder.yudao.module.erp.enums.common.ErpImportExportRecordStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.bo.ErpImportExportFailureDetailBO;
 import cn.iocoder.yudao.module.erp.service.common.bo.ErpImportExportRecordCreateReqBO;
 import cn.iocoder.yudao.module.erp.service.common.bo.ErpImportExportRecordFinishReqBO;
+import cn.iocoder.yudao.module.erp.service.common.bo.ErpImportExportRecordProgressReqBO;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -56,12 +59,17 @@ public class ErpImportExportRecordServiceImpl implements ErpImportExportRecordSe
     @Override
     public Long createRecord(ErpImportExportRecordCreateReqBO reqBO) {
         ErpImportExportRecordDO record = BeanUtils.toBean(reqBO, ErpImportExportRecordDO.class);
+        record.setTenantId(TenantContextHolder.getTenantId());
         record.setStatus(ErpImportExportRecordStatusEnum.PROCESSING.getStatus());
         record.setTotalCount(0);
+        record.setProcessedCount(reqBO.getProcessedCount() == null ? 0 : reqBO.getProcessedCount());
         record.setSuccessCount(0);
         record.setFailureCount(0);
         record.setCreateCount(0);
         record.setUpdateCount(0);
+        if (record.getHeartbeatTime() == null && record.getStage() != null) {
+            record.setHeartbeatTime(LocalDateTime.now());
+        }
         record.setOperatorId(SecurityFrameworkUtils.getLoginUserId());
         record.setOperatorName(SecurityFrameworkUtils.getLoginUserNickname());
         if (record.getStartTime() == null) {
@@ -85,13 +93,43 @@ public class ErpImportExportRecordServiceImpl implements ErpImportExportRecordSe
         if (update.getStatus() == null) {
             update.setStatus(ErpImportExportRecordStatusEnum.ofCount(update.getSuccessCount(), update.getFailureCount()));
         }
+        if (update.getHeartbeatTime() == null && update.getStage() != null) {
+            update.setHeartbeatTime(LocalDateTime.now());
+        }
         recordMapper.updateById(update);
         insertFailureDetails(recordId, reqBO.getFailureDetails());
     }
 
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void updateProgress(Long recordId, ErpImportExportRecordProgressReqBO reqBO) {
+        if (recordId == null || reqBO == null) {
+            return;
+        }
+        ErpImportExportRecordDO update = BeanUtils.toBean(reqBO, ErpImportExportRecordDO.class);
+        update.setId(recordId);
+        if (update.getHeartbeatTime() == null) {
+            update.setHeartbeatTime(LocalDateTime.now());
+        }
+        recordMapper.updateById(update);
+    }
+
+    @Override
+    public ErpImportExportRecordRespVO getLatestProcessingRecord(String operationType, String moduleKey) {
+        return BeanUtils.toBean(recordMapper.selectLatestProcessing(operationType, moduleKey,
+                        TenantContextHolder.getTenantId()),
+                ErpImportExportRecordRespVO.class);
+    }
+
+    @Override
     public ErpImportExportRecordRespVO getRecord(Long id) {
         return BeanUtils.toBean(recordMapper.selectById(id), ErpImportExportRecordRespVO.class);
+    }
+
+    @Override
+    public ErpImportExportRecordRespVO getRecordForCurrentTenant(Long id) {
+        return BeanUtils.toBean(recordMapper.selectByIdAndTenant(id, TenantContextHolder.getTenantId()),
+                ErpImportExportRecordRespVO.class);
     }
 
     @Override
@@ -151,8 +189,8 @@ public class ErpImportExportRecordServiceImpl implements ErpImportExportRecordSe
             if (CollUtil.isEmpty(columns)) {
                 return false;
             }
-            List<List<String>> head = buildTemplateFailureHead(columns);
-            List<List<Object>> rows = buildTemplateFailureRows(record.getId(), templateClass, columns);
+            List<List<String>> head = buildTemplateFailureHead(columns, ("erp_customer".equals(record.getModuleKey()) || "erp_product".equals(record.getModuleKey())));
+            List<List<Object>> rows = buildTemplateFailureRows(record.getId(), templateClass, columns, ("erp_customer".equals(record.getModuleKey()) || "erp_product".equals(record.getModuleKey())));
             ExcelUtils.writeDynamic(response, buildErrorDataFileName(record), "失败明细", head, rows);
             return true;
         } catch (ClassNotFoundException | RuntimeException | IllegalAccessException ex) {
@@ -174,20 +212,22 @@ public class ErpImportExportRecordServiceImpl implements ErpImportExportRecordSe
         return columns;
     }
 
-    private List<List<String>> buildTemplateFailureHead(List<ExcelColumn> columns) {
+    private List<List<String>> buildTemplateFailureHead(List<ExcelColumn> columns, boolean customerRows) {
         List<List<String>> head = new ArrayList<>(columns.size() + 1);
         for (ExcelColumn column : columns) {
             head.add(Arrays.asList(column.getExcelProperty().value()));
         }
+        if (customerRows) head.add(Collections.singletonList("原始行号"));
         head.add(Collections.singletonList(ERROR_COLUMN_NAME));
         return head;
     }
 
     private List<List<Object>> buildTemplateFailureRows(Long recordId, Class<?> templateClass,
-                                                        List<ExcelColumn> columns) throws IllegalAccessException {
+                                                        List<ExcelColumn> columns, boolean customerRows) throws IllegalAccessException {
         List<ErpImportExportRecordDetailDO> details = detailMapper.selectListByRecordId(recordId);
         List<List<Object>> rows = new ArrayList<>(details.size());
         for (ErpImportExportRecordDetailDO detail : details) {
+            if (customerRows && !isFailureDetail(detail)) continue;
             Object rawData = JsonUtils.parseObject(detail.getRawData(), templateClass);
             List<Object> row = new ArrayList<>(columns.size() + 1);
             for (ExcelColumn column : columns) {
@@ -195,6 +235,7 @@ public class ErpImportExportRecordServiceImpl implements ErpImportExportRecordSe
                 field.setAccessible(true);
                 row.add(rawData == null ? null : field.get(rawData));
             }
+            if (customerRows) row.add(detail.getRowNo());
             row.add(isFailureDetail(detail) ? detail.getFailureReason() : null);
             rows.add(row);
         }
@@ -211,6 +252,7 @@ public class ErpImportExportRecordServiceImpl implements ErpImportExportRecordSe
         }
         List<ErpImportExportRecordDetailDO> details = failureDetails.stream()
                 .map(item -> ErpImportExportRecordDetailDO.builder()
+                        .tenantId(TenantContextHolder.getTenantId())
                         .recordId(recordId)
                         .rowNo(item.getRowNo())
                         .groupKey(item.getGroupKey())
@@ -231,7 +273,7 @@ public class ErpImportExportRecordServiceImpl implements ErpImportExportRecordSe
         if (dotIndex > 0) {
             baseName = baseName.substring(0, dotIndex);
         }
-        return baseName + "-错误数据.xls";
+        return baseName + (record != null && "erp_product".equals(record.getModuleKey()) ? "-错误数据.xlsx" : "-错误数据.xls");
     }
 
     private static class ExcelColumn {

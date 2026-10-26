@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccoun
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountTransactionPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountTransactionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpAccountDocumentStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
@@ -25,6 +26,8 @@ import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceBillService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpAccountBalanceBO;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -53,6 +56,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
@@ -81,6 +85,8 @@ public class ErpAccountController {
     private DeptApi deptApi;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建结算账户")
@@ -195,6 +201,19 @@ public class ErpAccountController {
                         : null)));
     }
 
+    @GetMapping("/simple-get")
+    @Operation(summary = "获得单个结算账户精简信息")
+    public CommonResult<ErpAccountRespVO> getAccountSimple(@RequestParam("id") Long id) {
+        ErpAccountDO account = accountService.getAccount(id);
+        return success(buildSimpleAccount(account));
+    }
+
+    @GetMapping("/default")
+    @Operation(summary = "获得默认结算账户", description = "最多返回一个已启用且已正式提交的默认账户")
+    public CommonResult<ErpAccountRespVO> getDefaultAccount() {
+        return success(buildSimpleAccount(accountService.getDefaultAccount()));
+    }
+
     @GetMapping("/simple-page")
     @Operation(summary = "获得结算账户精简分页", description = "只包含已启用且已正式提交的结算账户，主要用于前端列表筛选下拉选择")
     public CommonResult<PageResult<ErpAccountRespVO>> getAccountSimplePage(@Valid PageParam pageReqVO) {
@@ -212,6 +231,7 @@ public class ErpAccountController {
                     ? balanceMap.get(account.getId()).getCurrentBalance()
                     : null);
         });
+        result.getList().forEach(row -> fieldPermissionMasker.maskForm("erp_account", row));
         return success(result);
     }
 
@@ -227,6 +247,7 @@ public class ErpAccountController {
                         ? balanceMap.get(account.getId()).getCurrentBalance()
                         : null));
         fillAccountNames(result.getList());
+        result.getList().forEach(row -> fieldPermissionMasker.maskForm("erp_account", row));
         return success(result);
     }
 
@@ -249,7 +270,9 @@ public class ErpAccountController {
     @PreAuthorize("@ss.hasPermission('erp:account:query')")
     public CommonResult<PageResult<ErpAccountTransactionRespVO>> getAccountTransactionPage(
             @Valid ErpAccountTransactionPageReqVO pageReqVO) {
-        return success(financeBillService.getAccountTransactionPage(pageReqVO));
+        PageResult<ErpAccountTransactionRespVO> result = financeBillService.getAccountTransactionPage(pageReqVO);
+        result.getList().forEach(row -> fieldPermissionMasker.maskForm("erp_account", row));
+        return success(result);
     }
 
     @GetMapping("/export-excel")
@@ -257,6 +280,7 @@ public class ErpAccountController {
     @PreAuthorize("@ss.hasPermission('erp:account:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportAccountExcel(@Valid ErpAccountPageReqVO pageReqVO,
+                                   @RequestParam(value = "fields", required = false) String fields,
                                    HttpServletResponse response) throws IOException {
         List<ErpAccountDO> list;
         if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
@@ -266,8 +290,49 @@ public class ErpAccountController {
             list = accountService.getAccountPage(pageReqVO).getList();
         }
         List<ErpAccountRespVO> rows = BeanUtils.toBean(list, ErpAccountRespVO.class);
+        Map<Long, ErpAccountBalanceBO> balanceMap = accountService.getAccountBalanceMap(
+                convertSet(list, ErpAccountDO::getId));
         fillAccountNames(rows);
-        ExcelUtils.write(response, "结算账户.xls", "数据", ErpAccountRespVO.class, rows);
+        rows.forEach(row -> {
+            ErpAccountBalanceBO balance = balanceMap.get(row.getId());
+            row.setCurrentBalance(balance == null ? null : balance.getCurrentBalance());
+            fieldPermissionMasker.maskForm("erp_account", row);
+        });
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(
+                ErpAccountRespVO.class, ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFields("erp_account"), Collections.emptyMap());
+        ExcelUtils.write(response, "结算账户.xls", "数据", ErpAccountRespVO.class, rows, includeFields);
+    }
+
+    public void exportAccountExcel(ErpAccountPageReqVO pageReqVO,
+                                   HttpServletResponse response) throws IOException {
+        exportAccountExcel(pageReqVO, null, response);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得结算账户或账户流水导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:account:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getExportFields(
+            @RequestParam(value = "scope", defaultValue = "account") String scope) {
+        Class<?> head = "transaction".equals(scope) ? ErpAccountTransactionRespVO.class : ErpAccountRespVO.class;
+        return success(ErpExportFieldUtils.listFields(head, Collections.emptyMap(),
+                fieldPermissionMasker.getHiddenFields("erp_account"), Collections.emptyMap()));
+    }
+
+    @GetMapping("/transaction-export-excel")
+    @Operation(summary = "导出结算账户流水 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:account:export')")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportAccountTransactionExcel(@Valid ErpAccountTransactionPageReqVO pageReqVO,
+                                              @RequestParam(value = "fields", required = false) String fields,
+                                              HttpServletResponse response) throws IOException {
+        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        List<ErpAccountTransactionRespVO> rows = financeBillService.getAccountTransactionPage(pageReqVO).getList();
+        rows.forEach(row -> fieldPermissionMasker.maskForm("erp_account", row));
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(
+                ErpAccountTransactionRespVO.class, ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFields("erp_account"), Collections.emptyMap());
+        ExcelUtils.write(response, "结算账户流水.xls", "数据", ErpAccountTransactionRespVO.class, rows, includeFields);
     }
 
     @GetMapping("/get-import-template")
@@ -298,6 +363,32 @@ public class ErpAccountController {
             }
         }
         return success(result);
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载结算账户导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:account:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, "erp_account", response);
+    }
+
+    private ErpAccountRespVO buildSimpleAccount(ErpAccountDO account) {
+        if (account == null) {
+            return null;
+        }
+        ErpAccountRespVO respVO = new ErpAccountRespVO()
+                .setId(account.getId())
+                .setName(account.getName())
+                .setAccountType(account.getAccountType())
+                .setBankName(account.getBankName())
+                .setBankAccount(account.getBankAccount())
+                .setDefaultStatus(account.getDefaultStatus());
+        ErpAccountBalanceBO balance = accountService.getAccountBalanceMap(
+                Collections.singletonList(account.getId())).get(account.getId());
+        respVO.setCurrentBalance(balance == null ? null : balance.getCurrentBalance());
+        fieldPermissionMasker.maskForm("erp_account", respVO);
+        return respVO;
     }
 
     private void fillAccountNames(List<ErpAccountRespVO> rows) {

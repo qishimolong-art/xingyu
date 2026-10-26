@@ -2,7 +2,8 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in;
 
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.validation.InEnum;
-import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockInStatusEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -19,6 +20,9 @@ import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_
 @ToString(callSuper = true)
 public class ErpStockInPageReqVO extends PageParam {
 
+    @javax.validation.constraints.Size(max = 5000)
+    private java.util.List<Long> ids;
+
     @Schema(description = "入库单号", example = "S123")
     private String no;
 
@@ -30,8 +34,12 @@ public class ErpStockInPageReqVO extends PageParam {
     private LocalDateTime[] inTime;
 
     @Schema(description = "状态", example = "10")
-    @InEnum(ErpAuditStatus.class)
+    @InEnum(ErpStockInStatusEnum.class)
     private Integer status;
+
+    @Schema(description = "拣货状态", example = "10")
+    @InEnum(ErpSalePickStatusEnum.class)
+    private Integer pickStatus;
 
     @Schema(description = "备注", example = "随便")
     private String remark;

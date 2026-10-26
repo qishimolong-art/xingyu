@@ -11,6 +11,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferDraftSaveReqVO;
@@ -29,6 +30,7 @@ import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceTransferService;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -82,6 +84,11 @@ public class ErpFinanceTransferController {
     public static final Set<String> TRANSFER_IMPORT_TEMPLATE_FIELDS = Collections.unmodifiableSet(new LinkedHashSet<>(
             Arrays.asList("outAccountId", "inAccountId", "transferPrice", "exchangeRate", "feePrice",
                     "feeExpenseCategory", "financeUserId", "deptId", "remark", "fileUrl")));
+    private static final Map<String, String> TRANSFER_EXPORT_PERMISSION_FIELDS = Map.of(
+            "outAccountBankName", "outAccountId",
+            "outAccountBankAccount", "outAccountId",
+            "inAccountBankName", "inAccountId",
+            "inAccountBankAccount", "inAccountId");
 
     @Resource
     private ErpFinanceTransferService financeTransferService;
@@ -207,7 +214,9 @@ public class ErpFinanceTransferController {
     @PreAuthorize("@ss.hasPermission('erp:finance-transfer:query')")
     public CommonResult<PageResult<ErpFinanceTransferRespVO>> getFinanceTransferPage(@Valid ErpFinanceTransferPageReqVO pageReqVO) {
         PageResult<ErpFinanceTransferDO> pageResult = financeTransferService.getFinanceTransferPage(pageReqVO);
-        return success(buildFinanceTransferVOPageResult(pageResult));
+        PageResult<ErpFinanceTransferRespVO> result = buildFinanceTransferVOPageResult(pageResult);
+        result.getList().forEach(row -> fieldPermissionMasker.maskForm("erp_finance_transfer", row));
+        return success(result);
     }
 
     @GetMapping("/summary")
@@ -247,6 +256,7 @@ public class ErpFinanceTransferController {
     @PreAuthorize("@ss.hasPermission('erp:finance-transfer:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportFinanceTransferExcel(@Valid ErpFinanceTransferPageReqVO pageReqVO,
+                                           @RequestParam(value = "fields", required = false) String fields,
                                            HttpServletResponse response) throws IOException {
         List<ErpFinanceTransferRespVO> list;
         if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
@@ -258,7 +268,30 @@ public class ErpFinanceTransferController {
             list = buildFinanceTransferVOPageResult(
                     financeTransferService.getFinanceTransferPage(pageReqVO)).getList();
         }
-        ExcelUtils.write(response, "银行转账.xls", "数据", ErpFinanceTransferRespVO.class, list);
+        list.forEach(row -> fieldPermissionMasker.maskForm("erp_finance_transfer", row));
+        String resolvedFields = fields == null
+                ? "no,status,voucherNo,transferTime,outAccountName,inAccountName,transferPrice,exchangeRate,feePrice,"
+                + "feeExpenseCategory,financeUserName,deptName,remark,creatorName,createTime,updaterName,updateTime,"
+                + "auditorName,auditTime"
+                : fields;
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(
+                ErpFinanceTransferRespVO.class, ErpExportFieldUtils.parseFieldParam(resolvedFields),
+                fieldPermissionMasker.getHiddenFields("erp_finance_transfer"), TRANSFER_EXPORT_PERMISSION_FIELDS);
+        ExcelUtils.write(response, "银行转账.xls", "数据", ErpFinanceTransferRespVO.class, list, includeFields);
+    }
+
+    public void exportFinanceTransferExcel(ErpFinanceTransferPageReqVO pageReqVO,
+                                           HttpServletResponse response) throws IOException {
+        exportFinanceTransferExcel(pageReqVO, null, response);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得银行转账导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpFinanceTransferRespVO.class,
+                Collections.emptyMap(), fieldPermissionMasker.getHiddenFields("erp_finance_transfer"),
+                TRANSFER_EXPORT_PERMISSION_FIELDS));
     }
 
     @GetMapping("/get-import-template")
@@ -334,8 +367,14 @@ public class ErpFinanceTransferController {
             voucherNoMap.putIfAbsent(voucher.getSourceBizId(), voucher.getVoucherNo());
         }
         return BeanUtils.toBean(pageResult, ErpFinanceTransferRespVO.class, transfer -> {
-            MapUtils.findAndThen(accountMap, transfer.getOutAccountId(), account -> transfer.setOutAccountName(account.getName()));
-            MapUtils.findAndThen(accountMap, transfer.getInAccountId(), account -> transfer.setInAccountName(account.getName()));
+            MapUtils.findAndThen(accountMap, transfer.getOutAccountId(), account -> transfer
+                    .setOutAccountName(account.getName())
+                    .setOutAccountBankName(account.getBankName())
+                    .setOutAccountBankAccount(account.getBankAccount()));
+            MapUtils.findAndThen(accountMap, transfer.getInAccountId(), account -> transfer
+                    .setInAccountName(account.getName())
+                    .setInAccountBankName(account.getBankName())
+                    .setInAccountBankAccount(account.getBankAccount()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(transfer.getCreator()), user -> transfer.setCreatorName(user.getNickname()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(transfer.getUpdater()), user -> transfer.setUpdaterName(user.getNickname()));
             MapUtils.findAndThen(userMap, transfer.getFinanceUserId(), user -> transfer.setFinanceUserName(user.getNickname()));

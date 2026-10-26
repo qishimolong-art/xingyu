@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.system.service.permission;
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionCreateOrUpdateReqDTO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.RoleFormDataScopeRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.TenantVisitScopeSaveReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.MenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
@@ -194,6 +195,14 @@ public interface PermissionService {
      * @param deniedPermissions denied permission codes
      */
     void assignUserRoleAndDeniedPermissions(Long userId, Set<Long> roleIds, Set<String> deniedPermissions);
+
+    /** 原子保存用户角色、个人禁用权限和可访问租户范围。 */
+    void assignUserRoleDeniedPermissionsAndTenantScope(Long userId, Set<Long> roleIds,
+                                                       Set<String> deniedPermissions,
+                                                       TenantVisitScopeSaveReqVO tenantVisitScope);
+
+    /** 角色状态变化后清理已失效的用户租户访问范围。 */
+    void reconcileTenantVisitScopesByRoleId(Long roleId);
 
     /**
      * Get user-level denied button permission codes.

@@ -28,6 +28,7 @@ public interface ErpSaleOrderMapper extends BaseMapperX<ErpSaleOrderDO> {
 
     default PageResult<ErpSaleOrderDO> selectPage(ErpSaleOrderPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpSaleOrderDO> query = new MPJLambdaWrapperX<ErpSaleOrderDO>()
+                .inIfPresent(ErpSaleOrderDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpSaleOrderDO::getNo, normalizeLikeValue(reqVO.getNo()))
                 .eqIfPresent(ErpSaleOrderDO::getCustomerId, reqVO.getCustomerId())
                 .eqIfPresent(ErpSaleOrderDO::getDeptId, reqVO.getDeptId())

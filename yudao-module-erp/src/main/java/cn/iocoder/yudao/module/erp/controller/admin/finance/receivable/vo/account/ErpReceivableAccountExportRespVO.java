@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.accou
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.idev.excel.annotation.format.NumberFormat;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -26,32 +27,47 @@ public class ErpReceivableAccountExportRespVO {
     @ExcelProperty("业务员")
     private String saleUserName;
 
-    @ExcelProperty("销售出库")
+    @ExcelProperty(value = "铺底金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
+    private BigDecimal baseAmount;
+
+    @ExcelProperty(value = "信用额度", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
+    private BigDecimal creditLimit;
+
+    @ExcelProperty("信用期限（天）")
+    private Integer creditTermDays;
+
+    @ExcelProperty(value = "销售出库", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal saleOutAmount;
 
-    @ExcelProperty("销售退货")
+    @ExcelProperty(value = "销售退货", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal saleReturnAmount;
 
-    @ExcelProperty("调价金额")
+    @ExcelProperty(value = "调价金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal priceAdjustAmount;
 
-    @ExcelProperty("其他应收")
+    @ExcelProperty(value = "其他应收", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal miscReceivableAmount;
 
-    @ExcelProperty("已收款")
+    @ExcelProperty(value = "已收款", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal receiptAmount;
 
-    @ExcelProperty("已核销")
+    @ExcelProperty(value = "已核销", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal writeOffAmount;
 
-    @ExcelProperty("应收余额")
+    @ExcelProperty(value = "应收余额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal receivableBalance;
 
-    @ExcelProperty("预收余额")
+    @ExcelProperty(value = "预收余额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal preAdvanceAmount;
 
-    @ExcelProperty("授信余额")
+    @ExcelProperty(value = "授信余额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal creditBalance;
+
+    @ExcelProperty(value = "此前应收", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
+    private BigDecimal openingReceivableBalance;
+
+    @ExcelProperty(value = "应收合计", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
+    private BigDecimal totalReceivable;
 
     @ExcelProperty("最近业务时间")
     private LocalDateTime lastBizTime;

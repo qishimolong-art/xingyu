@@ -34,7 +34,10 @@ public class ErpCustomerContactServiceImpl implements ErpCustomerContactService 
 
     @Override
     public void updateContact(ErpCustomerContactSaveReqVO updateReqVO) {
-        validateContactExists(updateReqVO.getId());
+        ErpCustomerContactDO existing = validateContactExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getCustomerId(), updateReqVO.getCustomerId())) {
+            throw exception(CUSTOMER_CONTACT_NOT_EXISTS);
+        }
         customerService.validateCustomer(updateReqVO.getCustomerId());
         contactMapper.updateById(BeanUtils.toBean(updateReqVO, ErpCustomerContactDO.class));
     }
@@ -45,25 +48,36 @@ public class ErpCustomerContactServiceImpl implements ErpCustomerContactService 
         contactMapper.deleteById(id);
     }
 
-    private void validateContactExists(Long id) {
-        if (contactMapper.selectById(id) == null) {
-            throw exception(CUSTOMER_CONTACT_NOT_EXISTS);
+    private ErpCustomerContactDO validateContactExists(Long id) {
+        ErpCustomerContactDO existing = contactMapper.selectById(id);
+        if (existing == null) throw exception(CUSTOMER_CONTACT_NOT_EXISTS);
+        validateVisibleCustomer(existing.getCustomerId());
+        return existing;
+    }
+
+    private void validateVisibleCustomer(Long customerId) {
+        if (customerId == null || customerService.getCustomer(customerId) == null) {
+            throw exception(cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS);
         }
     }
 
     @Override
     public ErpCustomerContactDO getContact(Long id) {
-        return contactMapper.selectById(id);
+        ErpCustomerContactDO existing = contactMapper.selectById(id);
+        if (existing != null) validateVisibleCustomer(existing.getCustomerId());
+        return existing;
     }
 
     @Override
     public PageResult<ErpCustomerContactDO> getContactPage(ErpCustomerContactPageReqVO pageReqVO) {
+        validateVisibleCustomer(pageReqVO.getCustomerId());
+        if (pageReqVO.getPageSize() <= 0 || pageReqVO.getPageSize() > 100) pageReqVO.setPageSize(100);
         return contactMapper.selectPage(pageReqVO);
     }
 
     @Override
     public List<ErpCustomerContactDO> getContactListByCustomerId(Long customerId) {
-        customerService.validateCustomer(customerId);
+        validateVisibleCustomer(customerId);
         return contactMapper.selectListByCustomerId(customerId);
     }
 

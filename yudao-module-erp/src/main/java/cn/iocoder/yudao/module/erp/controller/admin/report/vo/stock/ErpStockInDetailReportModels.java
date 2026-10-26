@@ -81,13 +81,11 @@ public final class ErpStockInDetailReportModels {
         private String productName;
         @ExcelProperty(value = "适用车型", index = 6)
         private String vehicleModel;
-        @ExcelProperty(value = "数量", index = 7)
+        @ExcelProperty(value = "数量", index = 7, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
         private BigDecimal count;
-        @ExcelProperty(value = "单价", index = 8)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "单价", index = 8, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal productPrice;
-        @ExcelProperty(value = "金额", index = 9)
-        @NumberFormat("0.00")
+        @ExcelProperty(value = "金额", index = 9, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal totalAmount;
         @ExcelProperty(value = "品牌", index = 10)
         private String brand;
@@ -109,7 +107,7 @@ public final class ErpStockInDetailReportModels {
         private String itemRemark;
         @ExcelProperty(value = "部门", index = 18)
         private String deptName;
-        @ExcelProperty(value = "业务员", index = 19)
+        @ExcelProperty(value = "业务员", index = 19, converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
         private String businessUserName;
 
         private Boolean priceVisible;

@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplierimage.ErpSupplierImageRespVO;
@@ -67,4 +69,12 @@ public class ErpSupplierImageController {
         return success(BeanUtils.toBean(supplierImageService.getSupplierImageList(supplierId), ErpSupplierImageRespVO.class));
     }
 
+
+    @GetMapping("/page")
+    @Operation(summary = "分页查询供应商关联资料")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:query')")
+    public CommonResult<PageResult<ErpSupplierImageRespVO>> getSupplierImagePage(@Valid ErpSupplierItemPageReqVO reqVO) {
+        PageResult<ErpSupplierImageDO> page = supplierImageService.getSupplierImagePage(reqVO);
+        return success(BeanUtils.toBean(page, ErpSupplierImageRespVO.class));
+    }
 }

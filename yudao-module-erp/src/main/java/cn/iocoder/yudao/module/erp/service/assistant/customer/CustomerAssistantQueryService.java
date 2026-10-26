@@ -4,6 +4,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSale
 import cn.iocoder.yudao.module.erp.service.assistant.AssistantClarification;
 import cn.iocoder.yudao.module.erp.service.assistant.AssistantFailure;
 import cn.iocoder.yudao.module.erp.service.assistant.AssistantProperties;
+import cn.iocoder.yudao.module.erp.service.assistant.AssistantUnderstandingResult;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceLevelPricePicker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpMallStockService;
@@ -35,7 +36,8 @@ public class CustomerAssistantQueryService {
         BigDecimal price=pricePicker.pickProductPriceMap(Collections.singleton(id),p.getPriceLevel()).get(id);
         if(price==null||price.compareTo(BigDecimal.ZERO)<=0) return result("EMPTY","暂未配置可展示的客户价，请转人工客服确认",Collections.emptyList(),priceColumns());
         Map<String,Object> row=productView(product);row.put("customerPrice",price);
-        return result("SUCCESS","已查询当前绑定客户适用的客户价",Collections.singletonList(row),priceColumns());
+        Map<String,Object> result=result("SUCCESS","已查询当前绑定客户适用的客户价",Collections.singletonList(row),priceColumns());
+        result.put("_productId",id);return result;
     }
 
     public Map<String,Object> stock(CustomerAssistantPrincipal p,Map<String,Object> args) {
@@ -44,7 +46,8 @@ public class CustomerAssistantQueryService {
         if(stock==null||!Boolean.TRUE.equals(stock.getMapped())) throw new AssistantFailure("PRODUCT_NOT_AVAILABLE","该商品尚未开放商城查询");
         BigDecimal available=stock.getTotalAvailableCount()==null?BigDecimal.ZERO:stock.getTotalAvailableCount().max(BigDecimal.ZERO);
         Map<String,Object> row=productView(product);row.put("availableQuantity",available);
-        return result("SUCCESS","商城当前精确可售总量",Collections.singletonList(row),Arrays.asList(column("name","商品"),column("code","配件编码"),column("standard","规格"),column("availableQuantity","可售数量")));
+        Map<String,Object> result=result("SUCCESS","商城当前精确可售总量",Collections.singletonList(row),Arrays.asList(column("name","商品"),column("code","配件编码"),column("standard","规格"),column("availableQuantity","可售数量")));
+        result.put("_productId",number(product.get("id")));return result;
     }
 
     public Map<String,Object> orders(CustomerAssistantPrincipal p,Map<String,Object> args) {
@@ -57,6 +60,12 @@ public class CustomerAssistantQueryService {
                 .addValue("limit",size).addValue("offset",(page-1)*size);
         String dateFilter=StringUtils.hasText(orderNo)||unfinished?"":" AND c.cart_time>=:start";
         String oldDateFilter=StringUtils.hasText(orderNo)||unfinished?"":" AND o.order_time>=:start";
+        if(args.get("period") instanceof String && !"CURRENT".equals(args.get("period"))) {
+            AssistantUnderstandingResult.Conditions conditions=new AssistantUnderstandingResult.Conditions();
+            conditions.setPeriod((String)args.get("period"));conditions.setStartDate(text(args.get("startDate")));conditions.setEndDate(text(args.get("endDate")));
+            LocalDateTime[] range=conditions.range();params.addValue("from",range[0]).addValue("until",range[1]);
+            dateFilter=" AND c.cart_time>=:from AND c.cart_time<:until";oldDateFilter=" AND o.order_time>=:from AND o.order_time<:until";
+        }
         String sql="SELECT * FROM ("+
                 "SELECT 'SALE_CART' source_kind,c.id,c.no,c.status,c.cart_time order_date,c.total_price amount,c.total_count ordered_count,"+
                 "COALESCE((SELECT SUM(so.total_count) FROM erp_sale_out so WHERE so.tenant_id=c.tenant_id AND so.customer_id=c.customer_id AND so.source_type=:cartSource AND so.source_id=c.id AND so.status=:approved AND so.deleted=0),0) out_count,"+

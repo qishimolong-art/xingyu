@@ -21,6 +21,7 @@ public interface ErpProductUnitMapper extends BaseMapperX<ErpProductUnitDO> {
 
     default PageResult<ErpProductUnitDO> selectPage(ErpProductUnitPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpProductUnitDO> wrapper = new LambdaQueryWrapperX<ErpProductUnitDO>()
+                .inIfPresent(ErpProductUnitDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpProductUnitDO::getName, reqVO.getName())
                 .eqIfPresent(ErpProductUnitDO::getStatus, reqVO.getStatus());
         ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(), ErpProductUnitDO::getName);

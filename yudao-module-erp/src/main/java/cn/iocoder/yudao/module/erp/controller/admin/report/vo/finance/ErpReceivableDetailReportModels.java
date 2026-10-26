@@ -87,23 +87,23 @@ public final class ErpReceivableDetailReportModels {
         private String customerCode;
         @ExcelProperty(value = "单号", index = 9)
         private String documentNo;
-        @ExcelProperty(value = "上笔余额", index = 10)
+        @ExcelProperty(value = "上笔余额", index = 10, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal previousBalance;
-        @ExcelProperty(value = "增加应收", index = 11)
+        @ExcelProperty(value = "增加应收", index = 11, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal increaseAmount;
-        @ExcelProperty(value = "收款金额", index = 12)
+        @ExcelProperty(value = "收款金额", index = 12, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal receiptAmount;
-        @ExcelProperty(value = "余额", index = 13)
+        @ExcelProperty(value = "余额", index = 13, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal balance;
-        @ExcelProperty(value = "未确认应收", index = 14)
+        @ExcelProperty(value = "未确认应收", index = 14, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal unconfirmedReceivable;
         @ExcelProperty(value = "审核时间", index = 15)
         private LocalDateTime approveTime;
         @ExcelProperty(value = "凭证号", index = 16)
         private String voucherNo;
-        @ExcelProperty(value = "已核销金额", index = 17)
+        @ExcelProperty(value = "已核销金额", index = 17, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal writeOffAmount;
-        @ExcelProperty(value = "已收款金额", index = 18)
+        @ExcelProperty(value = "已收款金额", index = 18, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal receivedAmount;
         @ExcelProperty(value = "来源单号", index = 19)
         private String sourceNo;

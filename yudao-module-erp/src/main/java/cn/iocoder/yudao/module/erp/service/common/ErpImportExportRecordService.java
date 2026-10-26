@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRec
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordRespVO;
 import cn.iocoder.yudao.module.erp.service.common.bo.ErpImportExportRecordCreateReqBO;
 import cn.iocoder.yudao.module.erp.service.common.bo.ErpImportExportRecordFinishReqBO;
+import cn.iocoder.yudao.module.erp.service.common.bo.ErpImportExportRecordProgressReqBO;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -19,7 +20,13 @@ public interface ErpImportExportRecordService {
 
     void finishRecord(Long recordId, ErpImportExportRecordFinishReqBO reqBO);
 
+    void updateProgress(Long recordId, ErpImportExportRecordProgressReqBO reqBO);
+
+    ErpImportExportRecordRespVO getLatestProcessingRecord(String operationType, String moduleKey);
+
     ErpImportExportRecordRespVO getRecord(Long id);
+
+    ErpImportExportRecordRespVO getRecordForCurrentTenant(Long id);
 
     PageResult<ErpImportExportRecordRespVO> getRecordPage(ErpImportExportRecordPageReqVO reqVO);
 

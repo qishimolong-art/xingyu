@@ -151,12 +151,46 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
                 () -> receiptService.submitFinanceReceipt(900L));
         verify(receiptMapper, never()).updateByIdAndStatus(any(), any(), any());
     }
+
+    @Test
+    void createDraft_withoutItems_preservesManualAmountsAndDraftStatus() {
+        when(noRedisDAO.generate(any())).thenReturn("receipt-header-draft");
+        receiptService.createFinanceReceiptDraft(new ErpFinanceReceiptDraftSaveReqVO()
+                .setCustomerId(2L).setAccountId(3L).setTotalPrice(new BigDecimal("-100.123456"))
+                .setDiscountPrice(new BigDecimal("5.000001")).setRemark("先录金额，稍后核销")
+                .setItems(Collections.emptyList()));
+        ArgumentCaptor<ErpFinanceReceiptDO> captor = ArgumentCaptor.forClass(ErpFinanceReceiptDO.class);
+        verify(receiptMapper).insert(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(0);
+        assertThat(captor.getValue().getTotalPrice()).isEqualByComparingTo("-100.123456");
+        assertThat(captor.getValue().getDiscountPrice()).isEqualByComparingTo("5.000001");
+        assertThat(captor.getValue().getReceiptPrice()).isEqualByComparingTo("-105.123457");
+        verify(receiptItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    void createDraft_partialHeaderContentDoesNotRequireItems() {
+        when(noRedisDAO.generate(any())).thenReturn("receipt-partial-draft");
+        for (ErpFinanceReceiptDraftSaveReqVO request : Arrays.asList(
+                new ErpFinanceReceiptDraftSaveReqVO().setCustomerId(2L),
+                new ErpFinanceReceiptDraftSaveReqVO().setTotalPrice(BigDecimal.TEN),
+                new ErpFinanceReceiptDraftSaveReqVO().setDiscountPrice(BigDecimal.ONE),
+                new ErpFinanceReceiptDraftSaveReqVO().setPaymentVoucherNo("CUSTOM-001"),
+                new ErpFinanceReceiptDraftSaveReqVO().setRemark("待补齐"))) {
+            receiptService.createFinanceReceiptDraft(request);
+        }
+        verify(receiptMapper, org.mockito.Mockito.times(5)).insert(any(ErpFinanceReceiptDO.class));
+        verify(receiptItemMapper, never()).insertBatch(any());
+    }
+
     @Test
     void createDraft_withoutValidItems_throwException() {
         ErpFinanceReceiptSaveReqVO.Item incompleteItem = new ErpFinanceReceiptSaveReqVO.Item()
                 .setBizType(ErpBizTypeEnum.SALE_OUT.getType());
         ErpFinanceReceiptDraftSaveReqVO request = new ErpFinanceReceiptDraftSaveReqVO()
-                .setDiscountPrice(new BigDecimal("5"))
+                .setAccountId(3L).setReceiptTime(LocalDateTime.now())
+                .setTotalPrice(BigDecimal.ZERO).setDiscountPrice(BigDecimal.ZERO)
+                .setPaymentVoucherNo("  ").setRemark("  ")
                 .setItems(Collections.singletonList(incompleteItem));
 
         assertServiceException(() -> receiptService.createFinanceReceiptDraft(request),
@@ -401,6 +435,11 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
 
         receiptService.approveFinanceReceipt(1L);
 
+        ArgumentCaptor<ErpFinanceReceiptDO> approvalCaptor = ArgumentCaptor.forClass(ErpFinanceReceiptDO.class);
+        verify(receiptMapper).updateByIdAndStatus(eq(1L),
+                eq(ErpFinanceReceiptStatusEnum.PROCESS.getStatus()), approvalCaptor.capture());
+        assertThat(approvalCaptor.getValue().getApproveTime()).isNotNull();
+        assertThat(receipt.getApproveTime()).isEqualTo(approvalCaptor.getValue().getApproveTime());
         verify(receivableOtherService).createFromFinanceReceiptDiscount(receipt);
         verify(payableExpenseService).createApprovedFromFinanceReceiptDiscount(receipt, null);
         verify(financeAutoWriteOffService).autoWriteOffReceipt(1L, null);

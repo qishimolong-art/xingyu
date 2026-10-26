@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
@@ -31,6 +32,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.multipart.MultipartFile;
+import cn.idev.excel.annotation.write.style.ContentStyle;
 
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -322,10 +325,28 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testExportSaleOrderExcel_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSaleOrderController.class.getMethod("exportSaleOrderExcel",
-                ErpSaleOrderPageReqVO.class, javax.servlet.http.HttpServletResponse.class);
+                ErpSaleOrderPageReqVO.class, String.class, javax.servlet.http.HttpServletResponse.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-order:export"));
+    }
+
+    @Test
+    public void testSelectableExportAndWholeOrderImportContracts() throws NoSuchMethodException, NoSuchFieldException {
+        Method exportFields = ErpSaleOrderController.class.getMethod("getSaleOrderExportFields");
+        assertTrue(exportFields.getAnnotation(PreAuthorize.class).value().contains("erp:sale-order:export"));
+
+        Method importOrder = ErpSaleOrderController.class.getMethod("importSaleOrderList", MultipartFile.class);
+        assertTrue(importOrder.getAnnotation(PreAuthorize.class).value().contains("erp:sale-order:create"));
+        assertNotNull(ErpSaleOrderController.class.getMethod("getOrderImportTemplate",
+                javax.servlet.http.HttpServletResponse.class));
+
+        assertEquals(2, ErpSaleOrderExportRespVO.class.getDeclaredField("totalPrice")
+                .getAnnotation(ContentStyle.class).dataFormat());
+        assertEquals(2, ErpSaleOrderExportRespVO.class.getDeclaredField("productPrice")
+                .getAnnotation(ContentStyle.class).dataFormat());
+        assertNotNull(ErpSaleOrderExportRespVO.class.getDeclaredField("warehouseName"));
+        assertNotNull(ErpSaleOrderExportRespVO.class.getDeclaredField("stockCount"));
     }
 
 }

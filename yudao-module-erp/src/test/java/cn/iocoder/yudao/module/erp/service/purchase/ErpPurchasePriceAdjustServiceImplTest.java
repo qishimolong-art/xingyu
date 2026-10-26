@@ -7,6 +7,8 @@ import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustOrderImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSaveReqVO;
@@ -314,6 +316,7 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         Long inId = 800L;
         Long productId = 200L;
         ErpPurchasePriceAdjustSaveReqVO.Item voItem = buildVOItem(inId, inItemId, productId, new BigDecimal("13.5"));
+        voItem.setRemark("核对后调价");
         ErpPurchasePriceAdjustSaveReqVO reqVO = buildBaseReqVO(
                 ErpPurchasePriceAdjustTypeEnum.BY_IN_ORDER.getType(), voItem);
 
@@ -338,7 +341,9 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(Long.valueOf(88L), inserted.getDeptId());
         // 调价金额 = (13.5 - 12.5) * 100 = 100.00
         assertEquals(0, inserted.getTotalAdjustPrice().compareTo(new BigDecimal("100.00")));
-        verify(priceAdjustItemMapper).insertBatch(anyList());
+        ArgumentCaptor<List<ErpPurchasePriceAdjustItemDO>> itemCaptor = ArgumentCaptor.forClass(List.class);
+        verify(priceAdjustItemMapper).insertBatch(itemCaptor.capture());
+        assertEquals("核对后调价", itemCaptor.getValue().get(0).getRemark());
     }
 
     @Test
@@ -1254,6 +1259,60 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         assertEquals("CGTJ20260811000002", result.getFailureDetails().get(0).getOrderNo());
         assertEquals("调价时间格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss",
                 result.getFailureDetails().get(0).getReason());
+    }
+
+    @Test
+    public void testImportPurchasePriceAdjustOrderList_preservesItemRemark() {
+        ErpPurchasePriceAdjustOrderImportExcelVO row = new ErpPurchasePriceAdjustOrderImportExcelVO();
+        row.setSupplierName("芋道供应商");
+        row.setAdjustTime("2026-08-11");
+        row.setProductName("产品1");
+        row.setWarehouseName("主仓库");
+        row.setItemCount(BigDecimal.ONE);
+        row.setNewPrice(new BigDecimal("12.50"));
+        row.setItemRemark("整单导入明细备注");
+        ErpProductDO product = new ErpProductDO().setId(200L).setCode("P000001").setName("产品1")
+                .setPurchasePrice(new BigDecimal("10.00"));
+        ErpProductRespVO productVO = new ErpProductRespVO();
+        productVO.setId(200L);
+        when(supplierService.getSupplierPage(any())).thenReturn(new PageResult<>(
+                Collections.singletonList(new ErpSupplierDO().setId(100L).setName("芋道供应商")
+                        .setStatus(CommonStatusEnum.ENABLE.getStatus())), 1L));
+        when(productMapper.selectListByNames(any())).thenReturn(Collections.singletonList(product));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(200L, productVO));
+        when(warehouseService.getPurchaseWarehouseListByStatus(eq(CommonStatusEnum.ENABLE.getStatus())))
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(10L).setName("主仓库")));
+
+        ErpPurchaseImportResultRespVO result = priceAdjustService.importPurchasePriceAdjustOrderList(
+                Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount());
+        ArgumentCaptor<List<ErpPurchasePriceAdjustItemDO>> itemCaptor = ArgumentCaptor.forClass(List.class);
+        verify(priceAdjustItemMapper).insertBatch(itemCaptor.capture());
+        assertEquals("整单导入明细备注", itemCaptor.getValue().get(0).getRemark());
+    }
+
+    @Test
+    public void testImportPurchasePriceAdjustItems_preservesRemark() {
+        ErpPurchasePriceAdjustImportExcelVO row = new ErpPurchasePriceAdjustImportExcelVO();
+        row.setProductName("产品1");
+        row.setCount(new BigDecimal("2"));
+        row.setNewPrice(new BigDecimal("12.50"));
+        row.setRemark("导入明细备注");
+        ErpProductDO product = new ErpProductDO().setId(200L).setCode("P000001").setName("产品1")
+                .setPurchasePrice(new BigDecimal("10.00"));
+        ErpProductRespVO productVO = new ErpProductRespVO();
+        productVO.setId(200L);
+        productVO.setLastPurchasePrice(new BigDecimal("10.00"));
+        when(productMapper.selectListByNames(any())).thenReturn(Collections.singletonList(product));
+        when(productService.getProductVOList(any())).thenReturn(Collections.singletonList(productVO));
+
+        ErpPurchasePriceAdjustImportRespVO result = priceAdjustService.importPurchasePriceAdjustItems(
+                Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount());
+        assertEquals(0, result.getFailureCount());
+        assertEquals("导入明细备注", result.getItems().get(0).getRemark());
     }
 
 }

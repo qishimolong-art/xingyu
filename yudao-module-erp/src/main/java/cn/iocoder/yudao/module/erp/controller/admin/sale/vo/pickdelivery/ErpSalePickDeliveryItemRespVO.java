@@ -15,6 +15,9 @@ public class ErpSalePickDeliveryItemRespVO {
     private Long saleOutItemId;
     private Long transferOutId;
     private Long transferOutItemId;
+    private Long saleReturnItemId;
+    private Long stockInItemId;
+    private Long stockOutItemId;
     private Long warehouseId;
     private String warehouseName;
     private Long productId;

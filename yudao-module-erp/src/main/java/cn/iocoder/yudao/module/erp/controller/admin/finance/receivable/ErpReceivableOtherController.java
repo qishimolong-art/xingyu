@@ -11,6 +11,7 @@ import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherImportExcelVO;
@@ -22,6 +23,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivab
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableOtherStatusEnum;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
@@ -271,6 +273,7 @@ public class ErpReceivableOtherController {
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportExcel(@Valid ErpReceivableOtherPageReqVO reqVO,
+                            @RequestParam(value = "fields", required = false) String fields,
                             HttpServletResponse response) throws IOException {
         reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         PageResult<ErpReceivableOtherDO> pageResult = receivableOtherService.getReceivableOtherPage(reqVO);
@@ -281,8 +284,25 @@ public class ErpReceivableOtherController {
             row.setIncreaseReceivableAmount(row.getReceivableAmount());
             row.setStatusName(formatStatusName(row.getStatus()));
         });
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(
+                ErpReceivableOtherExportRespVO.class, ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFields(FIELD_PERMISSION_MODULE), Collections.emptyMap());
         ExcelUtils.write(response, "应收调账.xls", "数据", ErpReceivableOtherExportRespVO.class,
-                rows);
+                rows, includeFields);
+    }
+
+    public void exportExcel(ErpReceivableOtherPageReqVO reqVO,
+                            HttpServletResponse response) throws IOException {
+        exportExcel(reqVO, null, response);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得应收调账导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpReceivableOtherExportRespVO.class,
+                Collections.emptyMap(), fieldPermissionMasker.getHiddenFields(FIELD_PERMISSION_MODULE),
+                Collections.emptyMap()));
     }
 
     @GetMapping("/get-import-template")

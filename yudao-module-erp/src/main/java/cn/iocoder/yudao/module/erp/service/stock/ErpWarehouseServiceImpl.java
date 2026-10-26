@@ -639,10 +639,19 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ErpWarehouseImportRespVO importWarehouseList(List<ErpWarehouseImportExcelVO> list) {
+        return importWarehouseList(list, ErpWarehouseImportProgressListener.NOOP);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpWarehouseImportRespVO importWarehouseList(List<ErpWarehouseImportExcelVO> list,
+                                                        ErpWarehouseImportProgressListener listener) {
         ErpWarehouseImportRespVO respVO = new ErpWarehouseImportRespVO();
         if (CollUtil.isEmpty(list)) {
             return respVO;
         }
+        ErpWarehouseImportProgressListener progressListener = listener == null
+                ? ErpWarehouseImportProgressListener.NOOP : listener;
         Map<String, List<DeptRespDTO>> deptNameMap = buildDeptNameMap(list);
         for (int i = 0; i < list.size(); i++) {
             ErpWarehouseImportExcelVO row = list.get(i);
@@ -661,7 +670,9 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
                 respVO.getFailureDetails().add(new ErpWarehouseImportRespVO.FailureItem(
                         rowNo, row == null ? null : row.getWarehouseCode(), ex.getMessage()));
             }
+            progressListener.onRowsProgress(i + 1, list.size(), respVO);
         }
+        progressListener.onFinalizing(list.size(), respVO);
         return respVO;
     }
 

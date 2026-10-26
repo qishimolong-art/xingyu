@@ -71,13 +71,13 @@ public final class ErpPayableDetailReportModels {
         private String documentNo;
         @ExcelProperty(value = "制单人", index = 5)
         private String creatorName;
-        @ExcelProperty(value = "增加应付", index = 6)
+        @ExcelProperty(value = "增加应付", index = 6, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal increasePayable;
-        @ExcelProperty(value = "付款金额", index = 7)
+        @ExcelProperty(value = "付款金额", index = 7, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal paymentAmount;
-        @ExcelProperty(value = "上日余额", index = 8)
+        @ExcelProperty(value = "上日余额", index = 8, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal previousBalance;
-        @ExcelProperty(value = "末期应付", index = 9)
+        @ExcelProperty(value = "末期应付", index = 9, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal endingPayable;
         @ExcelProperty(value = "凭证号", index = 10)
         private String voucherNo;

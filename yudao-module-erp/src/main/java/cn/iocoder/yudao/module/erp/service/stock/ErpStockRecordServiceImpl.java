@@ -2,7 +2,6 @@ package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.record.ErpStockRecordPageReqVO;
@@ -278,10 +277,10 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
             unitPrice = totalPrice.abs().divide(count.abs(), 6, RoundingMode.HALF_UP);
         }
         if (totalPrice == null && unitPrice != null) {
-            totalPrice = MoneyUtils.priceMultiply(unitPrice, count);
+            totalPrice = StockDecimalMath.multiply(unitPrice, count);
         }
         record.setUnitPrice(unitPrice != null ? unitPrice : BigDecimal.ZERO);
-        record.setTotalPrice(totalPrice != null ? totalPrice : BigDecimal.ZERO);
+        record.setTotalPrice(StockDecimalMath.boundary(totalPrice != null ? totalPrice : BigDecimal.ZERO, 4));
     }
 
     private Map<Long, StockRecordAmount> getStockRecordAmountMap(Integer bizType, List<ErpStockRecordDO> records) {
@@ -419,12 +418,12 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
 
         // 4. 计算本次业务金额
         BigDecimal totalPrice = businessUnitPrice == null ? null
-                : MoneyUtils.priceMultiply(businessUnitPrice, createReqBO.getCount());
+                : StockDecimalMath.multiply(businessUnitPrice, createReqBO.getCount());
 
         // 5. 计算结存金额
         BigDecimal costAmount = result.getCostAmount() != null ? result.getCostAmount()
                 : (result.getCostPrice() == null ? BigDecimal.ZERO
-                : MoneyUtils.priceMultiply(result.getCostPrice(), result.getTotalCount()));
+                : StockDecimalMath.multiply(result.getCostPrice(), result.getTotalCount()));
         if (costAmount == null) {
             costAmount = BigDecimal.ZERO;
         }
@@ -436,9 +435,9 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
                 .setBatchNo(StringUtils.hasText(createReqBO.getBatchNo()) ? createReqBO.getBatchNo().trim() : null)
                 .setTotalCount(result.getTotalCount())
                 .setUnitPrice(businessUnitPrice)
-                .setTotalPrice(totalPrice)
+                .setTotalPrice(StockDecimalMath.boundary(totalPrice, 4))
                 .setCostPrice(result.getCostPrice())
-                .setCostAmount(costAmount)
+                .setCostAmount(StockDecimalMath.boundary(costAmount, 4))
                 .setDeptId(resolveStockDeptId(createReqBO.getProductId(), createReqBO.getWarehouseId()))
                 .setBizDate(bizDate);
         stockRecordMapper.insert(stockRecord);

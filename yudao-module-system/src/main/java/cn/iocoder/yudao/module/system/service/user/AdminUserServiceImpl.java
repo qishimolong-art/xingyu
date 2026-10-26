@@ -39,6 +39,7 @@ import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.permission.RoleService;
 import cn.iocoder.yudao.module.system.service.logger.SystemOperateLogService;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
+import cn.iocoder.yudao.module.system.service.tenant.TenantVisitScopeService;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.mzt.logapi.context.LogRecordContext;
@@ -80,6 +81,8 @@ public class AdminUserServiceImpl implements AdminUserService {
 
     @Resource
     private AdminUserMapper userMapper;
+    @Resource
+    private TenantVisitScopeService tenantVisitScopeService;
     @Resource
     private DeptMapper deptMapper;
 
@@ -200,6 +203,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         if (!isFieldHidden(hiddenFields, "roleIds")) {
             permissionService.assignUserRole(updateReqVO.getId(), updateReqVO.getRoleIds());
         }
+        tenantVisitScopeService.reconcileUserScope(updateReqVO.getId());
 
         // 3. 记录操作日志上下文
         LogRecordContext.putVariable(DiffParseFunction.OLD_OBJECT, BeanUtils.toBean(oldUser, UserSaveReqVO.class));
@@ -213,6 +217,10 @@ public class AdminUserServiceImpl implements AdminUserService {
         Set<Long> deptIds = CollUtil.emptyIfNull(reqVO.getDeptIds());
         for (Long id : new LinkedHashSet<>(reqVO.getIds())) {
             AdminUserDO oldUser = userMapper.selectById(id);
+            if (Boolean.TRUE.equals(reqVO.getUpdateTenantVisitScope())) {
+                // 范围需要在同批次的停用状态落库前处理，保证“停用 + 清空范围”可以原子成功。
+                tenantVisitScopeService.saveUserTenantVisitScope(id, reqVO.getTenantVisitScope());
+            }
             updateUserBaseFields(id, reqVO, deptIds);
             if (Boolean.TRUE.equals(reqVO.getUpdateDeptIds())) {
                 updateUserDept(new UserSaveReqVO().setId(id).setDeptIds(deptIds));
@@ -222,6 +230,9 @@ public class AdminUserServiceImpl implements AdminUserService {
             }
             if (Boolean.TRUE.equals(reqVO.getUpdateStatus()) && CommonStatusEnum.isDisable(reqVO.getStatus())) {
                 oauth2TokenService.removeAccessToken(id, UserTypeEnum.ADMIN.getValue());
+            }
+            if (!Boolean.TRUE.equals(reqVO.getUpdateTenantVisitScope())) {
+                tenantVisitScopeService.reconcileUserScope(id);
             }
             for (AdminUserBatchUpdateExtension extension : batchUpdateExtensions) {
                 extension.update(id, reqVO);
@@ -316,6 +327,14 @@ public class AdminUserServiceImpl implements AdminUserService {
         if (Boolean.TRUE.equals(reqVO.getUpdateDataScope())) {
             normalizeBatchUserDataScope(reqVO);
             validateBatchDataScope(reqVO);
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateTenantVisitScope())) {
+            if (Boolean.TRUE.equals(reqVO.getUpdateStatus())
+                    && CommonStatusEnum.isDisable(reqVO.getStatus())
+                    && !Boolean.TRUE.equals(reqVO.getTenantVisitScope().getClear())) {
+                throw invalidParamException("停用用户时不能同时开放租户访问范围");
+            }
+            tenantVisitScopeService.validateUserTenantVisitScopes(userIds, reqVO.getTenantVisitScope());
         }
         for (AdminUserBatchUpdateExtension extension : batchUpdateExtensions) {
             extension.validate(reqVO, userIds);
@@ -534,6 +553,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         if (CommonStatusEnum.isDisable(status)) {
             oauth2TokenService.removeAccessToken(id, UserTypeEnum.ADMIN.getValue());
         }
+        tenantVisitScopeService.reconcileUserScope(id);
     }
 
     @Override

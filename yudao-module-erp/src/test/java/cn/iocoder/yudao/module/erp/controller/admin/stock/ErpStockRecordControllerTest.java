@@ -73,13 +73,17 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
 
     @Test
     public void testGetStockRecordReportPage_showFilledAmount() {
+        LocalDateTime businessTime = LocalDateTime.of(2026, 10, 16, 9, 43, 52);
+        LocalDateTime approveTime = LocalDateTime.of(2026, 10, 19, 16, 30, 0);
         ErpStockRecordDO inRecord = new ErpStockRecordDO()
                 .setId(1L).setProductId(11L).setWarehouseId(21L).setDeptId(31L)
                 .setCount(new BigDecimal("4"))
                 .setUnitPrice(new BigDecimal("2.50"))
                 .setTotalPrice(new BigDecimal("10.00"))
+                .setBizDate(businessTime)
                 .setBizNo("IN001");
         inRecord.setCreator("1001");
+        inRecord.setCreateTime(approveTime);
         ErpStockRecordDO outRecord = new ErpStockRecordDO()
                 .setId(2L).setProductId(12L).setWarehouseId(22L).setDeptId(32L)
                 .setCount(new BigDecimal("-3"))
@@ -111,6 +115,8 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
         assertNotNull(result);
         assertEquals(2L, result.getTotal());
         assertEquals("P-11", result.getList().get(0).getProductCode());
+        assertEquals(businessTime, result.getList().get(0).getBizDate());
+        assertEquals(approveTime, result.getList().get(0).getApproveTime());
         assertEquals(31L, result.getList().get(0).getDeptId());
         assertEquals("Dept A", result.getList().get(0).getDeptName());
         assertEquals(new BigDecimal("4"), result.getList().get(0).getInCount());
@@ -136,6 +142,7 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
                 .setCostPrice(new BigDecimal("2.00"))
                 .setCostAmount(new BigDecimal("28.00"));
         inRecord.setCreator("1001");
+        inRecord.setCreateTime(LocalDateTime.of(2026, 7, 15, 9, 30));
         ErpStockRecordDO outRecord = new ErpStockRecordDO()
                 .setId(2L).setProductId(12L).setWarehouseId(22L)
                 .setBizType(20).setBizNo("OUT001").setBizDate(LocalDateTime.of(2026, 7, 14, 11, 0))
@@ -146,6 +153,7 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
                 .setCostPrice(new BigDecimal("2.00"))
                 .setCostAmount(new BigDecimal("22.00"));
         outRecord.setCreator("1002");
+        outRecord.setCreateTime(LocalDateTime.of(2026, 7, 15, 10, 30));
         when(stockRecordService.getStockRecordPage(any())).thenReturn(
                 new PageResult<>(Arrays.asList(inRecord, outRecord), 2L));
 
@@ -173,6 +181,8 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
         assertTrue(response.getHeader("Content-Disposition").contains(".xlsx"));
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(content))) {
             Sheet sheet = workbook.getSheetAt(0);
+            assertTrue(findColumnIndex(sheet, "发生日期") >= 0);
+            assertEquals(-1, findColumnIndex(sheet, "审批日期"));
             assertEquals(-1, findColumnIndex(sheet, "部门"));
             assertEquals("采购入库", sheet.getRow(1).getCell(findColumnIndex(sheet, "交易类型")).getStringCellValue());
             assertEquals("IN001", sheet.getRow(1).getCell(findColumnIndex(sheet, "单号")).getStringCellValue());
@@ -180,6 +190,18 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
             assertEquals("销售出库", sheet.getRow(2).getCell(findColumnIndex(sheet, "交易类型")).getStringCellValue());
             assertEquals("OUT001", sheet.getRow(2).getCell(findColumnIndex(sheet, "单号")).getStringCellValue());
             assertEquals(3D, sheet.getRow(2).getCell(findColumnIndex(sheet, "出库数")).getNumericCellValue());
+        }
+
+        ErpStockRecordPageReqVO approvalReqVO = new ErpStockRecordPageReqVO();
+        approvalReqVO.setDateBasis("approveTime");
+        MockHttpServletResponse approvalResponse = new MockHttpServletResponse();
+        controller.exportStockRecordReportExcel(approvalReqVO, approvalResponse);
+        try (Workbook workbook = WorkbookFactory.create(
+                new ByteArrayInputStream(approvalResponse.getContentAsByteArray()))) {
+            Sheet sheet = workbook.getSheetAt(0);
+            assertTrue(findColumnIndex(sheet, "审批日期") >= 0);
+            assertEquals(-1, findColumnIndex(sheet, "发生日期"));
+            assertEquals("IN001", sheet.getRow(1).getCell(findColumnIndex(sheet, "单号")).getStringCellValue());
         }
     }
 
@@ -236,9 +258,12 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
         assertNull(row.getCostAmount());
 
         MockHttpServletResponse exportResponse = new MockHttpServletResponse();
-        controller.exportStockRecordReportExcel(new ErpStockRecordPageReqVO(), exportResponse);
+        ErpStockRecordPageReqVO approvalReqVO = new ErpStockRecordPageReqVO();
+        approvalReqVO.setDateBasis("approveTime");
+        controller.exportStockRecordReportExcel(approvalReqVO, exportResponse);
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(exportResponse.getContentAsByteArray()))) {
             Sheet sheet = workbook.getSheetAt(0);
+            assertTrue(findColumnIndex(sheet, "审批日期") >= 0);
             assertEquals("****", sheet.getRow(1).getCell(findColumnIndex(sheet, "入库单价")).getStringCellValue());
             assertEquals("****", sheet.getRow(1).getCell(findColumnIndex(sheet, "入库金额")).getStringCellValue());
             assertEquals("****", sheet.getRow(1).getCell(findColumnIndex(sheet, "结存单价")).getStringCellValue());

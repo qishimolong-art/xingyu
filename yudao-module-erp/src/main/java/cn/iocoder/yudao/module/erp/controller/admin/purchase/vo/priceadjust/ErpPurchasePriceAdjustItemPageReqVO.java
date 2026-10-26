@@ -24,7 +24,7 @@ public class ErpPurchasePriceAdjustItemPageReqVO extends PageParam {
 
     @Schema(description = "排序字段，支持：id, inId, inNo, inItemId, productId, productCode, productName, warehouseId, "
             + "deptId, oldPrice, newPrice, count, adjustRatio, adjustPrice, vehicleModel, standard, featureCode, "
-            + "originPlace, brand, drawingNo, warehousePosition, productUnitName, weight, packageQty, pieceCount, stockCount")
+            + "originPlace, brand, drawingNo, warehousePosition, productUnitName, weight, packageQty, pieceCount, stockCount, remark")
     private String orderField;
 
     @Schema(description = "排序方向：asc 或 desc")

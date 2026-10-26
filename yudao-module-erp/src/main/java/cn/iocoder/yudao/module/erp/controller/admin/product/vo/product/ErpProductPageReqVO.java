@@ -20,6 +20,9 @@ public class ErpProductPageReqVO extends PageParam {
     @Schema(description = "产品名称", example = "刹车片")
     private String name;
 
+    private java.util.List<Long> ids;
+    private String drawingNo;
+
     @Schema(description = "商品分类编号", example = "11161")
     private Long categoryId;
 

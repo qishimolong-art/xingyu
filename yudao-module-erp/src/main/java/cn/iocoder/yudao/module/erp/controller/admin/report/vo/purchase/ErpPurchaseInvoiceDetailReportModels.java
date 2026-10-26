@@ -92,7 +92,7 @@ public final class ErpPurchaseInvoiceDetailReportModels {
         @ExcelProperty(value = "单位", index = 9) private String unitName;
         @ExcelProperty(value = "数量", index = 10) private BigDecimal count;
         @ExcelProperty(value = "含税单价", index = 11) private BigDecimal productPrice;
-        @ExcelProperty(value = "含税金额", index = 12) private BigDecimal totalAmount;
+        @ExcelProperty(value = "含税金额", index = 12, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class) private BigDecimal totalAmount;
         @ExcelProperty(value = "结算情况", index = 13) private String settlementStatus;
         @ExcelProperty(value = "税率", index = 14) private String taxRate;
         @ExcelProperty(value = "车型", index = 15) private String vehicleModel;

@@ -197,7 +197,7 @@ public class ErpWarehouseMoveDetailReportService {
     }
 
     private BigDecimal scale(BigDecimal value) {
-        return value == null ? null : value.setScale(2, RoundingMode.HALF_UP);
+        return value;
     }
 
     private void mask(Row row, Set<String> hidden) {

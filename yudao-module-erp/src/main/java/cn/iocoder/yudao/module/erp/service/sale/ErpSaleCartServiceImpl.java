@@ -6,7 +6,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
+
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
@@ -14,6 +14,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirs
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchReqVO;
@@ -27,10 +28,12 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSave
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateBasicReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConfigDO;
@@ -89,6 +92,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -184,6 +188,21 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleCart(ErpSaleCartSaveReqVO createReqVO) {
+        ErpSaleDecimalUtils.requireScale(createReqVO.getDiscountPercent(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getFeeAmount(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getOtherPrice(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getTaxRate(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getTotalFreight(), "开单时间，由系统自动生成");
+        if (createReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < createReqVO.getItems().size(); decimalRow++) {
+                ErpSaleCartSaveReqVO.Item decimalItem = createReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getProductPrice(), "第" + (decimalRow + 1) + "行明细操作类型：insert 新增，update 修改，delete 删除");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getWeight(), "第" + (decimalRow + 1) + "行明细操作类型：insert 新增，update 修改，delete 删除");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getCount(), "第" + (decimalRow + 1) + "行明细操作类型：insert 新增，update 修改，delete 删除");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getTaxPercent(), "第" + (decimalRow + 1) + "行是否赠品");
+            }
+        }
         CreatedSaleCart created = createSaleCart(createReqVO, ErpSaleCartStatusEnum.PROCESS.getStatus());
         recordCreate(created.cart.getId(), created.cart.getNo());
         return created.cart.getId();
@@ -192,6 +211,21 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleCartDraftFromSource(ErpSaleCartSaveReqVO createReqVO) {
+        ErpSaleDecimalUtils.requireScale(createReqVO.getDiscountPercent(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getFeeAmount(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getOtherPrice(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getTaxRate(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(createReqVO.getTotalFreight(), "开单时间，由系统自动生成");
+        if (createReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < createReqVO.getItems().size(); decimalRow++) {
+                ErpSaleCartSaveReqVO.Item decimalItem = createReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getProductPrice(), "第" + (decimalRow + 1) + "行明细操作类型：insert 新增，update 修改，delete 删除");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getWeight(), "第" + (decimalRow + 1) + "行明细操作类型：insert 新增，update 修改，delete 删除");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getCount(), "第" + (decimalRow + 1) + "行明细操作类型：insert 新增，update 修改，delete 删除");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getTaxPercent(), "第" + (decimalRow + 1) + "行是否赠品");
+            }
+        }
         CreatedSaleCart created = createSaleCart(createReqVO, ErpSaleCartStatusEnum.PROCESS.getStatus(), true);
         recordCreate(created.cart.getId(), created.cart.getNo());
         return created.cart.getId();
@@ -321,6 +355,21 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleCart(ErpSaleCartSaveReqVO updateReqVO) {
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getDiscountPercent(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getFeeAmount(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getOtherPrice(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getTaxRate(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getTotalFreight(), "开单时间，由系统自动生成");
+        if (updateReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < updateReqVO.getItems().size(); decimalRow++) {
+                ErpSaleCartSaveReqVO.Item decimalItem = updateReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getProductPrice(), "第" + (decimalRow + 1) + "行明细操作类型：insert 新增，update 修改，delete 删除");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getWeight(), "第" + (decimalRow + 1) + "行明细操作类型：insert 新增，update 修改，delete 删除");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getCount(), "第" + (decimalRow + 1) + "行明细操作类型：insert 新增，update 修改，delete 删除");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getTaxPercent(), "第" + (decimalRow + 1) + "行是否赠品");
+            }
+        }
         updateSaleCart(updateReqVO, false);
     }
 
@@ -337,6 +386,21 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleCartDraft(ErpSaleCartSaveReqVO updateReqVO) {
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getDiscountPercent(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getFeeAmount(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getOtherPrice(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getTaxRate(), "开单时间，由系统自动生成");
+        ErpSaleDecimalUtils.requireScale(updateReqVO.getTotalFreight(), "开单时间，由系统自动生成");
+        if (updateReqVO.getItems() != null) {
+            for (int decimalRow = 0; decimalRow < updateReqVO.getItems().size(); decimalRow++) {
+                ErpSaleCartSaveReqVO.Item decimalItem = updateReqVO.getItems().get(decimalRow);
+                if (decimalItem == null || "delete".equals(decimalItem.getOperation())) continue;
+                ErpSaleDecimalUtils.requireScale(decimalItem.getProductPrice(), "第" + (decimalRow + 1) + "行明细操作类型：insert 新增，update 修改，delete 删除");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getWeight(), "第" + (decimalRow + 1) + "行明细操作类型：insert 新增，update 修改，delete 删除");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getCount(), "第" + (decimalRow + 1) + "行明细操作类型：insert 新增，update 修改，delete 删除");
+                ErpSaleDecimalUtils.requireScale(decimalItem.getTaxPercent(), "第" + (decimalRow + 1) + "行是否赠品");
+            }
+        }
         updateSaleCart(updateReqVO, true);
     }
 
@@ -417,7 +481,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
                 BigDecimal productPrice = Boolean.TRUE.equals(item.getGiftFlag())
                         ? BigDecimal.ZERO : productPriceMap.getOrDefault(item.getProductId(), BigDecimal.ZERO);
                 item.setProductPrice(productPrice);
-                item.setTotalPrice(MoneyUtils.priceMultiply(productPrice, item.getCount()));
+                item.setTotalPrice(ErpSaleDecimalUtils.multiply(productPrice, item.getCount()));
                 item.setTaxPercent(null);
                 item.setTaxPrice(BigDecimal.ZERO);
             }
@@ -710,13 +774,14 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
                 ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION);
         Long saleOutId = saleOutService.createGeneratedSaleOut(buildSaleOutReqVO(cart, finalItems),
                 ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId(), cart.getNo(), false);
-        createFreightFinanceDocuments(cart);
+        LocalDateTime finalApproveTime = LocalDateTime.now();
+        createFreightFinanceDocuments(cart, finalApproveTime);
         // 普通销售审核已通过 deductStock 释放本手推车锁；此处不再重复释放或扣实物。
         List<Long> saleOutIds = new ArrayList<>();
         saleOutIds.add(saleOutId);
         int updateCount = saleCartMapper.updateByIdAndStatus(id, ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus(),
                 new ErpSaleCartDO().setStatus(ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus())
-                        .setFinalAuditTime(LocalDateTime.now())
+                        .setFinalAuditTime(finalApproveTime)
                         .setFinalAuditUserId(finalApproveUserId));
         if (updateCount == 0) {
             throw exception(SALE_CART_FINAL_APPROVE_FAIL);
@@ -728,7 +793,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         return saleOutIds;
     }
 
-    private void createFreightFinanceDocuments(ErpSaleCartDO cart) {
+    private void createFreightFinanceDocuments(ErpSaleCartDO cart, LocalDateTime approveTime) {
         if (!FREIGHT_TYPE_CUSTOMER_ADVANCE.equals(cart.getFreightType())
                 && !FREIGHT_TYPE_SELF_PAY.equals(cart.getFreightType())) {
             return;
@@ -739,6 +804,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
                 .setCartId(cart.getId())
                 .setCartNo(cart.getNo())
                 .setBizTime(cart.getCartTime().toLocalDate())
+                .setApproveTime(approveTime)
                 .setCustomerId(cart.getCustomerId())
                 .setSettleMethod(cart.getSettleMethod())
                 .setAccountId(cart.getAccountId())
@@ -1262,7 +1328,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             if (finalPrice != null) {
                 survivor.setProductPrice(finalPrice);
             }
-            survivor.setTotalPrice(MoneyUtils.priceMultiply(survivor.getProductPrice(), totalCount));
+            survivor.setTotalPrice(ErpSaleDecimalUtils.multiply(survivor.getProductPrice(), totalCount));
             survivor.setTaxPrice(BigDecimal.ZERO);
             group.stream().skip(1).map(ErpSaleCartItemDO::getId).filter(Objects::nonNull)
                     .forEach(id -> redirects.put(id, survivor.getId()));
@@ -1569,7 +1635,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             }
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
-            item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+            item.setTotalPrice(ErpSaleDecimalUtils.multiply(item.getProductPrice(), item.getCount()));
             ErpStockDO stock = stockMap.get(buildProductWarehouseMapKey(item.getProductId(), item.getWarehouseId()));
             item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
         }));
@@ -1602,7 +1668,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             }
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
-            item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+            item.setTotalPrice(ErpSaleDecimalUtils.multiply(item.getProductPrice(), item.getCount()));
             ErpStockDO stock = stockMap.get(buildProductWarehouseMapKey(item.getProductId(), item.getWarehouseId()));
             item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
         }));
@@ -2066,7 +2132,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         BigDecimal feeAmount = resolveFeeAmount(cart.getFeeAmount(), cart.getOtherPrice());
         cart.setFeeAmount(feeAmount);
         cart.setOtherPrice(feeAmount);
-        cart.setDiscountPrice(MoneyUtils.priceMultiplyPercent(cart.getTotalPrice(), cart.getDiscountPercent()));
+        cart.setDiscountPrice(ErpSaleDecimalUtils.multiplyPercent(cart.getTotalPrice(), cart.getDiscountPercent()));
         cart.setTotalPrice(cart.getTotalPrice().subtract(cart.getDiscountPrice()).add(feeAmount));
     }
 
@@ -2081,7 +2147,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         BigDecimal feeAmount = resolveFeeAmount(quote.getFeeAmount(), quote.getOtherPrice());
         quote.setFeeAmount(feeAmount);
         quote.setOtherPrice(feeAmount);
-        quote.setDiscountPrice(MoneyUtils.priceMultiplyPercent(quote.getTotalPrice(), quote.getDiscountPercent()));
+        quote.setDiscountPrice(ErpSaleDecimalUtils.multiplyPercent(quote.getTotalPrice(), quote.getDiscountPercent()));
         quote.setTotalPrice(quote.getTotalPrice().subtract(quote.getDiscountPrice()).add(feeAmount));
     }
 
@@ -2150,6 +2216,11 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     public ErpSaleCartDO getSaleCart(Long id) {
         return saleCartMapper.selectById(id);
+    }
+
+    @Override
+    public ErpSaleCartDO getLatestOnlineOrder() {
+        return saleCartMapper.selectLatestOnlineOrder();
     }
 
     @Override
@@ -2253,6 +2324,12 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         for (int i = 0; i < list.size(); i++) {
             ErpSaleCartImportExcelVO row = list.get(i);
             int rowNo = i + 2;
+            String decimalError = ErpSaleDecimalUtils.importScaleError(row);
+            if (decimalError != null) {
+                respVO.getFailureDetails().add(new ErpSaleCartImportRespVO.FailureItem(rowNo, row.getProductCode(), decimalError));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
             ErpImportProductResolver.ResolveResult productResult =
                     productResolver.resolve(row.getProductCode(), row.getProductName(), row.getFactoryCode());
             if (productResult.isFailure()) {
@@ -2298,6 +2375,195 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpSaleImportResultRespVO importSaleCartOrderList(List<ErpSaleCartOrderImportExcelVO> list) {
+        ErpSaleImportResultRespVO respVO = new ErpSaleImportResultRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return respVO;
+        }
+        Map<String, ErpCustomerDO> customerMap = buildSaleCartImportCustomerMap();
+        ErpImportProductResolver productResolver = ErpImportProductResolver.build(list,
+                ErpSaleCartOrderImportExcelVO::getProductCode, ErpSaleCartOrderImportExcelVO::getProductName,
+                ErpSaleCartOrderImportExcelVO::getFactoryCode, productMapper);
+        Map<String, ErpWarehouseDO> warehouseMap = warehouseService.getCurrentUserVisibleSaleWarehouseList().stream()
+                .collect(Collectors.toMap(item -> normalizeSaleCartImportKey(item.getName()), item -> item, (a, b) -> a));
+
+        List<SaleCartOrderImportGroup> groups = new ArrayList<>();
+        SaleCartOrderImportGroup currentGroup = null;
+        for (int i = 0; i < list.size(); i++) {
+            ErpSaleCartOrderImportExcelVO row = list.get(i);
+            int rowNo = i + 2;
+            String decimalError = ErpSaleDecimalUtils.importScaleError(row);
+            if (decimalError != null) {
+                respVO.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(rowNo, null, row.getProductCode(), decimalError));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
+            if (isBlankSaleCartOrderRow(row)) {
+                continue;
+            }
+            if (hasSaleCartOrderMainFields(row)) {
+                ErpCustomerDO customer = customerMap.get(normalizeSaleCartImportKey(row.getCustomerName()));
+                currentGroup = new SaleCartOrderImportGroup(rowNo, row, customer);
+                groups.add(currentGroup);
+                String orderNo = resolveSaleCartImportNo(rowNo, row);
+                if (trimSaleCartImportText(row.getCustomerName()) == null) {
+                    addSaleCartImportFailure(respVO, rowNo, orderNo, null, "客户名称不能为空");
+                } else if (customer == null) {
+                    addSaleCartImportFailure(respVO, rowNo, orderNo, null, "客户不存在：" + row.getCustomerName());
+                } else if (CommonStatusEnum.isDisable(customer.getStatus())) {
+                    addSaleCartImportFailure(respVO, rowNo, orderNo, null, "客户未启用：" + customer.getName());
+                }
+            } else if (hasSaleCartOrderDetailFields(row) && currentGroup == null) {
+                addSaleCartImportFailure(respVO, rowNo, null,
+                        ErpImportProductResolver.getIdentifier(row.getProductCode(), row.getProductName(), row.getFactoryCode()),
+                        "明细行前缺少销售手推车主表信息");
+                continue;
+            }
+            if (!hasSaleCartOrderDetailFields(row)) {
+                continue;
+            }
+            String orderNo = currentGroup == null ? null
+                    : resolveSaleCartImportNo(currentGroup.getRowNo(), currentGroup.getMainRow());
+            ErpImportProductResolver.ResolveResult productResult =
+                    productResolver.resolve(row.getProductCode(), row.getProductName(), row.getFactoryCode());
+            String productIdentifier = productResult.getIdentifier();
+            ErpProductDO product = productResult.getProduct();
+            ErpWarehouseDO warehouse = trimSaleCartImportText(row.getWarehouseName()) == null ? null
+                    : warehouseMap.get(normalizeSaleCartImportKey(row.getWarehouseName()));
+            boolean valid = true;
+            if (productResult.isFailure()) {
+                addSaleCartImportFailure(respVO, rowNo, orderNo, productIdentifier, productResult.getErrorMessage());
+                valid = false;
+            }
+            if (row.getItemCount() == null || row.getItemCount().compareTo(BigDecimal.ZERO) <= 0) {
+                addSaleCartImportFailure(respVO, rowNo, orderNo, productIdentifier, "数量必须大于 0");
+                valid = false;
+            }
+            if (row.getProductPrice() != null && row.getProductPrice().compareTo(BigDecimal.ZERO) < 0) {
+                addSaleCartImportFailure(respVO, rowNo, orderNo, productIdentifier, "单价不能小于 0");
+                valid = false;
+            }
+            if (trimSaleCartImportText(row.getWarehouseName()) == null) {
+                addSaleCartImportFailure(respVO, rowNo, orderNo, productIdentifier, "所属仓库不能为空");
+                valid = false;
+            } else if (warehouse == null) {
+                addSaleCartImportFailure(respVO, rowNo, orderNo, productIdentifier,
+                        "仓库不存在或无销售权限：" + row.getWarehouseName());
+                valid = false;
+            }
+            if (valid && currentGroup != null) {
+                currentGroup.getRows().add(new SaleCartOrderImportRow(row, product, warehouse));
+            }
+        }
+        for (SaleCartOrderImportGroup group : groups) {
+            if (CollUtil.isEmpty(group.getRows())) {
+                addSaleCartImportFailure(respVO, group.getRowNo(),
+                        resolveSaleCartImportNo(group.getRowNo(), group.getMainRow()), null,
+                        "销售手推车至少需要一条明细");
+            }
+        }
+        if (respVO.getFailureCount() > 0) {
+            return respVO;
+        }
+        for (SaleCartOrderImportGroup group : groups) {
+            Long id = createSaleCart(buildSaleCartImportSaveReq(group));
+            respVO.getDocumentIds().add(id);
+            respVO.setSuccessCount(respVO.getSuccessCount() + 1);
+        }
+        return respVO;
+    }
+
+    private ErpSaleCartSaveReqVO buildSaleCartImportSaveReq(SaleCartOrderImportGroup group) {
+        ErpSaleCartSaveReqVO saveReqVO = new ErpSaleCartSaveReqVO();
+        saveReqVO.setCustomerId(group.getCustomer().getId());
+        saveReqVO.setRemark(trimSaleCartImportText(group.getMainRow().getRemark()));
+        saveReqVO.setDiscountPercent(BigDecimal.ZERO);
+        saveReqVO.setFeeAmount(BigDecimal.ZERO);
+        saveReqVO.setOtherPrice(BigDecimal.ZERO);
+        saveReqVO.setItems(convertList(group.getRows(), this::buildSaleCartImportItem));
+        return saveReqVO;
+    }
+
+    private ErpSaleCartSaveReqVO.Item buildSaleCartImportItem(SaleCartOrderImportRow importRow) {
+        ErpSaleCartOrderImportExcelVO row = importRow.getRow();
+        ErpProductDO product = importRow.getProduct();
+        ErpSaleCartSaveReqVO.Item item = new ErpSaleCartSaveReqVO.Item();
+        item.setProductId(product.getId());
+        item.setWarehouseId(importRow.getWarehouse().getId());
+        item.setCount(row.getItemCount());
+        item.setGiftFlag(Boolean.TRUE.equals(row.getGiftFlag()));
+        item.setProductPrice(Boolean.TRUE.equals(item.getGiftFlag()) ? BigDecimal.ZERO
+                : (row.getProductPrice() != null ? row.getProductPrice() : product.getSalePrice()));
+        item.setRemark(trimSaleCartImportText(row.getItemRemark()));
+        return item;
+    }
+
+    private Map<String, ErpCustomerDO> buildSaleCartImportCustomerMap() {
+        Map<String, ErpCustomerDO> map = new LinkedHashMap<>();
+        cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO pageReqVO =
+                new cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO();
+        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        customerService.getCustomerPage(pageReqVO).getList().forEach(customer -> {
+            putSaleCartImportCustomer(map, customer.getCode(), customer);
+            putSaleCartImportCustomer(map, customer.getName(), customer);
+            putSaleCartImportCustomer(map, customer.getShortName(), customer);
+        });
+        return map;
+    }
+
+    private void putSaleCartImportCustomer(Map<String, ErpCustomerDO> map, String key, ErpCustomerDO customer) {
+        String normalized = normalizeSaleCartImportKey(key);
+        if (normalized != null) {
+            map.putIfAbsent(normalized, customer);
+        }
+    }
+
+    private boolean isBlankSaleCartOrderRow(ErpSaleCartOrderImportExcelVO row) {
+        return row == null || !hasSaleCartOrderMainFields(row) && !hasSaleCartOrderDetailFields(row);
+    }
+
+    private boolean hasSaleCartOrderMainFields(ErpSaleCartOrderImportExcelVO row) {
+        return trimSaleCartImportText(row.getCustomerName()) != null
+                || trimSaleCartImportText(row.getRemark()) != null;
+    }
+
+    private boolean hasSaleCartOrderDetailFields(ErpSaleCartOrderImportExcelVO row) {
+        return trimSaleCartImportText(row.getProductCode()) != null
+                || trimSaleCartImportText(row.getProductName()) != null
+                || trimSaleCartImportText(row.getFactoryCode()) != null
+                || trimSaleCartImportText(row.getWarehouseName()) != null
+                || row.getItemCount() != null
+                || row.getProductPrice() != null
+                || row.getGiftFlag() != null
+                || trimSaleCartImportText(row.getItemRemark()) != null;
+    }
+
+    private String resolveSaleCartImportNo(Integer rowNo, ErpSaleCartOrderImportExcelVO row) {
+        String customerName = trimSaleCartImportText(row.getCustomerName());
+        return customerName != null ? customerName : "row " + rowNo;
+    }
+
+    private void addSaleCartImportFailure(ErpSaleImportResultRespVO respVO, Integer rowNo, String orderNo,
+                                          String productCode, String reason) {
+        respVO.getFailureDetails().add(new ErpSaleImportResultRespVO.FailureItem(rowNo, orderNo, productCode, reason));
+        respVO.setFailureCount(respVO.getFailureCount() + 1);
+    }
+
+    private String normalizeSaleCartImportKey(String value) {
+        String normalized = trimSaleCartImportText(value);
+        return normalized == null ? null : normalized.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
+    }
+
+    private static String trimSaleCartImportText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    @Override
     public ErpSaleCartFirstApproveConfigRespVO getFirstApproveConfig() {
         FirstApproveConfig config = getFirstApproveConfigObject();
         ErpSaleCartFirstApproveConfigRespVO respVO = BeanUtils.toBean(config, ErpSaleCartFirstApproveConfigRespVO.class);
@@ -2322,6 +2588,61 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         FirstApproveConfig config = BeanUtils.toBean(reqVO, FirstApproveConfig.class);
         upsertFirstApproveGlobalConfig(config);
         replaceFirstApproveDeptConfigs(deptIds);
+    }
+
+    private static class SaleCartOrderImportGroup {
+        private final Integer rowNo;
+        private final ErpSaleCartOrderImportExcelVO mainRow;
+        private final ErpCustomerDO customer;
+        private final List<SaleCartOrderImportRow> rows = new ArrayList<>();
+
+        private SaleCartOrderImportGroup(Integer rowNo, ErpSaleCartOrderImportExcelVO mainRow,
+                                         ErpCustomerDO customer) {
+            this.rowNo = rowNo;
+            this.mainRow = mainRow;
+            this.customer = customer;
+        }
+
+        public Integer getRowNo() {
+            return rowNo;
+        }
+
+        public ErpSaleCartOrderImportExcelVO getMainRow() {
+            return mainRow;
+        }
+
+        public ErpCustomerDO getCustomer() {
+            return customer;
+        }
+
+        public List<SaleCartOrderImportRow> getRows() {
+            return rows;
+        }
+    }
+
+    private static class SaleCartOrderImportRow {
+        private final ErpSaleCartOrderImportExcelVO row;
+        private final ErpProductDO product;
+        private final ErpWarehouseDO warehouse;
+
+        private SaleCartOrderImportRow(ErpSaleCartOrderImportExcelVO row, ErpProductDO product,
+                                       ErpWarehouseDO warehouse) {
+            this.row = row;
+            this.product = product;
+            this.warehouse = warehouse;
+        }
+
+        public ErpSaleCartOrderImportExcelVO getRow() {
+            return row;
+        }
+
+        public ErpProductDO getProduct() {
+            return product;
+        }
+
+        public ErpWarehouseDO getWarehouse() {
+            return warehouse;
+        }
     }
 
     private void clearHiddenFields(Object target) {

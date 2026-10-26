@@ -5,7 +5,6 @@ import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermi
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
-import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
@@ -1310,13 +1309,15 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         validateStockMoveItemWarehouses(validItems, false, false, reqVO.getDeptId());
         return convertList(validItems, itemReq -> BeanUtils.toBean(itemReq, ErpStockMoveItemDO.class, item -> {
+            StockDecimalMath.require(item.getCount(), "数量", 18, 6);
+            StockDecimalMath.require(item.getProductPrice(), "单价", 18, 6);
             ErpProductDO product = productMap.get(item.getProductId());
             BigDecimal weight = snapshotSupport.resolveWeight(itemReq.getWeight(), product);
             item.setProductUnitId(snapshotSupport.resolveProductUnitId(item.getProductUnitId(), product))
                     .setPackageQty(snapshotSupport.resolvePackageQty(itemReq.getPackageQty(), product))
                     .setWeight(weight)
                     .setTotalWeight(snapshotSupport.calculateTotalWeight(weight, item.getCount()))
-                    .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+                    .setTotalPrice(StockDecimalMath.multiply(item.getProductPrice(), item.getCount()));
         }));
     }
 
@@ -1337,13 +1338,15 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         validateStockMoveItemWarehouses(list, requireWarehouses, saleCartSource, saleDeptId);
         // 2. 杞寲涓?ErpStockMoveItemDO 鍒楄〃
         return convertList(list, o -> BeanUtils.toBean(o, ErpStockMoveItemDO.class, item -> {
+            StockDecimalMath.require(item.getCount(), "数量", 18, 6);
+            StockDecimalMath.require(item.getProductPrice(), "单价", 18, 6);
             ErpProductDO product = productMap.get(item.getProductId());
             BigDecimal weight = snapshotSupport.resolveWeight(o.getWeight(), product);
             item.setProductUnitId(snapshotSupport.resolveProductUnitId(item.getProductUnitId(), product))
                     .setPackageQty(snapshotSupport.resolvePackageQty(o.getPackageQty(), product))
                     .setWeight(weight)
                     .setTotalWeight(snapshotSupport.calculateTotalWeight(weight, item.getCount()))
-                    .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+                    .setTotalPrice(StockDecimalMath.multiply(item.getProductPrice(), item.getCount()));
         }));
     }
 

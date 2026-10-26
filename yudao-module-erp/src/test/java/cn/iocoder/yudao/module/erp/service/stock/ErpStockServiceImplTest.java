@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockBatchNoRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockBatchQuantityDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
@@ -96,7 +97,7 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(1, result.size());
         ErpStockBatchNoRespVO batch = result.get("10_20").get(0);
         assertEquals("B-001", batch.getBatchNo());
-        assertEquals(new BigDecimal("8"), batch.getAvailableCount());
+        assertDecimalEquals(new BigDecimal("8"), batch.getAvailableCount());
         assertEquals(firstInTime, batch.getFirstInTime());
     }
 
@@ -117,7 +118,7 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
 
         assertEquals(1, result.get("10_20").size());
         assertEquals("B-SOLD-OUT", result.get("10_20").get(0).getBatchNo());
-        assertEquals(BigDecimal.ZERO, result.get("10_20").get(0).getAvailableCount());
+        assertDecimalEquals(BigDecimal.ZERO, result.get("10_20").get(0).getAvailableCount());
     }
 
     @Test
@@ -145,6 +146,55 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
     public void testGetStockPage_productNameKeyword_usesProductIdFilterOnly() {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
         reqVO.setProductNameKeyword("经典表现 530");
+        List<Long> productIds = Arrays.asList(10L, 20L);
+        PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
+        when(warehouseService.getCurrentUserProductStockPermissionScope()).thenReturn(
+                new ErpProductStockPermissionScope(true,
+                        new LinkedHashSet<>(Arrays.asList(10L, 20L)), Collections.emptySet(), 1L));
+        when(productMapper.selectIdsByComplexQueryWithoutKeyword(eq(reqVO), isNull(), isNull()))
+                .thenReturn(productIds);
+        when(stockMapper.selectPage(eq(reqVO), eq(productIds),
+                eq(new LinkedHashSet<>(Arrays.asList(10L, 20L))), isNull(), isNull())).thenReturn(pageResult);
+
+        PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
+
+        assertSame(pageResult, result);
+        verify(productMapper).selectIdsByComplexQueryWithoutKeyword(eq(reqVO), isNull(), isNull());
+        verify(productMapper, never()).selectIdsByKeyword(any());
+        verify(productMapper, never()).selectIdsByStockProductKeyword(any());
+        verify(stockMapper).selectPage(eq(reqVO), eq(productIds),
+                eq(new LinkedHashSet<>(Arrays.asList(10L, 20L))), isNull(), isNull());
+    }
+
+    @Test
+    public void testGetStockPage_productStockListModeLoadsExactIdentifierPriority() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setKeywordSearchMode(ErpStockPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_STOCK_LIST);
+        reqVO.setProductKeyword("138145");
+        List<Long> exactProductIds = Collections.singletonList(99L);
+        List<Long> productIds = Arrays.asList(10L, 99L);
+        PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
+        when(warehouseService.getCurrentUserProductStockPermissionScope()).thenReturn(
+                new ErpProductStockPermissionScope(true,
+                        new LinkedHashSet<>(Arrays.asList(10L, 20L)), Collections.emptySet(), 1L));
+        when(productMapper.selectIdsByExactStockIdentifier("138145")).thenReturn(exactProductIds);
+        when(productMapper.selectIdsByComplexQueryWithoutKeyword(eq(reqVO), isNull(), isNull()))
+                .thenReturn(productIds);
+        when(stockMapper.selectPage(eq(reqVO), eq(productIds),
+                eq(new LinkedHashSet<>(Arrays.asList(10L, 20L))), isNull(), isNull())).thenReturn(pageResult);
+
+        PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
+
+        assertSame(pageResult, result);
+        assertEquals(exactProductIds, reqVO.getExactKeywordProductIds());
+        verify(productMapper).selectIdsByExactStockIdentifier("138145");
+        verify(productMapper).selectIdsByComplexQueryWithoutKeyword(eq(reqVO), isNull(), isNull());
+    }
+
+    @Test
+    public void testGetStockPage_productCodeNameKeyword_usesProductIdFilterOnly() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setProductCodeNameKeyword("BKR6E 花塞");
         List<Long> productIds = Arrays.asList(10L, 20L);
         PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
         when(warehouseService.getCurrentUserProductStockPermissionScope()).thenReturn(
@@ -447,7 +497,7 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
 
         BigDecimal result = stockService.getStockCount(10L, 20L);
 
-        assertEquals(BigDecimal.ZERO, result);
+        assertDecimalEquals(BigDecimal.ZERO, result);
     }
 
     @Test
@@ -734,19 +784,19 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
                 .setCostPrice(new BigDecimal("12.300000"))
                 .setCostAmount(new BigDecimal("123"));
         when(stockMapper.selectByProductIdAndWarehouseId(10L, 20L)).thenReturn(stock);
-        when(stockMapper.updateCountAndCost(eq(1L), eq(new BigDecimal("10")), eq(new BigDecimal("9")),
-                eq(new BigDecimal("12.555556")), eq(new BigDecimal("113")), eq(false)))
+        when(stockMapper.updateCountAndCost(eq(1L), decimalEq(new BigDecimal("10")), decimalEq(new BigDecimal("9")),
+                decimalEq(new BigDecimal("12.555556")), decimalEq(new BigDecimal("113")), eq(false)))
                 .thenReturn(1);
 
         ErpStockService.StockUpdateResult result = stockService.updateStockCountAndCost(
                 10L, 20L, new BigDecimal("-1"), new BigDecimal("10"),
                 ErpStockRecordBizTypeEnum.PURCHASE_RETURN.getType());
 
-        assertEquals(new BigDecimal("9"), result.getTotalCount());
-        assertEquals(new BigDecimal("12.555556"), result.getCostPrice());
-        assertEquals(new BigDecimal("113"), result.getCostAmount());
-        verify(stockMapper).updateCountAndCost(eq(1L), eq(new BigDecimal("10")), eq(new BigDecimal("9")),
-                eq(new BigDecimal("12.555556")), eq(new BigDecimal("113")), eq(false));
+        assertDecimalEquals(new BigDecimal("9"), result.getTotalCount());
+        assertDecimalEquals(new BigDecimal("12.555556"), result.getCostPrice());
+        assertDecimalEquals(new BigDecimal("113"), result.getCostAmount());
+        verify(stockMapper).updateCountAndCost(eq(1L), decimalEq(new BigDecimal("10")), decimalEq(new BigDecimal("9")),
+                decimalEq(new BigDecimal("12.555556")), decimalEq(new BigDecimal("113")), eq(false));
     }
 
     @Test
@@ -757,19 +807,19 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
                 .setCostPrice(new BigDecimal("12.300000"))
                 .setCostAmount(new BigDecimal("123"));
         when(stockMapper.selectByProductIdAndWarehouseId(10L, 20L)).thenReturn(stock);
-        when(stockMapper.updateCountAndCost(eq(1L), eq(new BigDecimal("10")), eq(new BigDecimal("9")),
-                eq(new BigDecimal("12.300000")), eq(new BigDecimal("110.70")), eq(false)))
+        when(stockMapper.updateCountAndCost(eq(1L), decimalEq(new BigDecimal("10")), decimalEq(new BigDecimal("9")),
+                decimalEq(new BigDecimal("12.300000")), decimalEq(new BigDecimal("110.70")), eq(false)))
                 .thenReturn(1);
 
         ErpStockService.StockUpdateResult result = stockService.updateStockCountAndCost(
                 10L, 20L, new BigDecimal("-1"), null,
                 ErpStockRecordBizTypeEnum.OTHER_OUT.getType());
 
-        assertEquals(new BigDecimal("9"), result.getTotalCount());
-        assertEquals(new BigDecimal("12.300000"), result.getCostPrice());
-        assertEquals(new BigDecimal("110.70"), result.getCostAmount());
-        verify(stockMapper).updateCountAndCost(eq(1L), eq(new BigDecimal("10")), eq(new BigDecimal("9")),
-                eq(new BigDecimal("12.300000")), eq(new BigDecimal("110.70")), eq(false));
+        assertDecimalEquals(new BigDecimal("9"), result.getTotalCount());
+        assertDecimalEquals(new BigDecimal("12.300000"), result.getCostPrice());
+        assertDecimalEquals(new BigDecimal("110.70"), result.getCostAmount());
+        verify(stockMapper).updateCountAndCost(eq(1L), decimalEq(new BigDecimal("10")), decimalEq(new BigDecimal("9")),
+                decimalEq(new BigDecimal("12.300000")), decimalEq(new BigDecimal("110.70")), eq(false));
     }
 
     @Test
@@ -780,19 +830,19 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
                 .setCostPrice(new BigDecimal("12.300000"))
                 .setCostAmount(new BigDecimal("123"));
         when(stockMapper.selectByProductIdAndWarehouseId(10L, 20L)).thenReturn(stock);
-        when(stockMapper.updateCountAndCost(eq(1L), eq(new BigDecimal("10")), eq(new BigDecimal("9")),
-                eq(new BigDecimal("12.300000")), eq(new BigDecimal("110.70")), eq(false)))
+        when(stockMapper.updateCountAndCost(eq(1L), decimalEq(new BigDecimal("10")), decimalEq(new BigDecimal("9")),
+                decimalEq(new BigDecimal("12.300000")), decimalEq(new BigDecimal("110.70")), eq(false)))
                 .thenReturn(1);
 
         ErpStockService.StockUpdateResult result = stockService.updateStockCountAndCost(
                 10L, 20L, new BigDecimal("-1"), new BigDecimal("20"),
                 ErpStockRecordBizTypeEnum.SALE_OUT.getType());
 
-        assertEquals(new BigDecimal("9"), result.getTotalCount());
-        assertEquals(new BigDecimal("12.300000"), result.getCostPrice());
-        assertEquals(new BigDecimal("110.70"), result.getCostAmount());
-        verify(stockMapper).updateCountAndCost(eq(1L), eq(new BigDecimal("10")), eq(new BigDecimal("9")),
-                eq(new BigDecimal("12.300000")), eq(new BigDecimal("110.70")), eq(false));
+        assertDecimalEquals(new BigDecimal("9"), result.getTotalCount());
+        assertDecimalEquals(new BigDecimal("12.300000"), result.getCostPrice());
+        assertDecimalEquals(new BigDecimal("110.70"), result.getCostAmount());
+        verify(stockMapper).updateCountAndCost(eq(1L), decimalEq(new BigDecimal("10")), decimalEq(new BigDecimal("9")),
+                decimalEq(new BigDecimal("12.300000")), decimalEq(new BigDecimal("110.70")), eq(false));
     }
 
     @Test
@@ -808,21 +858,57 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
                 .setCostPrice(new BigDecimal("12.300000"))
                 .setCostAmount(new BigDecimal("24.60"));
         when(stockMapper.selectByProductIdAndWarehouseId(10L, 20L)).thenReturn(stock, latest);
-        when(stockMapper.updateCountAndCost(eq(1L), eq(new BigDecimal("2")), eq(new BigDecimal("3")),
-                eq(new BigDecimal("11.533333")), eq(new BigDecimal("34.60")), eq(false)))
+        when(stockMapper.updateCountAndCost(eq(1L), decimalEq(new BigDecimal("2")), decimalEq(new BigDecimal("3")),
+                decimalEq(new BigDecimal("11.533333")), decimalEq(new BigDecimal("34.60")), eq(false)))
                 .thenReturn(0, 1);
 
         ErpStockService.StockUpdateResult result = stockService.updateStockCountAndCost(
                 10L, 20L, new BigDecimal("1"), new BigDecimal("10"),
                 ErpStockRecordBizTypeEnum.SALE_RETURN.getType());
 
-        assertEquals(new BigDecimal("3"), result.getTotalCount());
-        assertEquals(new BigDecimal("11.533333"), result.getCostPrice());
-        assertEquals(new BigDecimal("34.60"), result.getCostAmount());
+        assertDecimalEquals(new BigDecimal("3"), result.getTotalCount());
+        assertDecimalEquals(new BigDecimal("11.533333"), result.getCostPrice());
+        assertDecimalEquals(new BigDecimal("34.60"), result.getCostAmount());
         verify(stockMapper, org.mockito.Mockito.times(2)).selectByProductIdAndWarehouseId(10L, 20L);
         verify(stockMapper, org.mockito.Mockito.times(2)).updateCountAndCost(eq(1L),
-                eq(new BigDecimal("2")), eq(new BigDecimal("3")),
-                eq(new BigDecimal("11.533333")), eq(new BigDecimal("34.60")), eq(false));
+                decimalEq(new BigDecimal("2")), decimalEq(new BigDecimal("3")),
+                decimalEq(new BigDecimal("11.533333")), decimalEq(new BigDecimal("34.60")), eq(false));
+    }
+
+    @Test
+    public void testUpdateStockCountIncrement_insufficientStock_formatsCountsInMessage() {
+        ErpStockDO stock = new ErpStockDO().setId(1L)
+                .setProductId(10L).setWarehouseId(20L)
+                .setCount(new BigDecimal("1.000000"));
+        when(stockMapper.selectByProductIdAndWarehouseId(10L, 20L)).thenReturn(stock);
+        when(productService.getProduct(10L)).thenReturn(new ErpProductDO().setId(10L).setName("测试产品"));
+        when(warehouseService.getWarehouse(20L)).thenReturn(new ErpWarehouseDO().setId(20L).setName("测试仓库"));
+
+        ServiceException exception = assertThrows(ServiceException.class, () ->
+                stockService.updateStockCountIncrement(10L, 20L, new BigDecimal("-2.250000")));
+
+        assertEquals("操作失败，产品(测试产品)所在仓库(测试仓库)的库存：1，小于变更数量：-2.25", exception.getMessage());
+        verify(stockMapper, never()).updateCountIncrement(eq(1L), decimalEq(new BigDecimal("-2.250000")), eq(false));
+    }
+
+    @Test
+    public void testUpdateStockCountAndCost_insufficientStock_formatsZeroAndNegativeCountInMessage() {
+        ErpStockDO stock = new ErpStockDO().setId(1L)
+                .setProductId(10L).setWarehouseId(20L)
+                .setCount(new BigDecimal("0.000000"))
+                .setCostPrice(BigDecimal.ZERO)
+                .setCostAmount(BigDecimal.ZERO);
+        when(stockMapper.selectByProductIdAndWarehouseId(10L, 20L)).thenReturn(stock);
+        when(productService.getProduct(10L)).thenReturn(new ErpProductDO().setId(10L).setName("测试产品"));
+        when(warehouseService.getWarehouse(20L)).thenReturn(new ErpWarehouseDO().setId(20L).setName("测试仓库"));
+
+        ServiceException exception = assertThrows(ServiceException.class, () ->
+                stockService.updateStockCountAndCost(10L, 20L, new BigDecimal("-2.500000"), null,
+                        ErpStockRecordBizTypeEnum.SALE_OUT.getType()));
+
+        assertEquals("操作失败，产品(测试产品)所在仓库(测试仓库)的库存：0，小于变更数量：-2.5", exception.getMessage());
+        verify(stockMapper, never()).updateCountAndCost(eq(1L), decimalEq(new BigDecimal("0.000000")),
+                decimalEq(new BigDecimal("-2.500000")), any(), any(), eq(false));
     }
 
     @Test
@@ -842,7 +928,7 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
 
         assertEquals(cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_COUNT_NEGATIVE.getCode(),
                 exception.getCode());
-        verify(stockMapper, never()).updateCountAndCost(eq(1L), eq(BigDecimal.ZERO), eq(new BigDecimal("-1")),
+        verify(stockMapper, never()).updateCountAndCost(eq(1L), eq(BigDecimal.ZERO), decimalEq(new BigDecimal("-1")),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), eq(false));
     }
 
@@ -855,8 +941,8 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
                 .setCostPrice(new BigDecimal("12.300000"))
                 .setCostAmount(new BigDecimal("123"));
         when(stockMapper.selectByProductIdAndWarehouseId(10L, 20L)).thenReturn(stock);
-        when(stockMapper.updateCostAmountAndPrice(eq(1L), eq(new BigDecimal("10")), eq(new BigDecimal("123")),
-                eq(new BigDecimal("128.00")), eq(new BigDecimal("12.800000"))))
+        when(stockMapper.updateCostAmountAndPrice(eq(1L), decimalEq(new BigDecimal("10")), decimalEq(new BigDecimal("123")),
+                decimalEq(new BigDecimal("128.00")), decimalEq(new BigDecimal("12.800000"))))
                 .thenReturn(1);
         when(warehouseService.getWarehouse(20L)).thenReturn(new ErpWarehouseDO().setId(20L).setDeptId(40L));
         LocalDateTime bizDate = LocalDateTime.of(2026, 7, 7, 10, 0);
@@ -869,8 +955,8 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         ErpStockRecordDO record = captor.getValue();
         assertEquals(40L, record.getDeptId());
         assertEquals(ErpStockRecordBizTypeEnum.PURCHASE_PRICE_ADJUST.getType(), record.getBizType());
-        assertEquals(BigDecimal.ZERO, record.getCount());
-        assertEquals(new BigDecimal("128.00"), record.getCostAmount());
+        assertDecimalEquals(BigDecimal.ZERO, record.getCount());
+        assertDecimalEquals(new BigDecimal("128.00"), record.getCostAmount());
     }
 
     @Test
@@ -879,11 +965,11 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
                 .setCount(new BigDecimal("3")).setCostPrice(new BigDecimal("216.666667")).setCostAmount(new BigDecimal("650"));
         when(dualCostPostingService.useLegacyCurrentAverage(10L, 20L, new BigDecimal("-1"), 80)).thenReturn(true);
         when(stockMapper.selectByProductIdAndWarehouseIdForUpdate(10L, 20L)).thenReturn(stock);
-        when(stockMapper.updateCountAndCost(eq(1L), eq(new BigDecimal("3")), eq(new BigDecimal("2")),
-                eq(new BigDecimal("216.666667")), eq(new BigDecimal("433.333333")), eq(false))).thenReturn(1);
+        when(stockMapper.updateCountAndCost(eq(1L), decimalEq(new BigDecimal("3")), decimalEq(new BigDecimal("2")),
+                decimalEq(new BigDecimal("216.666667")), decimalEq(new BigDecimal("433.3333")), eq(false))).thenReturn(1);
         ErpStockService.StockUpdateResult result = stockService.updateStockCountAndCost(10L, 20L,
                 new BigDecimal("-1"), new BigDecimal("1000"), 80);
-        assertEquals(new BigDecimal("433.333333"), result.getCostAmount());
+        assertDecimalEquals(new BigDecimal("433.3333"), result.getCostAmount());
         verify(stockMapper, org.mockito.Mockito.never()).selectByProductIdAndWarehouseId(10L, 20L);
     }
 
@@ -904,12 +990,20 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         when(dualCostPostingService.authenticatedLegacyIncomingAmount(10L, 20L, new BigDecimal("2"), 60))
                 .thenReturn(new BigDecimal("160"));
         when(stockMapper.selectByProductIdAndWarehouseIdForUpdate(10L, 20L)).thenReturn(stock);
-        when(stockMapper.updateCountAndCost(eq(1L), eq(new BigDecimal("3")), eq(new BigDecimal("5")),
-                eq(new BigDecimal("162.000000")), eq(new BigDecimal("810")), eq(false))).thenReturn(1);
+        when(stockMapper.updateCountAndCost(eq(1L), decimalEq(new BigDecimal("3")), decimalEq(new BigDecimal("5")),
+                decimalEq(new BigDecimal("162.000000")), decimalEq(new BigDecimal("810")), eq(false))).thenReturn(1);
         ErpStockService.StockUpdateResult result = stockService.updateStockCountAndCost(10L, 20L,
                 new BigDecimal("2"), new BigDecimal("100"), 60);
-        assertEquals(new BigDecimal("810"), result.getCostAmount());
+        assertDecimalEquals(new BigDecimal("810"), result.getCostAmount());
         verify(stockMapper, org.mockito.Mockito.never()).selectByProductIdAndWarehouseId(10L, 20L);
+    }
+
+    private static void assertDecimalEquals(BigDecimal expected, BigDecimal actual) {
+        org.junit.jupiter.api.Assertions.assertNotNull(actual);
+        org.junit.jupiter.api.Assertions.assertEquals(0, expected.compareTo(actual));
+    }
+    private static BigDecimal decimalEq(BigDecimal expected) {
+        return org.mockito.ArgumentMatchers.argThat(actual -> actual != null && expected.compareTo(actual) == 0);
     }
 
 }

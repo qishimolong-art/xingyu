@@ -92,9 +92,9 @@ public final class ErpSaleOutDetailReportModels {
         private BigDecimal freightIncludedPrice;
         @ExcelProperty(value = "上次销售价", index = 12)
         private BigDecimal previousSalePrice;
-        @ExcelProperty(value = "总金额", index = 13)
+        @ExcelProperty(value = "总金额", index = 13, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal totalAmount;
-        @ExcelProperty(value = "税务开票金额", index = 14)
+        @ExcelProperty(value = "税务开票金额", index = 14, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal invoiceAmount;
         @ExcelProperty(value = "开票状态", index = 15)
         private String invoiceStatus;
@@ -146,10 +146,11 @@ public final class ErpSaleOutDetailReportModels {
         private String factoryModel;
         @ExcelProperty(value = "运费类型", index = 39)
         private String freightType;
-        @ExcelProperty(value = "运费", index = 40)
+        @ExcelProperty(value = "运费", index = 40, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal freightAmount;
 
         private Boolean priceVisible;
+        private Boolean costVisible;
     }
 
     @Data
@@ -160,7 +161,10 @@ public final class ErpSaleOutDetailReportModels {
         private BigDecimal totalAmount;
         private BigDecimal invoiceAmount;
         private BigDecimal freightAmount;
+        private BigDecimal totalSaleCostAmount;
+        private Long missingSaleCostCount;
         private Boolean priceVisible;
+        private Boolean costVisible;
     }
 
     @Data

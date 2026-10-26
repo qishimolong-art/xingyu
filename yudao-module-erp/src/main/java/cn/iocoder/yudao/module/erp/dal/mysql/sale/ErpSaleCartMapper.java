@@ -35,6 +35,19 @@ public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
         return selectJoinOne(ErpSaleCartSummaryRespVO.class, query);
     }
 
+    default ErpSaleCartDO selectLatestOnlineOrder() {
+        return selectOne(buildLatestOnlineOrderQuery());
+    }
+
+    static LambdaQueryWrapper<ErpSaleCartDO> buildLatestOnlineOrderQuery() {
+        return new LambdaQueryWrapper<ErpSaleCartDO>()
+                .select(ErpSaleCartDO::getId, ErpSaleCartDO::getNo,
+                        ErpSaleCartDO::getSourceNo, ErpSaleCartDO::getCreateTime)
+                .eq(ErpSaleCartDO::getSourceType, ErpSaleBizSourceTypeEnum.MALL_ORDER.getType())
+                .orderByDesc(ErpSaleCartDO::getId)
+                .last("LIMIT 1");
+    }
+
     static MPJLambdaWrapperX<ErpSaleCartDO> buildQuery(ErpSaleCartPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpSaleCartDO> queryWrapper = new MPJLambdaWrapperX<ErpSaleCartDO>()
                 .likeIfPresent(ErpSaleCartDO::getNo, reqVO.getNo())

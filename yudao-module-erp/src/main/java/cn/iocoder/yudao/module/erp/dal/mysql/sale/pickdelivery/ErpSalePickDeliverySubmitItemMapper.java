@@ -24,6 +24,18 @@ public interface ErpSalePickDeliverySubmitItemMapper extends BaseMapperX<ErpSale
                 .orderByAsc(ErpSalePickDeliverySubmitItemDO::getId));
     }
 
+    default PageResult<ErpSalePickDeliverySubmitItemDO> selectPageByOrderIdAndType(
+            PageParam page, Long orderId, Integer type) {
+        return selectPage(page, new LambdaQueryWrapperX<ErpSalePickDeliverySubmitItemDO>()
+                .apply("EXISTS (SELECT 1 FROM erp_sale_pick_delivery_submit s "
+                                + "WHERE s.id = erp_sale_pick_delivery_submit_item.submit_id "
+                                + "AND s.tenant_id = erp_sale_pick_delivery_submit_item.tenant_id "
+                                + "AND s.deleted = 0 AND s.order_id = {0} AND s.type = {1} "
+                                + "AND s.quantity_details = 1)", orderId, type)
+                .orderByDesc(ErpSalePickDeliverySubmitItemDO::getSubmitId)
+                .orderByAsc(ErpSalePickDeliverySubmitItemDO::getId));
+    }
+
     default PageResult<ErpSalePickDeliverySubmitItemDO> selectPageBySubmitIdAndPickTaskId(
             PageParam page, Long submitId, Long taskId) {
         return selectPage(page, new LambdaQueryWrapperX<ErpSalePickDeliverySubmitItemDO>()

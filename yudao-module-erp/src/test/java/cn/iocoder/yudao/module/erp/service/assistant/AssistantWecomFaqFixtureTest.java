@@ -80,20 +80,26 @@ class AssistantWecomFaqFixtureTest {
         assertEquals("经典表现 530 4升",
                 AssistantSemanticKnowledge.compactProductUnitSpacing("经典表现 530 4 升"));
         assertEquals("abl", AssistantSemanticKnowledge.compactProductUnitSpacing("abl"));
+        assertEquals(Arrays.asList("美孚", "530", "1升"),
+                AssistantSemanticKnowledge.productNameQueryTokens("美孚/530 1 升"));
+        assertEquals(Arrays.asList("k40", "18升"),
+                AssistantSemanticKnowledge.productNameQueryTokens("k40　18 升"));
     }
 
     @Test
-    void convertedProductUnitAliasesStayAtomicInOrderedPatterns() {
-        assertEquals("1%8%升",
+    void originalAndConvertedProductUnitsStayAtomicInOrderedPatterns() {
+        assertEquals("18升",
                 AssistantSemanticKnowledge.productUnitAwareOrderedPattern("18升", "18升"));
         assertEquals("18L",
                 AssistantSemanticKnowledge.productUnitAwareOrderedPattern("18升", "18L"));
         assertEquals("20kg",
                 AssistantSemanticKnowledge.productUnitAwareOrderedPattern("20千克", "20kg"));
-        assertEquals("1%8%L",
+        assertEquals("18L",
                 AssistantSemanticKnowledge.productUnitAwareOrderedPattern("18L", "18L"));
         assertEquals("18升",
                 AssistantSemanticKnowledge.productUnitAwareOrderedPattern("18L", "18升"));
+        assertEquals(Arrays.asList("A", "18L", "款"),
+                AssistantSemanticKnowledge.productUnitAwareOrderedFragments("A18升款", "A18L款"));
     }
 
     private static void assertUnitAliases(String keyword, String... expected) {

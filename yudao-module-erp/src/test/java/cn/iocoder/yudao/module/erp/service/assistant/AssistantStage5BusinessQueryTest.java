@@ -400,6 +400,34 @@ class AssistantStage5BusinessQueryTest {
         verifyNoInteractions(reader,toolPermissions);
     }
 
+    @Test void structuredDepartmentCountUsesAggregateAndCurrentPermissionRange() {
+        AssistantStage5BusinessQuery service=organizationService(false,false,Collections.singleton(31L),Collections.emptySet());
+        AssistantSemanticReadOnly reader=(AssistantSemanticReadOnly)ReflectionTestUtils.getField(service,"reader");
+        when(reader.query(anyString(),anyList(),anyInt())).thenReturn(Collections.singletonList(row("record_count",204L)));
+        AssistantExecutionEnvelope envelope=new AssistantExecutionEnvelope();
+        AssistantUnderstandingResult.Subtask task=new AssistantUnderstandingResult.Subtask();task.setTitle("启用部门数量");
+        task.getConditions().setOrganizationView("DEPARTMENTS");task.getConditions().setAggregation("COUNT");task.getConditions().setStatus("启用");
+        envelope.setUnderstandingTask(task);
+        Map<String,Object> result=service.execute(AssistantStage5BusinessQuery.ORGANIZATION_TOOL,"这一句不应该再被正则解析",envelope);
+        ArgumentCaptor<String> sql=ArgumentCaptor.forClass(String.class);ArgumentCaptor<List> params=ArgumentCaptor.forClass(List.class);
+        verify(reader).query(sql.capture(),params.capture(),eq(1));
+        assertTrue(sql.getValue().contains("COUNT(DISTINCT d.id)"));assertTrue(sql.getValue().contains("d.tenant_id=?"));
+        assertTrue(sql.getValue().contains("d.deleted=0"));assertTrue(sql.getValue().contains("d.id IN (?)"));assertTrue(sql.getValue().contains("d.status=0"));
+        assertTrue(params.getValue().contains(31L));assertFalse(sql.getValue().contains("LIMIT 100"));
+        assertEquals(204L,((Map<?,?>)((List<?>)result.get("summary")).get(0)).get("record_count"));assertTrue(((List<?>)result.get("rows")).isEmpty());
+    }
+
+    @Test void structuredBusinessSpecCannotDropUnknownOrUnsupportedObjectFilters() {
+        TenantContextHolder.setTenantId(7L);AssistantStage5BusinessQuery service=new AssistantStage5BusinessQuery();
+        AssistantSemanticReadOnly reader=mock(AssistantSemanticReadOnly.class);AssistantToolPermissionService permissions=mock(AssistantToolPermissionService.class);
+        ReflectionTestUtils.setField(service,"reader",reader);ReflectionTestUtils.setField(service,"toolPermissions",permissions);
+        doAnswer(i->{((Map<String,Object>)i.getArgument(0)).put("scopeAll",true);return null;}).when(permissions).documentScope(anyMap(),anyString(),anyString(),anyBoolean());
+        AssistantExecutionEnvelope envelope=new AssistantExecutionEnvelope();AssistantUnderstandingResult.Subtask task=new AssistantUnderstandingResult.Subtask();task.setTitle("采购发票");
+        task.getConditions().setBusinessTypes(Collections.singletonList("purchase_invoice"));envelope.setUnderstandingTask(task);
+        Map<String,Object> product=new LinkedHashMap<>();product.put("id",7L);product.put("entityType","PRODUCT");envelope.getArguments().put("resolvedEntity",product);
+        assertThrows(AssistantFailure.class,()->service.execute(AssistantStage5BusinessQuery.PURCHASE_TOOL,"采购发票",envelope));verifyNoInteractions(reader);
+    }
+
     private static AssistantStage5BusinessQuery organizationService(boolean all,boolean self,
                                                                      Set<Long> dataDeptIds,Set<Long> ownDeptIds) {
         TenantContextHolder.setTenantId(7L);

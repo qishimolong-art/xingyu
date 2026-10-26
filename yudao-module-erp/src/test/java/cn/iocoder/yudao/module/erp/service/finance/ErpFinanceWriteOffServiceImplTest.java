@@ -55,6 +55,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ErpFinanceWriteOffServiceImplTest extends BaseMockitoUnitTest {
+    @Mock private cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherIncomeService receivableOtherIncomeService;
+    @Mock private cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableExpenseService payableExpenseService;
+
 
     @Mock
     private cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper receivableMiscMapper;
@@ -305,13 +308,13 @@ class ErpFinanceWriteOffServiceImplTest extends BaseMockitoUnitTest {
         ErpFinanceReceiptDO receipt = createReceipt("100").setStatus(ErpAuditStatus.PROCESS.getStatus());
         ErpFinanceReceiptItemDO item = new ErpFinanceReceiptItemDO().setId(300L).setReceiptId(100L)
                 .setBizType(ErpBizTypeEnum.SALE_OUT.getType()).setBizId(200L)
-                .setReceiptPrice(new BigDecimal("40.00000000000001"))
+                .setReceiptPrice(new BigDecimal("40.123456"))
                 .setWriteOffStatus(ErpFinanceWriteOffStatusEnum.PENDING.getStatus());
         when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(receipt);
         when(receiptItemMapper.selectListByReceiptId(100L)).thenReturn(Collections.singletonList(item));
         when(saleOutMapper.selectOne(any())).thenReturn(createSaleOut("80"));
         when(receiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(200L,
-                ErpBizTypeEnum.SALE_OUT.getType())).thenReturn(new BigDecimal("10"), new BigDecimal("50"));
+                ErpBizTypeEnum.SALE_OUT.getType())).thenReturn(new BigDecimal("10"), new BigDecimal("50.123456"));
         when(receiptItemMapper.selectEffectivePriceSumMapByReceiptIds(Collections.singleton(100L)))
                 .thenReturn(Collections.emptyMap());
         when(receiptMapper.updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(100L),
@@ -324,9 +327,9 @@ class ErpFinanceWriteOffServiceImplTest extends BaseMockitoUnitTest {
 
         assertThat(item.getWriteOffStatus()).isEqualTo(ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus());
         assertThat(item.getWriteOffUserId()).isEqualTo(LOGIN_USER_ID);
-        assertThat(item.getReceiptPrice()).isEqualByComparingTo("40.00");
+        assertThat(item.getReceiptPrice()).isEqualByComparingTo("40.123456");
         verify(receiptItemMapper).updateBatch(Collections.singletonList(item));
-        verify(saleOutService).updateSaleInReceiptPrice(200L, new BigDecimal("50"));
+        verify(saleOutService).updateSaleInReceiptPrice(200L, new BigDecimal("50.123456"));
     }
 
     @Test
@@ -377,21 +380,10 @@ class ErpFinanceWriteOffServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void writeOffFinanceReceipt_normalizesFrontendFloatingPointTail() {
-        when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(createReceipt("100"));
-        when(saleOutMapper.selectOne(any())).thenReturn(createSaleOut("99.99"));
-        when(receiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(200L,
-                ErpBizTypeEnum.SALE_OUT.getType())).thenReturn(BigDecimal.ZERO, new BigDecimal("99.99"));
-        when(receiptItemMapper.selectEffectivePriceSumMapByReceiptIds(Collections.singleton(100L)))
-                .thenReturn(Collections.emptyMap());
-
-        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
-            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(LOGIN_USER_ID);
-            receiptService.writeOffFinanceReceipt(createReceiptWriteOffReq("99.99000000000001"));
-        }
-
-        verify(receiptItemMapper).insertBatch(org.mockito.ArgumentMatchers.argThat(items ->
-                items.iterator().next().getReceiptPrice().equals(new BigDecimal("99.99"))));
+    void writeOffFinanceReceipt_rejectsManualStorageOverflowBeforeWriting() {
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> receiptService.writeOffFinanceReceipt(createReceiptWriteOffReq("99.99000000000001")));
+        verify(receiptItemMapper, never()).insertBatch(any());
     }
 
     @Test
@@ -546,13 +538,13 @@ class ErpFinanceWriteOffServiceImplTest extends BaseMockitoUnitTest {
         ErpFinancePaymentDO payment = createPayment("100").setStatus(ErpAuditStatus.PROCESS.getStatus());
         ErpFinancePaymentItemDO item = new ErpFinancePaymentItemDO().setId(310L).setPaymentId(110L)
                 .setBizType(ErpBizTypeEnum.PURCHASE_IN.getType()).setBizId(210L)
-                .setPaymentPrice(new BigDecimal("40.00000000000001"))
+                .setPaymentPrice(new BigDecimal("40.123456"))
                 .setWriteOffStatus(ErpFinanceWriteOffStatusEnum.PENDING.getStatus());
         when(paymentMapper.selectByIdForUpdate(110L)).thenReturn(payment);
         when(paymentItemMapper.selectListByPaymentId(110L)).thenReturn(Collections.singletonList(item));
         when(purchaseInMapper.selectOne(any())).thenReturn(createPurchaseIn("80"));
         when(paymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(210L,
-                ErpBizTypeEnum.PURCHASE_IN.getType())).thenReturn(new BigDecimal("10"), new BigDecimal("50"));
+                ErpBizTypeEnum.PURCHASE_IN.getType())).thenReturn(new BigDecimal("10"), new BigDecimal("50.123456"));
         when(paymentItemMapper.selectEffectivePriceSumMapByPaymentIds(Collections.singleton(110L)))
                 .thenReturn(Collections.emptyMap());
         when(paymentMapper.updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(110L),
@@ -565,9 +557,9 @@ class ErpFinanceWriteOffServiceImplTest extends BaseMockitoUnitTest {
 
         assertThat(item.getWriteOffStatus()).isEqualTo(ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus());
         assertThat(item.getWriteOffUserId()).isEqualTo(LOGIN_USER_ID);
-        assertThat(item.getPaymentPrice()).isEqualByComparingTo("40.00");
+        assertThat(item.getPaymentPrice()).isEqualByComparingTo("40.123456");
         verify(paymentItemMapper).updateBatch(Collections.singletonList(item));
-        verify(purchaseInService).updatePurchaseInPaymentPrice(210L, new BigDecimal("50"));
+        verify(purchaseInService).updatePurchaseInPaymentPrice(210L, new BigDecimal("50.123456"));
         verify(financeAutoWriteOffService).autoWriteOffPayment(110L, LOGIN_USER_ID);
     }
 
@@ -619,21 +611,10 @@ class ErpFinanceWriteOffServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void writeOffFinancePayment_normalizesFrontendFloatingPointTail() {
-        when(paymentMapper.selectByIdForUpdate(110L)).thenReturn(createPayment("100"));
-        when(purchaseInMapper.selectOne(any())).thenReturn(createPurchaseIn("99.99"));
-        when(paymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(210L,
-                ErpBizTypeEnum.PURCHASE_IN.getType())).thenReturn(BigDecimal.ZERO, new BigDecimal("99.99"));
-        when(paymentItemMapper.selectEffectivePriceSumMapByPaymentIds(Collections.singleton(110L)))
-                .thenReturn(Collections.emptyMap());
-
-        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
-            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(LOGIN_USER_ID);
-            paymentService.writeOffFinancePayment(createPaymentWriteOffReq("99.99000000000001"));
-        }
-
-        verify(paymentItemMapper).insertBatch(org.mockito.ArgumentMatchers.argThat(items ->
-                items.iterator().next().getPaymentPrice().equals(new BigDecimal("99.99"))));
+    void writeOffFinancePayment_rejectsManualStorageOverflowBeforeWriting() {
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> paymentService.writeOffFinancePayment(createPaymentWriteOffReq("99.99000000000001")));
+        verify(paymentItemMapper, never()).insertBatch(any());
     }
 
     @Test
@@ -880,6 +861,38 @@ class ErpFinanceWriteOffServiceImplTest extends BaseMockitoUnitTest {
                 .setWriteOffAmount(new BigDecimal(amount));
         return new ErpFinancePaymentWriteOffReqVO().setPaymentId(110L)
                 .setItems(Collections.singletonList(item));
+    }
+
+    @Test
+    void writeOffFinanceReceipt_keepsSixPlaceAmountAndClosesTinyBalance() {
+        when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(createReceipt("0.000001"));
+        when(saleOutMapper.selectOne(any())).thenReturn(createSaleOut("0.000001"));
+        when(receiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(200L,
+                ErpBizTypeEnum.SALE_OUT.getType())).thenReturn(BigDecimal.ZERO, new BigDecimal("0.000001"));
+        when(receiptItemMapper.selectEffectivePriceSumMapByReceiptIds(Collections.singleton(100L)))
+                .thenReturn(Collections.emptyMap());
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(LOGIN_USER_ID);
+            receiptService.writeOffFinanceReceipt(createReceiptWriteOffReq("0.000001"));
+        }
+        verify(receiptItemMapper).insertBatch(org.mockito.ArgumentMatchers.argThat(items ->
+                items.iterator().next().getReceiptPrice().compareTo(new BigDecimal("0.000001")) == 0));
+    }
+
+    @Test
+    void writeOffFinancePayment_keepsSixPlaceAmountAndClosesTinyBalance() {
+        when(paymentMapper.selectByIdForUpdate(110L)).thenReturn(createPayment("0.000001"));
+        when(purchaseInMapper.selectOne(any())).thenReturn(createPurchaseIn("0.000001"));
+        when(paymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(210L,
+                ErpBizTypeEnum.PURCHASE_IN.getType())).thenReturn(BigDecimal.ZERO, new BigDecimal("0.000001"));
+        when(paymentItemMapper.selectEffectivePriceSumMapByPaymentIds(Collections.singleton(110L)))
+                .thenReturn(Collections.emptyMap());
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(LOGIN_USER_ID);
+            paymentService.writeOffFinancePayment(createPaymentWriteOffReq("0.000001"));
+        }
+        verify(paymentItemMapper).insertBatch(org.mockito.ArgumentMatchers.argThat(items ->
+                items.iterator().next().getPaymentPrice().compareTo(new BigDecimal("0.000001")) == 0));
     }
 
 }

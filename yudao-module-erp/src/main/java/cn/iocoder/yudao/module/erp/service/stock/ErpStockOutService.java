@@ -30,6 +30,8 @@ public interface ErpStockOutService {
      */
     Long createStockOut(@Valid ErpStockOutSaveReqVO createReqVO);
 
+    Long createStockOutDraft(@Valid ErpStockOutSaveReqVO createReqVO);
+
     /**
      * 更新其它出库单
      *
@@ -50,6 +52,12 @@ public interface ErpStockOutService {
      * @param status 状态
      */
     void updateStockOutStatus(Long id, Integer status);
+
+    void confirmStockOut(Long id);
+
+    void cancelConfirmStockOut(Long id);
+
+    void autoApproveAfterPick(Long id, Long pickUserId);
 
     /**
      * 删除其它出库单

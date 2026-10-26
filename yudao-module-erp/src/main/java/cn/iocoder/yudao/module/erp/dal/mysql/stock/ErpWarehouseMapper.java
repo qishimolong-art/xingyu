@@ -27,6 +27,7 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
 
     default PageResult<ErpWarehouseDO> selectPage(ErpWarehousePageReqVO reqVO) {
         LambdaQueryWrapperX<ErpWarehouseDO> wrapper = new LambdaQueryWrapperX<ErpWarehouseDO>()
+                .inIfPresent(ErpWarehouseDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpWarehouseDO::getName, reqVO.getName())
                 .eqIfPresent(ErpWarehouseDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpWarehouseDO::getWarehouseType, reqVO.getWarehouseType())
@@ -51,6 +52,7 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
             return PageResult.empty();
         }
         LambdaQueryWrapperX<ErpWarehouseDO> wrapper = new LambdaQueryWrapperX<ErpWarehouseDO>()
+                .inIfPresent(ErpWarehouseDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpWarehouseDO::getName, reqVO.getName())
                 .eqIfPresent(ErpWarehouseDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpWarehouseDO::getWarehouseType, reqVO.getWarehouseType())
@@ -78,11 +80,11 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
             return;
         }
         if ("asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            wrapper.orderByAsc(orderColumn);
+            wrapper.orderByAsc(orderColumn).orderByDesc(ErpWarehouseDO::getId);
             return;
         }
         if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            wrapper.orderByDesc(orderColumn);
+            wrapper.orderByDesc(orderColumn).orderByDesc(ErpWarehouseDO::getId);
             return;
         }
         wrapper.orderByDesc(ErpWarehouseDO::getId);

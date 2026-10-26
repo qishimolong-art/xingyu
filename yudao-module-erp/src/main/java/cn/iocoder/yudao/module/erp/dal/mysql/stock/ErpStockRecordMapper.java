@@ -11,6 +11,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -42,8 +43,8 @@ public interface ErpStockRecordMapper extends BaseMapperX<ErpStockRecordDO> {
                 .eqIfPresent("biz_id", reqVO.getBizId())
                 .eqIfPresent("biz_item_id", reqVO.getBizItemId())
                 .likeIfPresent("biz_no", reqVO.getBizNo())
-                .betweenIfPresent("create_time", reqVO.getCreateTime())
-                .betweenIfPresent("biz_date", reqVO.getBizDate());
+                .betweenIfPresent("create_time", reqVO.getCreateTime());
+        appendDateFilters(wrapper, reqVO);
         appendBatchNoFilter(wrapper, reqVO);
         if (reqVO.getBizTypes() != null && !reqVO.getBizTypes().isEmpty()) {
             wrapper.in("biz_type", reqVO.getBizTypes());
@@ -67,6 +68,11 @@ public interface ErpStockRecordMapper extends BaseMapperX<ErpStockRecordDO> {
         if (StringUtils.hasText(reqVO.getBatchNo())) {
             wrapper.apply("TRIM(batch_no) = {0}", reqVO.getBatchNo().trim());
         }
+    }
+
+    static void appendDateFilters(QueryWrapperX<ErpStockRecordDO> wrapper, ErpStockRecordPageReqVO reqVO) {
+        wrapper.betweenIfPresent("biz_date", reqVO.getBizDate())
+                .betweenIfPresent("create_time", reqVO.getApproveTime());
     }
 
     /** 查询批次流水的完整时间序列，用于计算不受分页和页面筛选影响的批次结存。 */
@@ -160,6 +166,8 @@ public interface ErpStockRecordMapper extends BaseMapperX<ErpStockRecordDO> {
             return null;
         }
         switch (orderField.trim()) {
+            case "approveTime":
+                return "erp_stock_record.create_time";
             case "bizDate":
                 return "erp_stock_record.biz_date";
             case "bizType":
@@ -233,6 +241,34 @@ public interface ErpStockRecordMapper extends BaseMapperX<ErpStockRecordDO> {
         return selectList(new LambdaQueryWrapperX<ErpStockRecordDO>()
                 .eq(ErpStockRecordDO::getBizType, bizType)
                 .eq(ErpStockRecordDO::getBizId, bizId));
+    }
+
+    default java.util.List<ErpStockRecordDO> selectListByBizTypesAndBizId(
+            Collection<Integer> bizTypes, Long bizId) {
+        if (bizTypes == null || bizTypes.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpStockRecordDO>()
+                .in(ErpStockRecordDO::getBizType, bizTypes)
+                .eq(ErpStockRecordDO::getBizId, bizId)
+                .orderByAsc(ErpStockRecordDO::getId));
+    }
+
+    default BigDecimal selectBatchBalance(Long productId, Long warehouseId, String batchNo) {
+        QueryWrapper<ErpStockRecordDO> query = new QueryWrapper<ErpStockRecordDO>()
+                .select("COALESCE(SUM(count), 0) AS balance")
+                .eq("product_id", productId)
+                .eq("warehouse_id", warehouseId);
+        if (batchNo == null || batchNo.trim().isEmpty()) {
+            query.and(w -> w.isNull("batch_no").or().apply("TRIM(batch_no) = ''"));
+        } else {
+            query.apply("TRIM(batch_no) = {0}", batchNo.trim());
+        }
+        List<Map<String, Object>> rows = selectMaps(query);
+        if (rows.isEmpty() || rows.get(0).get("balance") == null) {
+            return BigDecimal.ZERO;
+        }
+        return new BigDecimal(String.valueOf(rows.get(0).get("balance")));
     }
 
     default Long selectCountByWarehouseId(Long warehouseId) {

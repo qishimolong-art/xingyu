@@ -38,12 +38,21 @@ public class ErpSaleOutDetailReportRepository {
 
     public Summary summary(Filter filter, Scope scope) {
         Sql sql = reportSql(filter, scope);
-        return jdbc().queryForObject(sql.cte + " SELECT COUNT(*) AS row_count,"
-                        + "COALESCE(SUM(report.count),0) AS total_count,"
-                        + "COALESCE(SUM(report.total_amount),0) AS total_amount,"
-                        + "COALESCE(SUM(report.invoice_amount),0) AS invoice_amount,"
-                        + "COALESCE(SUM(report.freight_amount),0) AS freight_amount " + sql.body,
+        return jdbc().queryForObject(sql.cte + summarySelect() + sql.body,
                 sql.params, new BeanPropertyRowMapper<>(Summary.class));
+    }
+
+    private String summarySelect() {
+        return " SELECT COUNT(*) AS row_count,"
+                + "COALESCE(SUM(report.count),0) AS total_count,"
+                + "COALESCE(SUM(report.total_amount),0) AS total_amount,"
+                + "COALESCE(SUM(report.invoice_amount),0) AS invoice_amount,"
+                + "COALESCE(SUM(report.freight_amount),0) AS freight_amount,"
+                + "COALESCE(SUM(CASE WHEN report.document_type_code IN ('SALE_OUT','SALE_RETURN') "
+                + "AND report.sale_cost_amount IS NULL THEN 1 ELSE 0 END),0) AS missing_sale_cost_count,"
+                + "CASE WHEN COALESCE(SUM(CASE WHEN report.document_type_code IN ('SALE_OUT','SALE_RETURN') "
+                + "AND report.sale_cost_amount IS NULL THEN 1 ELSE 0 END),0)>0 THEN NULL "
+                + "ELSE COALESCE(SUM(report.sale_cost_amount),0) END AS total_sale_cost_amount ";
     }
 
     public List<PriceEvent> priceEvents(Collection<Long> customerIds, Collection<Long> productIds, Scope scope) {
@@ -132,7 +141,10 @@ public class ErpSaleOutDetailReportRepository {
                 + "ROUND(COALESCE(ofi.count,0)*COALESCE(ofi.original_product_price,ofi.product_price,0),2) AS total_amount,"
                 + "ofi.allocated_invoice AS invoice_amount,"
                 + "CASE WHEN COALESCE(ofi.invoice_amount,0)<=0 THEN '未开票' WHEN ofi.invoice_amount>=so.total_product_price THEN '已开票' ELSE '部分开票' END AS invoice_status,"
-                + "NULL AS sale_cost_price,NULL AS sale_cost_amount,NULL AS gross_profit_amount,NULL AS gross_profit_rate,"
+                + "cost_record.cost_price AS sale_cost_price,"
+                + "CASE WHEN cost_record.cost_price IS NULL THEN NULL "
+                + "ELSE ROUND(COALESCE(ofi.count,0)*cost_record.cost_price,2) END AS sale_cost_amount,"
+                + "NULL AS gross_profit_amount,NULL AS gross_profit_rate,"
                 + "COALESCE(NULLIF(ofi.origin_place,''),p.origin_place) AS origin_place,COALESCE(NULLIF(ofi.brand,''),p.brand) AS brand,"
                 + "c.name AS customer_name,c.code AS customer_code,c.area_id AS customer_area_id,d.name AS dept_name,"
                 + "w.name AS warehouse_name,ofi.warehouse_position,su.nickname AS sale_user_name,"
@@ -144,6 +156,7 @@ public class ErpSaleOutDetailReportRepository {
                 + "FROM out_final ofi INNER JOIN erp_sale_out so ON so.id=ofi.out_id AND so.tenant_id=ofi.tenant_id "
                 + "AND so.deleted=b'0' AND so.status=20 INNER JOIN erp_customer c ON c.id=so.customer_id "
                 + "AND c.tenant_id=so.tenant_id AND c.deleted=b'0' " + commonJoins("ofi", "so")
+                + stockRecordCostJoin("ofi", "so", 50)
                 + " WHERE ofi.tenant_id=:tenant" + documentScope + partyScope;
     }
 
@@ -153,14 +166,17 @@ public class ErpSaleOutDetailReportRepository {
                 + "CASE WHEN sr.return_mode=10 THEN 'SALE_OUT' END,sri.product_id,sr.customer_id,'SALE_RETURN','销售退货',"
                 + "sr.approve_time,sr.no,CASE WHEN sr.return_mode=10 THEN sr.source_out_no END,source_out.third_party_no,"
                 + "p.code,p.name,p.vehicle_model,p.feature_code,-COALESCE(sri.count,0),sri.product_price,sri.product_price,"
-                + "ROUND(-COALESCE(sri.count,0)*COALESCE(sri.product_price,0),2),NULL,'不适用',NULL,NULL,NULL,NULL,"
+                + "ROUND(-COALESCE(sri.count,0)*COALESCE(sri.product_price,0),2),NULL,'不适用',"
+                + "cost_record.cost_price,CASE WHEN cost_record.cost_price IS NULL THEN NULL "
+                + "ELSE ROUND(-COALESCE(sri.count,0)*cost_record.cost_price,2) END,NULL,NULL,"
                 + "p.origin_place,p.brand,c.name,c.code,c.area_id,d.name,w.name,sri.warehouse_position,su.nickname,p.standard,"
                 + "p.drawing_no,u.name,'否',cu.nickname,sri.remark,sr.remark,p.factory_code,NULL,NULL,NULL,NULL,sr.dept_id,sri.warehouse_id "
                 + "FROM erp_sale_return_items sri INNER JOIN erp_sale_return sr ON sr.id=sri.return_id "
                 + "AND sr.tenant_id=sri.tenant_id AND sr.deleted=b'0' AND sr.status=20 "
                 + "INNER JOIN erp_customer c ON c.id=sr.customer_id AND c.tenant_id=sr.tenant_id AND c.deleted=b'0' "
                 + "LEFT JOIN erp_sale_out source_out ON source_out.id=sr.source_out_id AND source_out.tenant_id=sr.tenant_id AND source_out.deleted=b'0' "
-                + commonJoins("sri", "sr") + " WHERE sri.tenant_id=:tenant AND sri.deleted=b'0'" + documentScope + partyScope;
+                + commonJoins("sri", "sr") + stockRecordCostJoin("sri", "sr", 60)
+                + " WHERE sri.tenant_id=:tenant AND sri.deleted=b'0'" + documentScope + partyScope;
     }
 
     private String adjustSelect(String documentScope, String partyScope) {
@@ -173,7 +189,8 @@ public class ErpSaleOutDetailReportRepository {
                 + "CONVERT(COALESCE(NULLIF(sai.part_name,''),p.name) USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
                 + "CONVERT(COALESCE(NULLIF(sai.vehicle_model,''),source_item.vehicle_model,p.vehicle_model) USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
                 + "CONVERT(p.feature_code USING utf8mb4) COLLATE utf8mb4_unicode_ci,0,sai.old_price,sai.old_price,"
-                + "ROUND(COALESCE(sai.adjust_price,0),2),NULL,'不适用',NULL,NULL,NULL,NULL,"
+                + "ROUND(COALESCE(sai.adjust_price,0),2),NULL,'不适用',cost_record.cost_price,"
+                + "CAST(0 AS DECIMAL(20,2)),NULL,NULL,"
                 + "CONVERT(COALESCE(NULLIF(sai.origin_place,''),source_item.origin_place,p.origin_place) USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
                 + "CONVERT(COALESCE(NULLIF(sai.brand,''),source_item.brand,p.brand) USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
                 + "c.name,c.code,c.area_id,d.name,w.name,CONVERT(source_item.warehouse_position USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
@@ -195,7 +212,8 @@ public class ErpSaleOutDetailReportRepository {
                 + "LEFT JOIN erp_product p ON p.id=sai.product_id AND p.tenant_id=sai.tenant_id AND p.deleted=b'0' "
                 + "LEFT JOIN erp_product_unit u ON u.id=source_item.product_unit_id AND u.tenant_id=sai.tenant_id AND u.deleted=b'0' "
                 + "LEFT JOIN erp_warehouse w ON w.id=source_item.warehouse_id AND w.tenant_id=sai.tenant_id AND w.deleted=b'0' "
-                + "WHERE sai.tenant_id=:tenant AND sai.deleted=b'0'" + documentScope + partyScope;
+                + stockRecordCostJoin("source_item", "source_out", 50)
+                + " WHERE sai.tenant_id=:tenant AND sai.deleted=b'0'" + documentScope + partyScope;
     }
 
     private String commonJoins(String itemAlias, String documentAlias) {
@@ -205,6 +223,16 @@ public class ErpSaleOutDetailReportRepository {
                 + " LEFT JOIN erp_product p ON p.id=" + itemAlias + ".product_id AND p.tenant_id=" + itemAlias + ".tenant_id AND p.deleted=b'0'"
                 + " LEFT JOIN erp_product_unit u ON u.id=" + itemAlias + ".product_unit_id AND u.tenant_id=" + itemAlias + ".tenant_id AND u.deleted=b'0'"
                 + " LEFT JOIN erp_warehouse w ON w.id=" + itemAlias + ".warehouse_id AND w.tenant_id=" + itemAlias + ".tenant_id AND w.deleted=b'0'";
+    }
+
+    private String stockRecordCostJoin(String itemAlias, String documentAlias, int bizType) {
+        return " LEFT JOIN erp_stock_record cost_record ON cost_record.id=(SELECT MAX(cost_candidate.id)"
+                + " FROM erp_stock_record cost_candidate WHERE cost_candidate.tenant_id=" + itemAlias + ".tenant_id"
+                + " AND cost_candidate.deleted=b'0' AND cost_candidate.biz_type=" + bizType
+                + " AND cost_candidate.biz_id=" + documentAlias + ".id AND cost_candidate.biz_item_id=" + itemAlias + ".id"
+                + " AND cost_candidate.product_id=" + itemAlias + ".product_id"
+                + " AND cost_candidate.warehouse_id=" + itemAlias + ".warehouse_id)"
+                + " AND cost_record.tenant_id=" + itemAlias + ".tenant_id AND cost_record.deleted=b'0'";
     }
 
     private void appendFilters(Sql sql, Filter filter) {

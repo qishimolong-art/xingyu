@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierItemPageReqVO;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplierextend.ErpSupplierExtendSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierExtendDO;
@@ -33,7 +35,10 @@ public class ErpSupplierExtendServiceImpl implements ErpSupplierExtendService {
     @Override
     public void updateSupplierExtend(ErpSupplierExtendSaveReqVO updateReqVO) {
         validateSupplierExists(updateReqVO.getSupplierId());
-        validateSupplierExtendExists(updateReqVO.getId());
+        ErpSupplierExtendDO existing = validateSupplierExtendExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getSupplierId(), updateReqVO.getSupplierId())) {
+            throw exception(SUPPLIER_EXTEND_NOT_EXISTS);
+        }
         supplierExtendMapper.updateById(BeanUtils.toBean(updateReqVO, ErpSupplierExtendDO.class));
     }
 
@@ -43,10 +48,11 @@ public class ErpSupplierExtendServiceImpl implements ErpSupplierExtendService {
         supplierExtendMapper.deleteById(id);
     }
 
-    private void validateSupplierExtendExists(Long id) {
-        if (supplierExtendMapper.selectById(id) == null) {
-            throw exception(SUPPLIER_EXTEND_NOT_EXISTS);
-        }
+    private ErpSupplierExtendDO validateSupplierExtendExists(Long id) {
+        ErpSupplierExtendDO existing = supplierExtendMapper.selectById(id);
+        if (existing == null) throw exception(SUPPLIER_EXTEND_NOT_EXISTS);
+        validateSupplierExists(existing.getSupplierId());
+        return existing;
     }
 
     private void validateSupplierExists(Long supplierId) {
@@ -57,7 +63,7 @@ public class ErpSupplierExtendServiceImpl implements ErpSupplierExtendService {
 
     @Override
     public ErpSupplierExtendDO getSupplierExtend(Long id) {
-        return supplierExtendMapper.selectById(id);
+        return validateSupplierExtendExists(id);
     }
 
     @Override
@@ -66,4 +72,11 @@ public class ErpSupplierExtendServiceImpl implements ErpSupplierExtendService {
         return supplierExtendMapper.selectListBySupplierId(supplierId);
     }
 
+
+    @Override
+    public PageResult<ErpSupplierExtendDO> getSupplierExtendPage(ErpSupplierItemPageReqVO reqVO) {
+        validateSupplierExists(reqVO.getSupplierId());
+        reqVO.boundPageSize();
+        return supplierExtendMapper.selectPage(reqVO);
+    }
 }

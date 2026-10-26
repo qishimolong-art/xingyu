@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.other
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.idev.excel.annotation.format.NumberFormat;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -20,17 +21,35 @@ public class ErpReceivableOtherExportRespVO {
     @ExcelProperty("日期")
     private LocalDate bizTime;
 
-    @ExcelProperty("应收金额")
+    @ExcelProperty(value = "应收金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal receivableAmount;
 
-    @ExcelProperty("增加应收")
+    @ExcelProperty(value = "增加应收", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal increaseReceivableAmount;
 
-    @ExcelProperty("已结金额")
+    @ExcelProperty(value = "已结金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal settledAmount;
 
     @ExcelProperty("来源类型")
     private String sourceType;
+
+    @ExcelProperty("应收类型")
+    private String receivableType;
+
+    @ExcelProperty(value = "成本金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
+    private BigDecimal costAmount;
+
+    @ExcelProperty("来源单号")
+    private String sourceNo;
+
+    @ExcelProperty("纸质欠条")
+    private Boolean isPaperNote;
+
+    @ExcelProperty("欠条说明")
+    private String paperNoteDesc;
+
+    @ExcelProperty("附件")
+    private String fileUrl;
 
     @ExcelProperty("状态")
     private String statusName;
@@ -55,6 +74,12 @@ public class ErpReceivableOtherExportRespVO {
 
     @ExcelProperty("审核时间")
     private LocalDateTime auditTime;
+
+    @ExcelProperty("修改人")
+    private String updaterName;
+
+    @ExcelProperty("修改时间")
+    private LocalDateTime updateTime;
 
     @ExcelProperty("经手人")
     private String handlerName;

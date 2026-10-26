@@ -30,7 +30,7 @@ public class ErpPurchaseReturnableItemRespVO {
     private BigDecimal inCount;
     @Schema(description = "已累计退货数量", example = "20")
     private BigDecimal returnedCount;
-    @Schema(description = "可退数量 = inCount - returnedCount", example = "80")
+    @Schema(description = "可退数量 = 原入库数量 - 已审核退货 - 待审核退货占用", example = "80")
     private BigDecimal returnableCount;
 
     @Schema(description = "税率", example = "13.00")

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer;
 import cn.iocoder.yudao.framework.excel.core.annotations.DictFormat;
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.idev.excel.annotation.format.NumberFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -41,6 +42,12 @@ public class ErpFinanceTransferRespVO {
     @ExcelProperty("转出账户")
     private String outAccountName;
 
+    @ExcelProperty("转出开户行")
+    private String outAccountBankName;
+
+    @ExcelProperty("转出银行账号")
+    private String outAccountBankAccount;
+
     @Schema(description = "转入账户编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "2")
     private Long inAccountId;
 
@@ -48,8 +55,14 @@ public class ErpFinanceTransferRespVO {
     @ExcelProperty("转入账户")
     private String inAccountName;
 
+    @ExcelProperty("转入开户行")
+    private String inAccountBankName;
+
+    @ExcelProperty("转入银行账号")
+    private String inAccountBankAccount;
+
     @Schema(description = "转账金额", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-    @ExcelProperty("转账金额")
+    @ExcelProperty(value = "转账金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal transferPrice;
 
     @Schema(description = "汇率", example = "1")
@@ -57,7 +70,7 @@ public class ErpFinanceTransferRespVO {
     private BigDecimal exchangeRate;
 
     @Schema(description = "手续费", example = "1.00")
-    @ExcelProperty("手续费")
+    @ExcelProperty(value = "手续费", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal feePrice;
 
     @Schema(description = "费用项目", example = "银行手续费")
@@ -83,6 +96,7 @@ public class ErpFinanceTransferRespVO {
     private String remark;
 
     @Schema(description = "附件 URL", example = "https://example.com/file.pdf")
+    @ExcelProperty("附件")
     private String fileUrl;
 
     @Schema(description = "创建人", example = "1")

@@ -16,15 +16,18 @@ import org.mockito.Mock;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.function.Consumer;
 
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_APPROVE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_ACCOUNTS_SAME;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_DRAFT_UPDATE_FAIL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -49,7 +52,7 @@ class ErpFinanceTransferDraftServiceImplTest extends BaseMockitoUnitTest {
     private ErpOperateLogService operateLogService;
 
     @Test
-    void createDraft_allowsMissingTimeAccountsAndAmount() {
+    void createDraft_requiresCompleteFieldsAndKeepsDraftStatus() {
         when(noRedisDAO.generateMonthSequence(ErpNoRedisDAO.FINANCE_TRANSFER_NO_PREFIX))
                 .thenReturn("YHZZ-DRAFT-1");
         when(financeTransferMapper.insert(any(ErpFinanceTransferDO.class))).thenAnswer(invocation -> {
@@ -57,17 +60,72 @@ class ErpFinanceTransferDraftServiceImplTest extends BaseMockitoUnitTest {
             return 1;
         });
 
-        Long id = service.createFinanceTransferDraft(new ErpFinanceTransferDraftSaveReqVO()
-                .setRemark("未完成"));
+        Long id = service.createFinanceTransferDraft(completeDraft());
 
         assertThat(id).isEqualTo(1L);
         ArgumentCaptor<ErpFinanceTransferDO> captor = ArgumentCaptor.forClass(ErpFinanceTransferDO.class);
         verify(financeTransferMapper).insert(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(ErpFinanceTransferStatusEnum.DRAFT.getStatus());
-        assertThat(captor.getValue().getTransferTime()).isNull();
-        assertThat(captor.getValue().getOutAccountId()).isNull();
-        assertThat(captor.getValue().getInAccountId()).isNull();
-        assertThat(captor.getValue().getTransferPrice()).isNull();
+        assertThat(captor.getValue().getTransferTime()).isNotNull();
+        assertThat(captor.getValue().getOutAccountId()).isEqualTo(1L);
+        assertThat(captor.getValue().getInAccountId()).isEqualTo(2L);
+        assertThat(captor.getValue().getTransferPrice()).isEqualByComparingTo("100");
+        assertThat(captor.getValue().getExchangeRate()).isEqualByComparingTo("1");
+        verify(accountService).validateAccount(1L);
+        verify(accountService).validateAccount(2L);
+        verify(adminUserApi).validateUser(9L);
+    }
+
+    @Test
+    void draftCreateAndUpdate_rejectMissingRequiredFieldsBeforeWriting() {
+        assertDraftSaveRejected(req -> req.setTransferTime(null), "转账时间不能为空");
+        assertDraftSaveRejected(req -> req.setOutAccountId(null), "转出账户不能为空");
+        assertDraftSaveRejected(req -> req.setInAccountId(null), "转入账户不能为空");
+        assertDraftSaveRejected(req -> req.setTransferPrice(null), "转账金额不能为空");
+        assertDraftSaveRejected(req -> req.setFinanceUserId(null), "经手人不能为空");
+        assertDraftSaveRejected(req -> req.setDeptId(null), "所属部门不能为空");
+        verify(noRedisDAO, never()).generateMonthSequence(any());
+        verify(financeTransferMapper, never()).insert(any(ErpFinanceTransferDO.class));
+        verify(financeTransferMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void draftCreateAndUpdate_rejectInvalidAmountsBeforeWriting() {
+        assertDraftSaveRejected(req -> req.setTransferPrice(BigDecimal.ZERO), "转账金额必须大于 0");
+        assertDraftSaveRejected(req -> req.setTransferPrice(BigDecimal.ONE.negate()), "转账金额必须大于 0");
+        assertDraftSaveRejected(req -> req.setExchangeRate(BigDecimal.ZERO), "汇率必须大于 0");
+        assertDraftSaveRejected(req -> req.setFeePrice(BigDecimal.ONE.negate()), "手续费不能小于 0");
+        verify(noRedisDAO, never()).generateMonthSequence(any());
+        verify(financeTransferMapper, never()).insert(any(ErpFinanceTransferDO.class));
+        verify(financeTransferMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void draftCreateAndUpdate_rejectSameAccounts() {
+        ErpFinanceTransferDraftSaveReqVO req = completeDraft().setInAccountId(1L);
+        assertServiceException(() -> service.createFinanceTransferDraft(req), FINANCE_TRANSFER_ACCOUNTS_SAME);
+        when(financeTransferMapper.selectById(10L)).thenReturn(new ErpFinanceTransferDO()
+                .setId(10L).setStatus(ErpFinanceTransferStatusEnum.DRAFT.getStatus()));
+        req.setId(10L);
+        assertServiceException(() -> service.updateFinanceTransferDraft(req), FINANCE_TRANSFER_ACCOUNTS_SAME);
+        verify(financeTransferMapper, never()).insert(any(ErpFinanceTransferDO.class));
+        verify(financeTransferMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    private void assertDraftSaveRejected(Consumer<ErpFinanceTransferDraftSaveReqVO> change, String message) {
+        ErpFinanceTransferDraftSaveReqVO req = completeDraft();
+        change.accept(req);
+        assertServiceException(() -> service.createFinanceTransferDraft(req), FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, message);
+        when(financeTransferMapper.selectById(10L)).thenReturn(new ErpFinanceTransferDO()
+                .setId(10L).setStatus(ErpFinanceTransferStatusEnum.DRAFT.getStatus()));
+        req.setId(10L);
+        assertServiceException(() -> service.updateFinanceTransferDraft(req), FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, message);
+    }
+
+    private ErpFinanceTransferDraftSaveReqVO completeDraft() {
+        return new ErpFinanceTransferDraftSaveReqVO().setTransferTime(LocalDateTime.now())
+                .setOutAccountId(1L).setInAccountId(2L).setTransferPrice(new BigDecimal("100"))
+                .setFinanceUserId(9L).setDeptId(3L);
     }
 
     @Test
@@ -113,8 +171,8 @@ class ErpFinanceTransferDraftServiceImplTest extends BaseMockitoUnitTest {
         when(financeTransferMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpFinanceTransferStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 
-        service.updateFinanceTransferDraft(new ErpFinanceTransferDraftSaveReqVO()
-                .setId(10L).setRemark("继续编辑"));
+        service.updateFinanceTransferDraft(completeDraft()
+                .setId(10L).setDeptId(null).setRemark("继续编辑"));
 
         ArgumentCaptor<ErpFinanceTransferDO> captor = ArgumentCaptor.forClass(ErpFinanceTransferDO.class);
         verify(financeTransferMapper).updateByIdAndStatus(eq(10L),
@@ -122,6 +180,24 @@ class ErpFinanceTransferDraftServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue().getNo()).isEqualTo("YHZZ10");
         assertThat(captor.getValue().getStatus()).isEqualTo(ErpFinanceTransferStatusEnum.DRAFT.getStatus());
         assertThat(captor.getValue().getDeptId()).isEqualTo(3L);
+    }
+
+    @Test
+    void updateDraft_preservesHiddenFieldsBeforeRequiredValidation() {
+        when(financeTransferMapper.selectById(10L)).thenReturn(new ErpFinanceTransferDO()
+                .setId(10L).setNo("YHZZ10").setStatus(0).setOutAccountId(1L).setDeptId(3L));
+        doAnswer(invocation -> {
+            ((ErpFinanceTransferDraftSaveReqVO) invocation.getArgument(1)).setOutAccountId(1L);
+            return null;
+        }).when(fieldPermissionMasker).preserveHiddenFields(any(), any(), any());
+        when(financeTransferMapper.updateByIdAndStatus(eq(10L), eq(0), any())).thenReturn(1);
+
+        service.updateFinanceTransferDraft(completeDraft().setId(10L).setOutAccountId(null));
+
+        ArgumentCaptor<ErpFinanceTransferDO> captor = ArgumentCaptor.forClass(ErpFinanceTransferDO.class);
+        verify(financeTransferMapper).updateByIdAndStatus(eq(10L), eq(0), captor.capture());
+        assertThat(captor.getValue().getOutAccountId()).isEqualTo(1L);
+        assertThat(captor.getValue().getStatus()).isZero();
     }
 
     @Test

@@ -1,8 +1,11 @@
 package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
+import cn.idev.excel.annotation.format.NumberFormat;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPaymentSummaryRespVO;
@@ -34,14 +37,17 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 
 import java.math.BigDecimal;
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -107,6 +113,36 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
                 .thenReturn(Collections.emptyList());
         lenient().when(stockInBillService.getPurchaseInSourceItemList(eq(10L)))
                 .thenReturn(Collections.emptyList());
+    }
+
+    @Test
+    void getPurchaseInExportFieldsIncludesBusinessDetailFieldsAndHonorsPermissions() {
+        when(fieldPermissionMasker.getHiddenFieldSet("erp_purchase_in"))
+                .thenReturn(Collections.emptySet());
+
+        List<ErpExportFieldRespVO> fields = controller.getPurchaseInExportFields().getData();
+        Set<String> names = fields.stream().map(ErpExportFieldRespVO::getField).collect(java.util.stream.Collectors.toSet());
+
+        org.junit.jupiter.api.Assertions.assertTrue(names.containsAll(Arrays.asList(
+                "deptName", "purchaserName", "totalProductPrice", "discountPrice", "paymentPrice",
+                "warehouseName", "itemDeptName", "stockCount", "lastPurchasePrice", "factoryCode",
+                "vehicleModel", "standard", "featureCode", "originPlace")));
+
+        when(fieldPermissionMasker.getHiddenFieldSet("erp_purchase_in"))
+                .thenReturn(Collections.singleton("item_warehouseId"));
+        Set<String> permittedNames = controller.getPurchaseInExportFields().getData().stream()
+                .map(ErpExportFieldRespVO::getField).collect(java.util.stream.Collectors.toSet());
+        org.junit.jupiter.api.Assertions.assertFalse(permittedNames.contains("warehouseName"));
+        org.junit.jupiter.api.Assertions.assertTrue(permittedNames.contains("itemDeptName"));
+    }
+
+    @Test
+    void purchaseInExportUsesMoneyFormatsWithoutFormattingNaturalNumbers() throws Exception {
+        Field amountField = ErpPurchaseInExportRespVO.class.getDeclaredField("productPrice");
+        Field countField = ErpPurchaseInExportRespVO.class.getDeclaredField("itemCount");
+
+        assertEquals("0.00####", amountField.getAnnotation(NumberFormat.class).value());
+        assertEquals("0.######", countField.getAnnotation(NumberFormat.class).value());
     }
 
     @Test

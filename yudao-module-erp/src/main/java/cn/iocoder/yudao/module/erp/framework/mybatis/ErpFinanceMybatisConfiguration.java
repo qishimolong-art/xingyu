@@ -5,7 +5,7 @@ import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** 收付款锁定查询的局部兼容配置。 */
+/** ERP 明细锁定查询的局部兼容配置。 */
 @Configuration(proxyBeanMethods = false)
 public class ErpFinanceMybatisConfiguration {
 

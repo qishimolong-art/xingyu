@@ -101,6 +101,8 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Mock
+    private ErpSaleDirectDeptPermissionService saleDirectDeptPermissionService;
+    @Mock
     private ErpStockMapper stockMapper;
     @Mock
     private ErpStockRecordMapper stockRecordMapper;

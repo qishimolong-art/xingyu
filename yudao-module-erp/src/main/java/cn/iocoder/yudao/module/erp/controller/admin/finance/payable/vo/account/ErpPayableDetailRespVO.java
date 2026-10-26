@@ -14,8 +14,12 @@ import java.time.LocalDateTime;
 @Data
 public class ErpPayableDetailRespVO {
 
+    @Schema(description = "审批日期")
+    @ExcelProperty(value = "审批日期", index = 0)
+    private LocalDateTime approveTime;
+
     @Schema(description = "单据类型", example = "采购入库")
-    @ExcelProperty("单据类型")
+    @ExcelProperty(value = "单据类型", index = 1)
     private String docType;
 
     @Schema(description = "业务类型")
@@ -25,15 +29,15 @@ public class ErpPayableDetailRespVO {
     private Long bizId;
 
     @Schema(description = "单据日期")
-    @ExcelProperty("单据日期")
+    @ExcelProperty(value = "单据时间", index = 14)
     private LocalDateTime docDate;
 
     @Schema(description = "单据号", example = "CGRK202605270001")
-    @ExcelProperty("单据号")
+    @ExcelProperty(value = "单据号", index = 2)
     private String docNo;
 
     @Schema(description = "业务员")
-    @ExcelProperty("业务员")
+    @ExcelProperty(value = "业务员", index = 3)
     private String businessUserName;
 
     @JsonIgnore
@@ -47,22 +51,22 @@ public class ErpPayableDetailRespVO {
     private Long deptId;
 
     @Schema(description = "部门名称", example = "采购部")
-    @ExcelProperty("所属部门")
+    @ExcelProperty(value = "所属部门", index = 4)
     private String deptName;
 
     @Schema(description = "上次余额")
-    @ExcelProperty("上次余额")
+    @ExcelProperty(value = "上次余额", index = 5, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal prevBalance;
 
     @Schema(description = "应付款")
-    @ExcelProperty("应付款")
+    @ExcelProperty(value = "应付款", index = 6, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal increaseAmount;
 
     @Schema(description = "实际付款金额，用于账户余额计算")
     private BigDecimal paymentAmount;
 
     @Schema(description = "付款展示金额，付款单取优惠前总金额")
-    @ExcelProperty("付款金额")
+    @ExcelProperty(value = "付款金额", index = 7, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal paymentDisplayAmount;
 
     @Schema(description = "核销金额")
@@ -75,11 +79,11 @@ public class ErpPayableDetailRespVO {
     private BigDecimal writeOffBaseAmount;
 
     @Schema(description = "余额")
-    @ExcelProperty("余额")
+    @ExcelProperty(value = "余额", index = 8, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal balance;
 
     @Schema(description = "来源单号")
-    @ExcelProperty("来源单号")
+    @ExcelProperty(value = "来源单号", index = 9)
     private String sourceNo;
 
     @Schema(description = "来源单据类型：PURCHASE_ORDER、FINANCE_PAYMENT")
@@ -89,29 +93,29 @@ public class ErpPayableDetailRespVO {
     private Long sourceId;
 
     @Schema(description = "厂家单号")
-    @ExcelProperty("厂家单号")
+    @ExcelProperty(value = "厂家单号", index = 10)
     private String factoryOrderNo;
 
     @Schema(description = "开票情况")
-    @ExcelProperty("开票情况")
+    @ExcelProperty(value = "开票情况", index = 11)
     private String invoiceStatus;
 
     @Schema(description = "备注")
-    @ExcelProperty("备注")
+    @ExcelProperty(value = "备注", index = 12)
     private String remark;
 
     @Schema(description = "凭证号")
-    @ExcelProperty("凭证号")
+    @ExcelProperty(value = "凭证号", index = 13)
     private String voucherNo;
 
     @JsonIgnore
     @Schema(description = "凭证来源业务类型")
     private Integer voucherSourceBizType;
 
-    @Schema(description = "确认时间")
-    @ExcelProperty("确认时间")
+    @Schema(description = "确认时间（兼容旧调用方，与审批日期相同）")
     private LocalDateTime confirmTime;
 
     @Schema(description = "当前下钻维度的本笔变动金额")
     private BigDecimal changeAmount;
+    private String eventKey;
 }

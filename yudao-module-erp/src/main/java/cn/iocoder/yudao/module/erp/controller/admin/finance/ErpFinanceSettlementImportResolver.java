@@ -124,6 +124,7 @@ public class ErpFinanceSettlementImportResolver {
 
         ErpFinancePaymentSaveReqVO.Item item = buildPaymentItem(row);
         reqVO.setItems(item == null ? Collections.emptyList() : Collections.singletonList(item));
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(reqVO);
         return reqVO;
     }
 
@@ -156,6 +157,7 @@ public class ErpFinanceSettlementImportResolver {
         }
         reqVO.setPaymentVoucherNo(paymentVoucherNo);
         reqVO.setItems(items);
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(reqVO);
         return reqVO;
     }
 
@@ -193,6 +195,7 @@ public class ErpFinanceSettlementImportResolver {
 
         ErpFinanceReceiptSaveReqVO.Item item = buildReceiptItem(row);
         reqVO.setItems(item == null ? Collections.emptyList() : Collections.singletonList(item));
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(reqVO);
         return reqVO;
     }
 
@@ -225,6 +228,7 @@ public class ErpFinanceSettlementImportResolver {
         }
         reqVO.setPaymentVoucherNo(paymentVoucherNo);
         reqVO.setItems(items);
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(reqVO);
         return reqVO;
     }
 
@@ -256,6 +260,7 @@ public class ErpFinanceSettlementImportResolver {
         reqVO.setAmount(row.getAmount());
         reqVO.setRemark(row.getRemark());
         reqVO.setFileUrl(row.getFileUrl());
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(reqVO);
         return reqVO;
     }
 
@@ -271,6 +276,7 @@ public class ErpFinanceSettlementImportResolver {
         reqVO.setAmount(row.getAmount());
         reqVO.setRemark(row.getRemark());
         reqVO.setFileUrl(row.getFileUrl());
+        cn.iocoder.yudao.module.erp.service.common.ErpFinanceDecimalRules.validate(reqVO);
         return reqVO;
     }
 

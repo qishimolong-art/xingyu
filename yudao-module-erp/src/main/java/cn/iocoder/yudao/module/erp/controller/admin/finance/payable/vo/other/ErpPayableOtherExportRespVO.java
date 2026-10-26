@@ -33,14 +33,17 @@ public class ErpPayableOtherExportRespVO {
     @ExcelProperty("凭证号")
     private String voucherNo;
 
-    @ExcelProperty("已结金额")
+    @ExcelProperty(value = "已结金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal settledAmount;
 
     @ExcelProperty("部门")
     private String deptName;
 
-    @ExcelProperty("应付金额")
+    @ExcelProperty(value = "应付金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal payableAmount;
+
+    @ExcelProperty(value = "未付金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
+    private BigDecimal outstandingAmount;
 
     @ExcelProperty("调账项目")
     private String project;
@@ -57,9 +60,24 @@ public class ErpPayableOtherExportRespVO {
     @ExcelProperty("备注")
     private String remark;
 
+    @ExcelProperty("附件")
+    private String fileUrl;
+
     @ExcelProperty("创建人")
     private String creatorName;
 
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
+
+    @ExcelProperty("审核人")
+    private String auditorName;
+
+    @ExcelProperty("审核时间")
+    private LocalDateTime auditTime;
+
+    @ExcelProperty("修改人")
+    private String updaterName;
+
+    @ExcelProperty("修改时间")
+    private LocalDateTime updateTime;
 }

@@ -23,18 +23,18 @@ public class ErpPayableReportDetailRespVO {
     @ExcelProperty("单据编号")
     private String docNo;
 
-    @ExcelProperty("上笔余额")
+    @ExcelProperty(value = "上笔余额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal prevBalance;
 
-    @ExcelProperty("增加金额")
+    @ExcelProperty(value = "增加金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal increaseAmount;
 
-    @ExcelProperty("付款金额")
+    @ExcelProperty(value = "付款金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal paymentAmount;
 
     private BigDecimal writeOffAmount;
 
-    @ExcelProperty("已付金额")
+    @ExcelProperty(value = "已付金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal allocatedAmount;
 
     private BigDecimal writeOffBaseAmount;
@@ -45,6 +45,6 @@ public class ErpPayableReportDetailRespVO {
     @ExcelProperty("附件")
     private String fileUrl;
 
-    @ExcelProperty("余额")
+    @ExcelProperty(value = "余额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal balance;
 }

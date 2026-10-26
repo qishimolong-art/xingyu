@@ -51,6 +51,9 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferExportRespVO;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
@@ -86,6 +89,8 @@ public class ErpStockTransferOutController {
     private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
 
+    @Resource
+    private ErpStockMoveItemMapper stockMoveItemMapper;
     @Resource
     private ErpStockMoveService stockMoveService;
     @Resource
@@ -336,28 +341,31 @@ public class ErpStockTransferOutController {
                                             @RequestParam(value = "fields", required = false) String fields,
                                             HttpServletResponse response) throws IOException {
         pageReqVO.setTransferDirection(TRANSFER_DIRECTION_OUT);
-        pageReqVO.setPageNo(1);
-        pageReqVO.setPageSize(EXPORT_MAX_COUNT);
         ErpStockTransferOutPermissionScope permissionScope = stockMoveService.getTransferOutPermissionScope();
-        PageResult<ErpStockMoveDO> pageResult = stockMoveService.getVisibleStockTransferOutPage(
-                pageReqVO, permissionScope);
-        if (pageResult.getTotal() > EXPORT_MAX_COUNT) {
-            throw exception(EXPORT_COUNT_EXCEEDED);
-        }
-        List<ErpStockMoveRespVO> list = stockMoveController.buildStockMoveVOPageResult(
-                pageResult, FIELD_PERMISSION_MODULE, permissionScope).getList();
-        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpStockMoveRespVO.class,
-                ErpExportFieldUtils.parseFieldParam(fields),
+        ErpStockMovementExportSupport.write(response, "stock-transfer-out", fields,
+                ErpStockMoveRespVO.class, ErpStockTransferExportRespVO.class,
+                movementExportHiddenFields(),
+                pageNo -> { pageReqVO.setPageNo(pageNo); pageReqVO.setPageSize(100); pageReqVO.setIncludeItems(false); return stockMoveService.getVisibleStockTransferOutPage(pageReqVO, permissionScope); },
+                page -> stockMoveController.buildStockMoveVOPageResult(page, FIELD_PERMISSION_MODULE, permissionScope, false).getList(),
+                (ids, pageNo) -> stockMoveItemMapper.selectExportPageByMoveIds(ids, pageNo).getList(),
+                ErpStockMoveItemDO::getMoveId,
+                batch -> {
+                    List<ErpStockMoveRespVO.Item> display = stockMoveController.buildStockMoveItemVOList(batch, true);
+                    fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, display);
+                    return display;
+                });
+    }
+
+    private Set<String> movementExportHiddenFields() {
+        return ErpStockMovementExportSupport.hidden(ErpStockTransferExportRespVO.class,
                 fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
-        ExcelUtils.write(response, "stock-transfer-out.xls", "data", ErpStockMoveRespVO.class, list, includeFields);
     }
 
     @GetMapping("/export-fields")
     @Operation(summary = "Get stock transfer-out export fields")
     @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:export')")
     public CommonResult<List<ErpExportFieldRespVO>> getStockTransferOutExportFields() {
-        return success(ErpExportFieldUtils.listFields(ErpStockMoveRespVO.class, EXPORT_FIELD_GROUP_MAP,
-                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
+        return success(ErpStockMovementExportSupport.fields(ErpStockTransferExportRespVO.class, movementExportHiddenFields()));
     }
 
     @GetMapping("/import-template")

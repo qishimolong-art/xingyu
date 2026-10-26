@@ -38,35 +38,35 @@ public class ErpStockRecordRespVO {
     private Integer packageQty;
 
     @Schema(description = "单重")
-    @ExcelProperty("单重")
+    @ExcelProperty(value = "单重", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal weight;
 
     @Schema(description = "总重")
-    @ExcelProperty("总重")
+    @ExcelProperty(value = "总重", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal totalWeight;
 
     @Schema(description = "出入库数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "11084")
-    @ExcelProperty("出入库数量")
+    @ExcelProperty(value = "出入库数量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal count;
 
     @Schema(description = "总库存量", requiredMode = Schema.RequiredMode.REQUIRED, example = "4307")
-    @ExcelProperty("总库存量")
+    @ExcelProperty(value = "总库存量", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal totalCount;
 
     @Schema(description = "本次业务单价（入库进价 / 出库成本均价），单位：元", example = "12.345678")
-    @ExcelProperty("单价")
+    @ExcelProperty(value = "单价", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal unitPrice;
 
     @Schema(description = "本次业务金额 = count × unitPrice，单位：元", example = "1234.5678")
-    @ExcelProperty("金额")
+    @ExcelProperty(value = "金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal totalPrice;
 
     @Schema(description = "结存成本均价，单位：元", example = "12.345678")
-    @ExcelProperty("结存单价")
+    @ExcelProperty(value = "结存单价", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal costPrice;
 
     @Schema(description = "结存成本金额 = totalCount × costPrice，单位：元", example = "1234.5678")
-    @ExcelProperty("结存金额")
+    @ExcelProperty(value = "结存金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal costAmount;
 
     @Schema(description = "业务类型", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")

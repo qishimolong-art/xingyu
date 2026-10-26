@@ -36,6 +36,14 @@ public class ErpCustomerMemberServiceImpl implements ErpCustomerMemberService {
     private MemberUserApi memberUserApi;
 
     @Override
+    public cn.iocoder.yudao.framework.common.pojo.PageResult<ErpCustomerMemberDO> getCustomerMemberPage(
+            Long customerId, cn.iocoder.yudao.framework.common.pojo.PageParam page) {
+        return customerMemberMapper.selectPage(page,
+                new cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX<ErpCustomerMemberDO>()
+                        .eq(ErpCustomerMemberDO::getCustomerId, customerId).orderByDesc(ErpCustomerMemberDO::getId));
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createCustomerMember(Long customerId, Long memberUserId, String remark) {
         ErpCustomerDO customer = customerService.validateCustomer(customerId);

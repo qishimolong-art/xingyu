@@ -182,11 +182,19 @@ public class AssistantWeComMessageService {
             private Map<String, Object> result;
             private String explanation;
             private String finalText;
+            private AssistantWeComResultFormatter.ChoiceResult taskChoices;
 
             @Override
             @SuppressWarnings("unchecked")
             public void emit(String event, Object data) {
-                if ("result".equals(event) && data instanceof Map) result = (Map<String, Object>) data;
+                if ("result".equals(event) && data instanceof Map) {
+                    result = (Map<String, Object>) data;
+                    if (result.get("tasks") instanceof Collection) {
+                        taskChoices = formatter.clarification(formatter.taskClarification(result), originalQuestion);
+                        if (taskChoices.hasChoices()) redisTemplate.opsForValue().set(choiceKey(wecomUserId), taskChoices.toJson(), choiceTimeout().toMillis(), TimeUnit.MILLISECONDS);
+                        else taskChoices = null;
+                    }
+                }
                 else if ("explanation".equals(event) && data instanceof Map) {
                     Object text = ((Map<?, ?>) data).get("text");
                     explanation = text == null ? null : String.valueOf(text);
@@ -206,7 +214,7 @@ public class AssistantWeComMessageService {
             @Override
             public void complete() {
                 if (!completed.compareAndSet(false, true)) return;
-                String content = finalText != null ? finalText : formatter.result(result, explanation);
+                String content = finalText != null ? finalText : taskChoices == null ? formatter.result(result, explanation) : formatter.resultWithChoices(result, explanation, taskChoices);
                 send(proactive, requestId, streamId, wecomUserId, content, true);
             }
         };

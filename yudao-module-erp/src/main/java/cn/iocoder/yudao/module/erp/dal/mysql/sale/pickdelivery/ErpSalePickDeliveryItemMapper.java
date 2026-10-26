@@ -5,9 +5,12 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.pickdelivery.ErpSalePickDeliveryItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.pickdelivery.ErpSalePickQuantityAggregateDO;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleDeliveryStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.util.Collection;
 import java.util.List;
@@ -48,6 +51,18 @@ public interface ErpSalePickDeliveryItemMapper extends BaseMapperX<ErpSalePickDe
     default PageResult<ErpSalePickDeliveryItemDO> selectPageByOrderId(PageParam pageParam, Long orderId) {
         return selectPage(pageParam, buildWarehousePositionOrderWrapper().eq("order_id", orderId));
     }
+
+    @Select({
+            "SELECT pick_task_id AS pickTaskId, COUNT(1) AS totalItemCount,",
+            "COALESCE(SUM(`count`), 0) AS totalQuantity,",
+            "COALESCE(SUM(CASE WHEN picked_count IS NULL AND pick_status = 30",
+            "THEN `count` ELSE COALESCE(picked_count, 0) END), 0) AS pickedQuantity",
+            "FROM erp_sale_pick_delivery_item",
+            "WHERE order_id = #{orderId} AND deleted = 0",
+            "GROUP BY pick_task_id"
+    })
+    List<ErpSalePickQuantityAggregateDO> selectPickQuantityAggregatesByOrderId(
+            @Param("orderId") Long orderId);
 
     default PageResult<ErpSalePickDeliveryItemDO> selectPageBySaleOutId(PageParam pageParam, Long saleOutId) {
         return selectPage(pageParam, buildWarehousePositionOrderWrapper().eq("sale_out_id", saleOutId));

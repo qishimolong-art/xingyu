@@ -96,4 +96,17 @@ public class ErpStockOutBillItemRespVO {
     @Schema(description = "备注")
     private String remark;
 
+    private Boolean priceVisible;
+    private BigDecimal productPurchasePrice;
+    private BigDecimal salePrice;
+    private BigDecimal lastSalePrice;
+    private BigDecimal minPrice;
+    private BigDecimal referencePrice;
+    private BigDecimal retailPrice;
+    private BigDecimal lastPurchasePrice;
+    private BigDecimal grossProfitRate;
+    private BigDecimal backupPrice1;
+    private BigDecimal wholesalePrice;
+    private BigDecimal sharePrice;
+
 }

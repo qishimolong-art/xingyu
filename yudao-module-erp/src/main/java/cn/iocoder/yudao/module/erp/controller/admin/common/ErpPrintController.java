@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.vo.print.ErpPrintTemp
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.print.ErpPrintTemplateSaveReqVO;
 import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
 import cn.iocoder.yudao.module.erp.service.cloudprint.ErpCloudPrintFontRegistry;
+import cn.iocoder.yudao.module.erp.service.cloudprint.ErpPrintWebFontRegistry;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,6 +24,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.context.request.WebRequest;
 
 import javax.annotation.Resource;
 import javax.validation.Valid;
@@ -127,6 +130,37 @@ public class ErpPrintController {
                 .cacheControl(CacheControl.maxAge(7, TimeUnit.DAYS).cachePrivate())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fontFile.getFileName() + "\"")
                 .body(ErpCloudPrintFontRegistry.read(fontFile));
+    }
+
+    @GetMapping("/font/manifest")
+    @Operation(summary = "获取浏览器内置字体清单")
+    @PreAuthorize(ANY_READ_PERMISSION)
+    public ResponseEntity<CommonResult<ErpPrintWebFontRegistry.Manifest>> getFontManifest(WebRequest request) {
+        ErpPrintWebFontRegistry.Manifest manifest = ErpPrintWebFontRegistry.manifest();
+        String etag = "\"" + manifest.getVersion() + "\"";
+        if (request.checkNotModified(etag)) {
+            return ResponseEntity.status(304).eTag(etag)
+                    .cacheControl(CacheControl.noCache().cachePrivate()).build();
+        }
+        return ResponseEntity.ok().eTag(etag)
+                .cacheControl(CacheControl.noCache().cachePrivate()).body(success(manifest));
+    }
+
+    @GetMapping("/font/resource/{sha256}.woff2")
+    @Operation(summary = "获取浏览器内置压缩字体")
+    @PreAuthorize(ANY_READ_PERMISSION)
+    public ResponseEntity<byte[]> getWebFont(@PathVariable("sha256") String sha256, WebRequest request) {
+        ErpPrintWebFontRegistry.WebFont font = ErpPrintWebFontRegistry.find(sha256);
+        if (font == null) return ResponseEntity.notFound().build();
+        String etag = "\"" + sha256 + "\"";
+        String cacheControl = "private, max-age=31536000, immutable";
+        if (request.checkNotModified(etag)) {
+            return ResponseEntity.status(304).eTag(etag).header(HttpHeaders.CACHE_CONTROL, cacheControl).build();
+        }
+        return ResponseEntity.ok().eTag(etag).header(HttpHeaders.CACHE_CONTROL, cacheControl)
+                .contentType(MediaType.parseMediaType("font/woff2"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + font.getFileName() + "\"")
+                .body(ErpPrintWebFontRegistry.read(font));
     }
 
     @GetMapping("/template/default")

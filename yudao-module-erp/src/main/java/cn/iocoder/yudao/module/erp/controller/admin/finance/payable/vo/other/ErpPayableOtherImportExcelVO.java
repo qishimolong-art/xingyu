@@ -22,6 +22,7 @@ public class ErpPayableOtherImportExcelVO {
     private String voucherNo;
 
     @ExcelProperty("已结金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal settledAmount;
 
     @ExcelProperty("部门ID")
@@ -29,6 +30,7 @@ public class ErpPayableOtherImportExcelVO {
 
     @ExcelRequired
     @ExcelProperty("应付金额")
+    @cn.iocoder.yudao.module.erp.framework.web.StockDecimalField
     private BigDecimal payableAmount;
 
     @ExcelProperty("调账项目")

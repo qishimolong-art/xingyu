@@ -39,6 +39,12 @@ public class ErpCustomerContactServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpCustomerService customerService;
 
+    @org.junit.jupiter.api.BeforeEach
+    void visibleCustomerFixture() {
+        org.mockito.Mockito.lenient().when(customerService.getCustomer(org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> new cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO().setId(invocation.getArgument(0)).setName("可见客户"));
+    }
+
     // ==================== createContact ====================
 
     @Test
@@ -170,8 +176,25 @@ public class ErpCustomerContactServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(401L, result.get(0).getId());
         assertEquals(402L, result.get(1).getId());
         // 校验：先 validateCustomer 再查询
-        verify(customerService).validateCustomer(eq(customerId));
+        verify(customerService).getCustomer(eq(customerId));
         verify(contactMapper).selectListByCustomerId(eq(customerId));
     }
 
+
+    @Test
+    void cannotMoveChildToAnotherCustomer() {
+        when(contactMapper.selectById(1L)).thenReturn(new ErpCustomerContactDO().setId(1L).setCustomerId(10L));
+        ErpCustomerContactSaveReqVO req = new ErpCustomerContactSaveReqVO(); req.setId(1L); req.setCustomerId(20L);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> contactService.updateContact(req));
+        org.mockito.Mockito.verify(contactMapper, org.mockito.Mockito.never()).updateById(org.mockito.ArgumentMatchers.<ErpCustomerContactDO>any());
+    }
+
+    @Test
+    void hiddenParentPreventsReadAndDelete() {
+        when(contactMapper.selectById(1L)).thenReturn(new ErpCustomerContactDO().setId(1L).setCustomerId(99L));
+        when(customerService.getCustomer(99L)).thenReturn(null);
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> contactService.getContact(1L));
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> contactService.deleteContact(1L));
+        org.mockito.Mockito.verify(contactMapper, org.mockito.Mockito.never()).deleteById(1L);
+    }
 }

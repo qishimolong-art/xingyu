@@ -32,6 +32,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjus
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
@@ -49,6 +50,7 @@ import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseItemPriceReferenc
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -110,7 +112,10 @@ public class ErpPurchasePriceAdjustController {
             "item_count", "count",
             "itemCount", "count",
             "newPrice", "newPrice",
-            "adjustPrice", "newPrice");
+            "adjustPrice", "newPrice",
+            "item_remark", "remark",
+            "itemRemark", "remark",
+            "remark", "remark");
     private static final Map<String, String> ORDER_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
             "no", "no",
             "supplierId", "supplierName",
@@ -125,9 +130,11 @@ public class ErpPurchasePriceAdjustController {
             "item_count", "itemCount",
             "itemCount", "itemCount",
             "newPrice", "newPrice",
-            "adjustPrice", "newPrice");
+            "adjustPrice", "newPrice",
+            "item_remark", "itemRemark",
+            "itemRemark", "itemRemark");
     private static final Set<String> ORDER_IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "no", "supplierName", "remark", "productCode", "productName", "factoryCode", "warehouseName", "itemCount", "newPrice"));
+            "no", "supplierName", "remark", "productCode", "productName", "factoryCode", "warehouseName", "itemCount", "newPrice", "itemRemark"));
 
     @Resource
     private ErpPurchasePriceAdjustService priceAdjustService;
@@ -141,6 +148,8 @@ public class ErpPurchasePriceAdjustController {
     private ErpSupplierService supplierService;
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpStockService stockService;
 
     @Resource
     private ErpPurchaseInItemMapper purchaseInItemMapper;
@@ -264,6 +273,7 @@ public class ErpPurchasePriceAdjustController {
         example.setProductCode("P000001");
         example.setCount(BigDecimal.ONE);
         example.setNewPrice(new BigDecimal("10.00"));
+        example.setRemark("明细备注");
         ExcelUtils.writeImportTemplate(response, "采购调价明细导入模板.xls", "采购调价明细",
                 ErpPurchasePriceAdjustImportExcelVO.class, Collections.singletonList(example), null,
                 ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
@@ -284,12 +294,14 @@ public class ErpPurchasePriceAdjustController {
         example.setWarehouseName("主仓库");
         example.setItemCount(BigDecimal.ONE);
         example.setNewPrice(new BigDecimal("10.00"));
+        example.setItemRemark("第一行明细备注");
 
         ErpPurchasePriceAdjustOrderImportExcelVO secondItem = new ErpPurchasePriceAdjustOrderImportExcelVO();
         secondItem.setProductCode("P000002");
         secondItem.setWarehouseName("主仓库");
         secondItem.setItemCount(new BigDecimal("2"));
         secondItem.setNewPrice(new BigDecimal("20.00"));
+        secondItem.setItemRemark("第二行明细备注");
 
         ExcelUtils.writeImportTemplate(response, "采购调价导入模板.xls", "采购调价",
                 ErpPurchasePriceAdjustOrderImportExcelVO.class, java.util.Arrays.asList(example, secondItem),
@@ -782,6 +794,12 @@ public class ErpPurchasePriceAdjustController {
                 if (item.getDrawingNo() == null) {
                     item.setDrawingNo(product.getDrawingNo());
                 }
+                if (item.getFactoryCode() == null) {
+                    item.setFactoryCode(product.getFactoryCode());
+                }
+                if (item.getProductBarCode() == null) {
+                    item.setProductBarCode(product.getBarCode());
+                }
             });
         }
     }
@@ -811,7 +829,12 @@ public class ErpPurchasePriceAdjustController {
         Map<Long, ErpPurchaseInItemDO> inItemMap = convertMap(
                 purchaseInItemMapper.selectBatchIds(inItemIds), ErpPurchaseInItemDO::getId);
         for (ErpPurchasePriceAdjustRespVO.Item item : items) {
-            MapUtils.findAndThen(inItemMap, item.getInItemId(), inItem -> item.setBatchNo(inItem.getBatchNo()));
+            MapUtils.findAndThen(inItemMap, item.getInItemId(), inItem -> {
+                item.setBatchNo(inItem.getBatchNo());
+                item.setBarCode(inItem.getBarCode());
+                item.setBusinessEntity(inItem.getBusinessEntity());
+                item.setWholeQty(inItem.getWholeQty());
+            });
         }
     }
 
@@ -831,16 +854,43 @@ public class ErpPurchasePriceAdjustController {
     }
 
     private List<ErpPurchasePriceAdjustExportRespVO> buildExportList(List<ErpPurchasePriceAdjustRespVO> list) {
-        Map<Long, ErpWarehouseDO> warehouseMap = cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap(
-                warehouseService.getWarehouseListByStatus(0), ErpWarehouseDO::getId);
+        Set<Long> warehouseIds = new LinkedHashSet<>();
+        Set<Long> itemDeptIds = new LinkedHashSet<>();
+        Set<Long> productIds = new LinkedHashSet<>();
+        for (ErpPurchasePriceAdjustRespVO adjust : list) {
+            for (ErpPurchasePriceAdjustRespVO.Item item : CollUtil.emptyIfNull(adjust.getItems())) {
+                if (item.getWarehouseId() != null) {
+                    warehouseIds.add(item.getWarehouseId());
+                }
+                if (item.getDeptId() != null) {
+                    itemDeptIds.add(item.getDeptId());
+                }
+                if (item.getProductId() != null) {
+                    productIds.add(item.getProductId());
+                }
+            }
+        }
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(warehouseIds));
+        Map<Long, DeptRespDTO> itemDeptMap = CollUtil.isEmpty(itemDeptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(itemDeptIds);
+        Map<String, ErpStockDO> stockMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(productIds, warehouseIds));
         List<ErpPurchasePriceAdjustExportRespVO> rows = new ArrayList<>();
         for (ErpPurchasePriceAdjustRespVO adjust : list) {
             if (CollUtil.isEmpty(adjust.getItems())) {
-                rows.add(buildExportRow(adjust, null, true, warehouseMap));
+                rows.add(buildExportRow(adjust, null, null, null, null, true));
                 continue;
             }
             for (int i = 0; i < adjust.getItems().size(); i++) {
-                rows.add(buildExportRow(adjust, adjust.getItems().get(i), i == 0, warehouseMap));
+                ErpPurchasePriceAdjustRespVO.Item item = adjust.getItems().get(i);
+                ErpStockDO stock = item.getProductId() == null || item.getWarehouseId() == null
+                        ? null : stockMap.get(item.getProductId() + "_" + item.getWarehouseId());
+                rows.add(buildExportRow(adjust, item,
+                        warehouseMap.get(item.getWarehouseId()),
+                        itemDeptMap.get(item.getDeptId()), stock, i == 0));
             }
         }
         return rows;
@@ -848,8 +898,10 @@ public class ErpPurchasePriceAdjustController {
 
     private ErpPurchasePriceAdjustExportRespVO buildExportRow(ErpPurchasePriceAdjustRespVO adjust,
                                                               ErpPurchasePriceAdjustRespVO.Item item,
-                                                              boolean fillMainFields,
-                                                              Map<Long, ErpWarehouseDO> warehouseMap) {
+                                                              ErpWarehouseDO warehouse,
+                                                              DeptRespDTO itemDept,
+                                                              ErpStockDO stock,
+                                                              boolean fillMainFields) {
         ErpPurchasePriceAdjustExportRespVO row = fillMainFields
                 ? BeanUtils.toBean(adjust, ErpPurchasePriceAdjustExportRespVO.class)
                 : new ErpPurchasePriceAdjustExportRespVO();
@@ -863,6 +915,9 @@ public class ErpPurchasePriceAdjustController {
             row.setAdjusterName(null);
             row.setTotalAdjustPrice(null);
             row.setPaymentPrice(null);
+            row.setOriginalTotalPrice(null);
+            row.setAdjustedTotalPrice(null);
+            row.setApproverName(null);
             row.setApproveTime(null);
             row.setCreatorName(null);
             row.setCreateTime(null);
@@ -884,23 +939,31 @@ public class ErpPurchasePriceAdjustController {
         row.setProductName(item.getProductName());
         row.setBatchNo(item.getBatchNo());
         row.setProductUnitName(item.getProductUnitName());
+        row.setItemDeptName(itemDept != null ? itemDept.getName() : null);
+        row.setStockCount(stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO);
         row.setWeight(item.getWeight());
         row.setPackageQty(item.getPackageQty());
+        row.setWholeQty(item.getWholeQty());
         row.setVehicleModel(item.getVehicleModel());
         row.setStandard(item.getStandard());
         row.setFeatureCode(item.getFeatureCode());
         row.setOriginPlace(item.getOriginPlace());
         row.setBrand(item.getBrand());
         row.setDrawingNo(item.getDrawingNo());
-        row.setWarehouseName(null);
+        row.setFactoryCode(item.getFactoryCode());
+        row.setProductBarCode(item.getProductBarCode());
+        row.setBarCode(item.getBarCode());
+        row.setBusinessEntity(item.getBusinessEntity());
+        row.setWarehouseName(warehouse != null ? warehouse.getName() : null);
         row.setWarehousePosition(item.getWarehousePosition());
-        MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> row.setWarehouseName(warehouse.getName()));
         row.setInNo(item.getInNo());
         row.setOldPrice(item.getOldPrice());
         row.setNewPrice(item.getNewPrice());
+        row.setLastPurchasePrice(item.getLastPurchasePrice());
         row.setCount(item.getCount());
         row.setAdjustRatio(item.getAdjustRatio());
         row.setAdjustPrice(item.getAdjustPrice());
+        row.setItemRemark(item.getRemark());
         return row;
     }
 
@@ -913,8 +976,11 @@ public class ErpPurchasePriceAdjustController {
         map.put("adjustTypeName", "main");
         map.put("status", "main");
         map.put("adjusterName", "main");
+        map.put("originalTotalPrice", "main");
+        map.put("adjustedTotalPrice", "main");
         map.put("totalAdjustPrice", "main");
         map.put("paymentPrice", "main");
+        map.put("approverName", "main");
         map.put("approveTime", "main");
         map.put("creatorName", "system");
         map.put("createTime", "system");
@@ -925,22 +991,31 @@ public class ErpPurchasePriceAdjustController {
         map.put("productName", "detail");
         map.put("batchNo", "detail");
         map.put("productUnitName", "detail");
+        map.put("itemDeptName", "detail");
+        map.put("stockCount", "detail");
         map.put("weight", "detail");
         map.put("packageQty", "detail");
+        map.put("wholeQty", "detail");
         map.put("vehicleModel", "detail");
         map.put("standard", "detail");
         map.put("featureCode", "detail");
         map.put("originPlace", "detail");
         map.put("brand", "detail");
         map.put("drawingNo", "detail");
+        map.put("factoryCode", "detail");
+        map.put("productBarCode", "detail");
+        map.put("barCode", "detail");
+        map.put("businessEntity", "detail");
         map.put("warehouseName", "detail");
         map.put("warehousePosition", "detail");
         map.put("inNo", "detail");
         map.put("oldPrice", "detail");
         map.put("newPrice", "detail");
+        map.put("lastPurchasePrice", "detail");
         map.put("count", "detail");
         map.put("adjustRatio", "detail");
         map.put("adjustPrice", "detail");
+        map.put("itemRemark", "detail");
         return map;
     }
 
@@ -949,25 +1024,37 @@ public class ErpPurchasePriceAdjustController {
         map.put("supplierName", "supplierId");
         map.put("deptName", "deptId");
         map.put("adjusterName", "adjuster");
+        map.put("originalTotalPrice", "item_oldPrice");
+        map.put("adjustedTotalPrice", "item_newPrice");
+        map.put("approverName", "approverName");
         map.put("productCode", "item_productCode");
         map.put("productName", "item_productName");
         map.put("batchNo", "item_batchNo");
         map.put("productUnitName", "item_productUnitName");
+        map.put("itemDeptName", "item_deptId");
+        map.put("stockCount", "item_stockCount");
         map.put("weight", "item_weight");
         map.put("packageQty", "item_packageQty");
+        map.put("wholeQty", "item_wholeQty");
         map.put("vehicleModel", "item_vehicleModel");
         map.put("standard", "item_standard");
         map.put("featureCode", "item_featureCode");
         map.put("originPlace", "item_originPlace");
         map.put("brand", "item_brand");
         map.put("drawingNo", "item_drawingNo");
+        map.put("factoryCode", "item_factoryCode");
+        map.put("productBarCode", "item_productBarCode");
+        map.put("barCode", "item_barCode");
+        map.put("businessEntity", "item_businessEntity");
         map.put("warehouseName", "item_warehouseId");
         map.put("warehousePosition", "item_warehousePosition");
         map.put("oldPrice", "item_oldPrice");
         map.put("newPrice", "item_newPrice");
+        map.put("lastPurchasePrice", "item_lastPurchasePrice");
         map.put("count", "item_count");
         map.put("adjustRatio", "item_adjustRatio");
         map.put("adjustPrice", "item_adjustPrice");
+        map.put("itemRemark", "item_remark");
         return map;
     }
 

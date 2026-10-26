@@ -59,6 +59,13 @@ public class ErpStockRecordPageReqVO extends PageParam {
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] bizDate;
 
+    @Schema(description = "审批生效日期区间（库存流水创建时间）")
+    @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
+    private LocalDateTime[] approveTime;
+
+    @Schema(description = "日期展示口径：bizDate-开单日期，approveTime-审批日期", example = "approveTime")
+    private String dateBasis;
+
     @Schema(description = "产品关键词，匹配编码、名称、拼音码、五笔码等")
     private String productKeyword;
 

@@ -23,6 +23,14 @@ import java.util.List;
 @Mapper
 public interface ErpCustomerMapper extends BaseMapperX<ErpCustomerDO> {
 
+    @org.apache.ibatis.annotations.Select({
+        "<script>SELECT e.customer_id AS customerId, CAST(MIN(e.biz_time) AS DATE) AS earliestUnpaidDate FROM (",
+        "SELECT customer_id, biz_time, amount, SUM(amount) OVER (PARTITION BY customer_id ORDER BY (biz_time IS NULL) DESC, biz_time DESC ROWS UNBOUNDED PRECEDING) AS cumulative FROM (",
+        "SELECT customer_id, out_time AS biz_time, total_price AS amount FROM erp_sale_out WHERE deleted=0 AND status=20 AND total_price > 0 AND customer_id IN <foreach collection='balances' index='customerId' item='balance' open='(' separator=',' close=')'>#{customerId}</foreach> UNION ALL SELECT customer_id, adjust_date AS biz_time, total_adjust_price AS amount FROM erp_sale_price_adjust WHERE deleted=0 AND status=20 AND total_adjust_price > 0 AND customer_id IN <foreach collection='balances' index='customerId' item='balance' open='(' separator=',' close=')'>#{customerId}</foreach> UNION ALL SELECT customer_id, biz_time AS biz_time, receivable_amount AS amount FROM erp_receivable_other WHERE deleted=0 AND status=20 AND receivable_amount > 0 AND customer_id IN <foreach collection='balances' index='customerId' item='balance' open='(' separator=',' close=')'>#{customerId}</foreach>",
+        ") events) e WHERE e.cumulative - e.amount &lt; CASE e.customer_id <foreach collection='balances' index='customerId' item='balance'> WHEN #{customerId} THEN CAST(#{balance} AS DECIMAL(38,6)) </foreach> END GROUP BY e.customer_id</script>"
+    })
+    List<cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerDebtDateBO> selectEarliestUnpaidDates(@org.apache.ibatis.annotations.Param("balances") java.util.Map<Long, java.math.BigDecimal> balances);
+
     default PageResult<ErpCustomerDO> selectPage(ErpCustomerPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpCustomerDO> wrapper = buildPageQuery(reqVO);
         wrapper.ne(ErpCustomerDO::getMergedFlag, Boolean.TRUE);

@@ -75,23 +75,23 @@ public final class ErpReceivableAgingReportModels {
         private String customerName;
         @ExcelProperty(value = "客户类型", index = 1)
         private String customerTypeName;
-        @ExcelProperty(value = "余额", index = 2)
+        @ExcelProperty(value = "余额", index = 2, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal balance;
-        @ExcelProperty(value = "信用额度", index = 3)
+        @ExcelProperty(value = "信用额度", index = 3, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal creditLimit;
-        @ExcelProperty(value = "信用余额", index = 4)
+        @ExcelProperty(value = "信用余额", index = 4, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal creditBalance;
-        @ExcelProperty(value = "1个月内", index = 5)
+        @ExcelProperty(value = "1个月内", index = 5, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal within1Month;
-        @ExcelProperty(value = "2个月内", index = 6)
+        @ExcelProperty(value = "2个月内", index = 6, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal within2Months;
-        @ExcelProperty(value = "3个月内", index = 7)
+        @ExcelProperty(value = "3个月内", index = 7, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal within3Months;
-        @ExcelProperty(value = "3个月至半年内", index = 8)
+        @ExcelProperty(value = "3个月至半年内", index = 8, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal months3To6;
-        @ExcelProperty(value = "半年至一年内", index = 9)
+        @ExcelProperty(value = "半年至一年内", index = 9, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal months6To12;
-        @ExcelProperty(value = "一年以上", index = 10)
+        @ExcelProperty(value = "一年以上", index = 10, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal over1Year;
         @ExcelProperty(value = "区域", index = 11)
         private String areaName;

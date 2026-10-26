@@ -19,6 +19,7 @@ public class ErpSalePickTaskRespVO {
     private Long saleOutId;
     private String saleOutNo;
     private Integer sourceType;
+    private String sourceTypeName;
     private Long sourceId;
     private String sourceNo;
     private String displayNo;
@@ -31,6 +32,17 @@ public class ErpSalePickTaskRespVO {
     private Integer pickedItemCount;
     private BigDecimal totalPieceCount;
     private String pickProgress;
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(
+            using = com.fasterxml.jackson.databind.ser.std.ToStringSerializer.class)
+    private BigDecimal totalQuantity;
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(
+            using = com.fasterxml.jackson.databind.ser.std.ToStringSerializer.class)
+    private BigDecimal pickedQuantity;
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(
+            using = com.fasterxml.jackson.databind.ser.std.ToStringSerializer.class)
+    private BigDecimal remainingPickQuantity;
+    private LocalDateTime startTime;
+    private List<String> pickerNames;
     private LocalDateTime latestPickTime;
     private LocalDateTime completeTime;
     private LocalDateTime createTime;

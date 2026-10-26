@@ -44,7 +44,7 @@ class ErpReceivableDetailReportRepositoryTest {
         assertTrue(saleReturn.contains("t.source_out_id"));
         assertTrue(saleReturn.contains("-ABS(COALESCE(t.total_price,0))"));
         assertTrue(saleReturn.contains("CASE WHEN ABS(-ABS(COALESCE(t.total_price,0)))>0"));
-        assertTrue(saleReturn.contains(">=ROUND(ABS(-ABS(COALESCE(t.total_price,0))),2)"));
+        assertTrue(saleReturn.contains(">=ROUND(ABS(-ABS(COALESCE(t.total_price,0))),6)"));
         assertTrue(invokeBusinessSourceSql(repository, "saleAdjust").contains("t.original_sale_out_id"));
         assertTrue(saleOut.contains("fri.write_off_status=1"));
         assertTrue(saleOut.contains("fri.deleted=b'0'"));
@@ -61,8 +61,8 @@ class ErpReceivableDetailReportRepositoryTest {
         String adjust = invokeSourceSql(repository, "receivableAdjust");
         assertTrue(adjust.contains("WHEN '销售手推车' THEN 'SALE_CART'"));
         assertTrue(adjust.contains("WHEN '收款单优惠' THEN 'FINANCE_RECEIPT'"));
-        assertTrue(adjust.contains("ROUND(COALESCE(t.settled_amount,0),2) write_off_amount"));
-        assertTrue(receipt.contains("ROUND(0,2) write_off_amount"));
+        assertTrue(adjust.contains("ROUND(COALESCE(t.settled_amount,0),6) write_off_amount"));
+        assertTrue(receipt.contains("ROUND(0,6) write_off_amount"));
     }
 
     @Test

@@ -90,6 +90,9 @@ public class ErpSaleOutRespVO {
     @Schema(description = "快递单图片地址", example = "https://example.com/express.jpg")
     private String expressFileUrl;
 
+    @Schema(description = "是否存在快递单（人工补传或送货阶段上传）")
+    private Boolean hasExpressFile;
+
     @Schema(description = "备注", example = "你猜")
     @ExcelProperty("备注")
     private String remark;

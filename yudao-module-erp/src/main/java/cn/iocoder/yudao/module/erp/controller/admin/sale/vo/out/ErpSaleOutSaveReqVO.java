@@ -39,12 +39,15 @@ public class ErpSaleOutSaveReqVO {
     private String sourceNo;
 
     @Schema(description = "优惠率，百分比", requiredMode = Schema.RequiredMode.REQUIRED, example = "99.88")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "优惠率，百分比最多支持 6 位小数")
     private BigDecimal discountPercent;
 
     @Schema(description = "费用金额，单位：元", example = "7127")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "费用金额，单位：元最多支持 6 位小数")
     private BigDecimal feeAmount;
 
     @Schema(description = "其它金额，单位：元", example = "7127")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "其它金额，单位：元最多支持 6 位小数")
     private BigDecimal otherPrice;
 
     @Schema(description = "附件地址", example = "https://www.iocoder.cn")
@@ -62,6 +65,7 @@ public class ErpSaleOutSaveReqVO {
     private String orderType;
 
     @Schema(description = "额外费用")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "额外费用最多支持 6 位小数")
     private BigDecimal extraFee;
 
     @Schema(description = "优先级")
@@ -104,6 +108,7 @@ public class ErpSaleOutSaveReqVO {
     private String settleMethod;
 
     @Schema(description = "运费")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "运费最多支持 6 位小数")
     private BigDecimal freight;
 
     @Schema(description = "票据类型")
@@ -119,6 +124,7 @@ public class ErpSaleOutSaveReqVO {
     private Long deptId;
 
     @Schema(description = "总重")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "总重最多支持 6 位小数")
     private BigDecimal totalWeight;
 
     @Schema(description = "内部说明")
@@ -128,6 +134,7 @@ public class ErpSaleOutSaveReqVO {
     private String vin;
 
     @Schema(description = "出库清单列表")
+    @javax.validation.Valid
     private List<Item> items;
 
     @Data
@@ -162,13 +169,16 @@ public class ErpSaleOutSaveReqVO {
         private Long productUnitId;
 
         @Schema(description = "产品单价", example = "100.00")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "产品单价最多支持 6 位小数")
         private BigDecimal productPrice;
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @NotNull(message = "产品数量不能为空")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "产品数量最多支持 6 位小数")
         private BigDecimal count;
 
         @Schema(description = "税率，百分比", example = "99.88")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "税率，百分比最多支持 6 位小数")
         private BigDecimal taxPercent;
 
         @Schema(description = "gift flag")
@@ -199,6 +209,7 @@ public class ErpSaleOutSaveReqVO {
         private String warehousePosition;
 
         @Schema(description = "单重")
+        @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "单重最多支持 6 位小数")
         private BigDecimal unitWeight;
 
         @Schema(description = "包装数")

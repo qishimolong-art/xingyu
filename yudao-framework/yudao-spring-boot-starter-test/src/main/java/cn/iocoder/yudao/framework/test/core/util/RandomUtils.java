@@ -56,10 +56,17 @@ public class RandomUtils {
             }
             return RandomUtil.randomInt();
         });
-        // BigDecimal：限制精度在 DECIMAL(10,2) 范围内，避免 H2 等数据库溢出
+        // BigDecimal：经纬度遵守地理范围及 DECIMAL(10,6)，其他数值保持原金额范围。
         PODAM_FACTORY.getStrategy().addOrReplaceTypeManufacturer(BigDecimal.class,
-                (dataProviderStrategy, attributeMetadata, map) ->
-                        BigDecimal.valueOf(RandomUtil.randomInt(0, 10000000), 2));
+                (dataProviderStrategy, attributeMetadata, map) -> {
+                    if ("longitude".equals(attributeMetadata.getAttributeName())) {
+                        return BigDecimal.valueOf(RandomUtil.randomInt(-180000000, 180000001), 6);
+                    }
+                    if ("latitude".equals(attributeMetadata.getAttributeName())) {
+                        return BigDecimal.valueOf(RandomUtil.randomInt(-90000000, 90000001), 6);
+                    }
+                    return BigDecimal.valueOf(RandomUtil.randomInt(0, 10000000), 2);
+                });
         // LocalDateTime
         PODAM_FACTORY.getStrategy().addOrReplaceTypeManufacturer(LocalDateTime.class,
                 (dataProviderStrategy, attributeMetadata, map) -> randomLocalDateTime());

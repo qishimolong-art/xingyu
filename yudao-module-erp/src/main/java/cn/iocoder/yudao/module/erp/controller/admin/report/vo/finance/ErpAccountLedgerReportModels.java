@@ -86,11 +86,11 @@ public final class ErpAccountLedgerReportModels {
         private String documentType;
         @ExcelProperty(value = "方向", index = 6)
         private String direction;
-        @ExcelProperty(value = "收入金额", index = 7)
+        @ExcelProperty(value = "收入金额", index = 7, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal incomeAmount;
-        @ExcelProperty(value = "支出金额", index = 8)
+        @ExcelProperty(value = "支出金额", index = 8, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal expenseAmount;
-        @ExcelProperty(value = "余额", index = 9)
+        @ExcelProperty(value = "余额", index = 9, converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
         private BigDecimal balance;
         @ExcelProperty(value = "收款人", index = 10)
         private String receiverName;

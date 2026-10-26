@@ -21,14 +21,15 @@ public class ErpSaleReportDetailExportRespVO {
     private String docNo;
 
     @ExcelProperty("业务数量")
+    @cn.idev.excel.annotation.format.NumberFormat("0.######")
     private BigDecimal bizCount;
 
-    @ExcelProperty("出库金额")
+    @ExcelProperty(value = "出库金额", converter = cn.iocoder.yudao.module.erp.framework.excel.ErpTradeAmountExcelConverter.class)
     private String saleAmount;
 
-    @ExcelProperty("退货金额")
+    @ExcelProperty(value = "退货金额", converter = cn.iocoder.yudao.module.erp.framework.excel.ErpTradeAmountExcelConverter.class)
     private String returnAmount;
 
-    @ExcelProperty("销售净额")
+    @ExcelProperty(value = "销售净额", converter = cn.iocoder.yudao.module.erp.framework.excel.ErpTradeAmountExcelConverter.class)
     private String netAmount;
 }

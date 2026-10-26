@@ -60,6 +60,7 @@ public interface ErpSupplierMapper extends BaseMapperX<ErpSupplierDO> {
 
     static LambdaQueryWrapperX<ErpSupplierDO> buildPageQuery(ErpSupplierPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpSupplierDO> wrapper = new LambdaQueryWrapperX<ErpSupplierDO>()
+                .inIfPresent(ErpSupplierDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpSupplierDO::getCode, reqVO.getCode())
                 .likeIfPresent(ErpSupplierDO::getName, reqVO.getName())
                 .likeIfPresent(ErpSupplierDO::getMobile, reqVO.getMobile())
@@ -106,11 +107,11 @@ public interface ErpSupplierMapper extends BaseMapperX<ErpSupplierDO> {
             return;
         }
         if ("asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            wrapper.orderByAsc(orderColumn);
+            wrapper.orderByAsc(orderColumn).orderByDesc(ErpSupplierDO::getId);
             return;
         }
         if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            wrapper.orderByDesc(orderColumn);
+            wrapper.orderByDesc(orderColumn).orderByDesc(ErpSupplierDO::getId);
             return;
         }
         wrapper.orderByDesc(ErpSupplierDO::getId);

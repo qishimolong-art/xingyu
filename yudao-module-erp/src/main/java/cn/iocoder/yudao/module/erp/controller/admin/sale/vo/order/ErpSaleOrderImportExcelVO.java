@@ -24,11 +24,14 @@ public class ErpSaleOrderImportExcelVO {
 
     @ExcelRequired
     @ExcelProperty("数量")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "count最多支持 6 位小数")
     private BigDecimal count;
 
     @ExcelProperty("单价")
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "productPrice最多支持 6 位小数")
     private BigDecimal productPrice;
 
+    @javax.validation.constraints.Digits(integer = 18, fraction = 6, message = "taxPercent最多支持 6 位小数")
     private BigDecimal taxPercent;
 
     @ExcelProperty("备注")

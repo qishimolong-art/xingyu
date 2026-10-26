@@ -172,6 +172,7 @@ public interface ErpPurchasePriceAdjustItemMapper extends BaseMapperX<ErpPurchas
             case "brand" -> spec(item + ".brand", true);
             case "drawingNo" -> spec(item + ".drawing_no", true);
             case "warehousePosition" -> spec(item + ".warehouse_position", true);
+            case "remark" -> spec(item + ".remark", true);
             default -> null;
         };
     }

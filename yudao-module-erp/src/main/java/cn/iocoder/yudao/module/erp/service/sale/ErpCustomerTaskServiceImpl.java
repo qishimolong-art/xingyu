@@ -34,7 +34,10 @@ public class ErpCustomerTaskServiceImpl implements ErpCustomerTaskService {
 
     @Override
     public void updateTask(ErpCustomerTaskSaveReqVO updateReqVO) {
-        validateTaskExists(updateReqVO.getId());
+        ErpCustomerTaskDO existing = validateTaskExists(updateReqVO.getId());
+        if (!java.util.Objects.equals(existing.getCustomerId(), updateReqVO.getCustomerId())) {
+            throw exception(CUSTOMER_TASK_NOT_EXISTS);
+        }
         customerService.validateCustomer(updateReqVO.getCustomerId());
         taskMapper.updateById(BeanUtils.toBean(updateReqVO, ErpCustomerTaskDO.class));
     }
@@ -45,25 +48,36 @@ public class ErpCustomerTaskServiceImpl implements ErpCustomerTaskService {
         taskMapper.deleteById(id);
     }
 
-    private void validateTaskExists(Long id) {
-        if (taskMapper.selectById(id) == null) {
-            throw exception(CUSTOMER_TASK_NOT_EXISTS);
+    private ErpCustomerTaskDO validateTaskExists(Long id) {
+        ErpCustomerTaskDO existing = taskMapper.selectById(id);
+        if (existing == null) throw exception(CUSTOMER_TASK_NOT_EXISTS);
+        validateVisibleCustomer(existing.getCustomerId());
+        return existing;
+    }
+
+    private void validateVisibleCustomer(Long customerId) {
+        if (customerId == null || customerService.getCustomer(customerId) == null) {
+            throw exception(cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS);
         }
     }
 
     @Override
     public ErpCustomerTaskDO getTask(Long id) {
-        return taskMapper.selectById(id);
+        ErpCustomerTaskDO existing = taskMapper.selectById(id);
+        if (existing != null) validateVisibleCustomer(existing.getCustomerId());
+        return existing;
     }
 
     @Override
     public PageResult<ErpCustomerTaskDO> getTaskPage(ErpCustomerTaskPageReqVO pageReqVO) {
+        validateVisibleCustomer(pageReqVO.getCustomerId());
+        if (pageReqVO.getPageSize() <= 0 || pageReqVO.getPageSize() > 100) pageReqVO.setPageSize(100);
         return taskMapper.selectPage(pageReqVO);
     }
 
     @Override
     public List<ErpCustomerTaskDO> getTaskListByCustomerId(Long customerId) {
-        customerService.validateCustomer(customerId);
+        validateVisibleCustomer(customerId);
         return taskMapper.selectListByCustomerId(customerId);
     }
 

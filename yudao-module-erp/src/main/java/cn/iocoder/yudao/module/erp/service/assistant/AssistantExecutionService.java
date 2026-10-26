@@ -34,6 +34,9 @@ public class AssistantExecutionService {
     @Resource private AssistantV2Engine v2Engine;
     @Resource private AssistantSemanticAnalyzer semanticAnalyzer;
     @Resource private AssistantPhoneticNormalizer phoneticNormalizer;
+    @Resource private AssistantUnderstandingService understandingService;
+    @Resource private AssistantProperties properties;
+    @Resource private AssistantToolRegistry toolRegistry;
 
     private final ScheduledExecutorService deadlines = Executors.newSingleThreadScheduledExecutor();
     private final ExecutorService workers = new ThreadPoolExecutor(2, 4, 60, TimeUnit.SECONDS,
@@ -52,6 +55,8 @@ public class AssistantExecutionService {
         private String entry;
         /** 发起问题时所在的前端路由；仅用于灰度和审计，不参与扩大权限。 */
         private String currentPage;
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        private AssistantUnderstandingResult understanding;
     }
 
     public interface EventSink {
@@ -173,6 +178,19 @@ public class AssistantExecutionService {
                     previous = null;
                 }
             }
+            message = store.begin(request.getConversationId(), AssistantModelClient.redact(request.getQuestion()));
+            emit(sink, "started", Collections.singletonMap("requestId", requestId), running, start);
+            emit(sink, "progress", Collections.singletonMap("text", "正在理解问题"), running, start);
+            if (understandingService != null && properties.isSemanticUnderstandingEnabled()) {
+                String entry = executionRequest.getEntry() == null ? "UNKNOWN" : executionRequest.getEntry();
+                if (properties.getV2().getDisabledEntries().stream().anyMatch(entry::equalsIgnoreCase))
+                    throw new AssistantFailure("CAPABILITY_UNAVAILABLE", "当前入口的智能问数已临时关闭");
+                if (savedEnvelope != null) executionRequest.setUnderstanding(savedEnvelope.getUnderstanding());
+                else if (request.getChoiceField() != null && previousEnvelope != null)
+                    executionRequest.setUnderstanding(previousEnvelope.getUnderstanding());
+                else executionRequest.setUnderstanding(understandingService.understand(executionRequest.getQuestion(),
+                        understandingService.context(previousEnvelope), understandingDefinitions(), false));
+            }
             AssistantEngineRouter.Decision decision;
             if (engineRouter == null) {
                 decision = new AssistantEngineRouter.Decision(AssistantEngineMode.V1, "V1", false, false, false,
@@ -189,9 +207,6 @@ public class AssistantExecutionService {
             executionAudit.setCapabilityFallback(decision.isCapabilityFallback());
             executionAudit.setEntryFallback(decision.isEntryFallback());
 
-            message = store.begin(request.getConversationId(), AssistantModelClient.redact(request.getQuestion()));
-            emit(sink, "started", Collections.singletonMap("requestId", requestId), running, start);
-            emit(sink, "progress", Collections.singletonMap("text", "正在理解问题"), running, start);
             AssistantPlan parsePrevious = AssistantModelClient.continuationContext(executionRequest.getQuestion(), previous);
             boolean hybridSchemaReady = store.hybridAuditSchemaReady();
             if (savedEnvelope != null
@@ -205,7 +220,7 @@ public class AssistantExecutionService {
                 foreground = runEngine(decision.getSelectedEngine(), executionRequest, semanticRequest, previousEnvelope, previous,
                         parsePrevious, hybridSchemaReady, sink, running, start, message, true);
             } catch (Exception v2Failure) {
-                if (!"V2".equals(decision.getSelectedEngine()) || !propertiesFallbackOnError()
+                if (executionRequest.getUnderstanding() != null || !"V2".equals(decision.getSelectedEngine()) || !propertiesFallbackOnError()
                         || !automaticFallbackAllowed(v2Failure)) throw v2Failure;
                 usedTokens += model.takeTokens();
                 model.beginRequest();
@@ -362,11 +377,11 @@ public class AssistantExecutionService {
             throw new AssistantFailure("MIGRATION_REQUIRED", "V2 所需的智能查询审计扩展尚未完成数据库迁移");
         }
         AssistantExecutionEnvelope savedEnvelope = request.getSavedEnvelope();
-        boolean useNew = forceV2 || (orchestrator.enabledForCurrentUser() && hybridSchemaReady)
+        boolean useNew = request.getUnderstanding() != null || forceV2 || (orchestrator.enabledForCurrentUser() && hybridSchemaReady)
                 || savedEnvelope != null
                 && savedEnvelope.getRouteType() != AssistantExecutionEnvelope.RouteType.VERIFIED_METRIC;
         boolean orchestrationChoice = request.getChoiceField() != null && previousEnvelope != null
-                && previousEnvelope.getLegacyPlan() == null;
+                && (previousEnvelope.getUnderstanding() != null || previousEnvelope.getLegacyPlan() == null);
         EngineRun run = new EngineRun();
         if (useNew && (request.getChoiceField() == null || orchestrationChoice)) {
             emitIf(emitEvents, sink, "route", Collections.singletonMap("mode", forceV2 ? "V2" : "HYBRID"),
@@ -374,7 +389,10 @@ public class AssistantExecutionService {
             emitIf(emitEvents, sink, "tool-progress", Collections.singletonMap("text", "正在选择安全查询工具"),
                     running, requestStart);
             AssistantOrchestrator.Outcome outcome;
-            if (forceV2 && v2Engine != null) {
+            if (savedEnvelope != null && savedEnvelope.getUnderstanding() != null) {
+                orchestrator.validateAccess(savedEnvelope);
+                outcome = orchestrator.executeUnderstood(savedEnvelope.getQuestion(), savedEnvelope.getUnderstanding(), savedEnvelope, authorizedCatalog());
+            } else if (forceV2 && v2Engine != null) {
                 outcome = orchestrationChoice
                         ? v2Engine.resumeChoice(semanticRequest, previousEnvelope, request.getChoiceField(), request.getChoiceId(),
                         request.getQuestion(), authorizedCatalog())
@@ -385,8 +403,9 @@ public class AssistantExecutionService {
                 outcome = orchestrationChoice
                         ? orchestrator.resumeChoice(previousEnvelope, request.getChoiceField(), request.getChoiceId(),
                         request.getQuestion(), authorizedCatalog())
-                        : orchestrator.execute(savedEnvelope != null ? savedEnvelope.getQuestion() : request.getQuestion(),
-                        previousEnvelope, authorizedCatalog());
+                        : request.getUnderstanding() != null
+                        ? orchestrator.executeUnderstood(request.getQuestion(), request.getUnderstanding(), previousEnvelope, authorizedCatalog())
+                        : orchestrator.execute(savedEnvelope != null ? savedEnvelope.getQuestion() : request.getQuestion(), previousEnvelope, authorizedCatalog());
             }
             run.setEnvelope(outcome.getEnvelope());
             run.setPlan(run.getEnvelope().getLegacyPlan());
@@ -456,6 +475,7 @@ public class AssistantExecutionService {
         if (message != null) run.getResult().put("messageId", message);
         emitIf(emitEvents, sink, "result",
                 AssistantEntryProtocol.result(run.getResult(), run.getEnvelope(), message), running, requestStart);
+        if (run.getResult().get("tasks") instanceof Collection) return;
         if (!emitEvents || running.cancelled.get() || System.currentTimeMillis() - requestStart >= 38_000) return;
         Object answerText = run.getResult().get("answerText");
         String explanation = answerText instanceof String && !((String) answerText).trim().isEmpty()
@@ -471,6 +491,12 @@ public class AssistantExecutionService {
 
     private boolean propertiesFallbackOnError() {
         return engineRouter != null && engineRouter.propertiesFallbackOnError();
+    }
+
+    private List<Map<String,Object>> understandingDefinitions() {
+        List<String> available = new ArrayList<>(orchestrator.availableTools());
+        available.remove("execute_semantic_query");
+        return toolRegistry.definitions(available);
     }
 
     private static boolean automaticFallbackAllowed(Exception exception) {

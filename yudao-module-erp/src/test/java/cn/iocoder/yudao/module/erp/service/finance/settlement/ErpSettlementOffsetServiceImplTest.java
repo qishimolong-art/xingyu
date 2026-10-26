@@ -34,9 +34,11 @@ import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -256,6 +258,46 @@ class ErpSettlementOffsetServiceImplTest extends BaseMockitoUnitTest {
                 .containsExactly(1L, 2L);
         assertThat(result.getPayableDetails()).extracting(ErpPayableDetailRespVO::getBizId)
                 .containsExactly(11L, 12L);
+    }
+
+    @Test
+    void getSettlementOffsetDetail_defaultsToApprovalTimeAscendingAndPropagatesBasis() {
+        ErpSettlementOffsetDetailReqVO reqVO = new ErpSettlementOffsetDetailReqVO();
+        reqVO.setCustomerId(1L);
+        reqVO.setSupplierId(11L);
+        reqVO.setDateBasis("approveTime");
+        LocalDateTime start = LocalDateTime.of(2026, 10, 1, 0, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 11, 1, 0, 0);
+        reqVO.setApproveTime(new LocalDateTime[]{start, end});
+        ErpReceivableDetailRespVO receivableOld = createReceivableDetail(1L, "YS-1", "1");
+        receivableOld.setApproveTime(start.plusDays(1));
+        receivableOld.setEventKey("10:0001");
+        ErpReceivableDetailRespVO receivableNew = createReceivableDetail(2L, "YS-2", "1");
+        receivableNew.setApproveTime(start.plusDays(2));
+        receivableNew.setEventKey("10:0002");
+        ErpPayableDetailRespVO payableOld = createPayableDetail(11L, "YF-1");
+        payableOld.setApproveTime(start.plusDays(1));
+        payableOld.setEventKey("10:0011");
+        ErpPayableDetailRespVO payableNew = createPayableDetail(12L, "YF-2");
+        payableNew.setApproveTime(start.plusDays(2));
+        payableNew.setEventKey("10:0012");
+        when(receivableAccountService.getReceivableDetailList(any(ErpReceivableDetailReqVO.class),
+                any(ErpFinanceVisibleScope.class))).thenReturn(Arrays.asList(receivableOld, receivableNew));
+        when(payableAccountService.getPayableDetailList(any(ErpPayableDetailReqVO.class),
+                any(ErpFinanceVisibleScope.class))).thenReturn(Arrays.asList(payableOld, payableNew));
+
+        ErpSettlementOffsetDetailRespVO result = invokeDetailAsBranchUser(reqVO);
+
+        assertThat(result.getReceivableDetails()).extracting(ErpReceivableDetailRespVO::getBizId)
+                .containsExactly(1L, 2L);
+        assertThat(result.getPayableDetails()).extracting(ErpPayableDetailRespVO::getBizId)
+                .containsExactly(11L, 12L);
+        verify(receivableAccountService).getReceivableDetailList(argThat(request ->
+                        request.isApproveTimeBasis() && start.equals(request.getStartTime()) && end.equals(request.getEndTime())),
+                any(ErpFinanceVisibleScope.class));
+        verify(payableAccountService).getPayableDetailList(argThat(request ->
+                        request.isApproveTimeBasis() && start.equals(request.getStartTime()) && end.equals(request.getEndTime())),
+                any(ErpFinanceVisibleScope.class));
     }
 
     private PageResult<ErpSettlementOffsetDO> invokeAsBranchUser(ErpSettlementOffsetPageReqVO reqVO) {

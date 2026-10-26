@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.misc;
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.idev.excel.annotation.format.NumberFormat;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -26,14 +27,23 @@ public class ErpReceivableMiscExportRespVO {
     @ExcelProperty("所属部门")
     private String deptName;
 
-    @ExcelProperty("原金额")
+    @ExcelProperty(value = "原金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal amount;
 
-    @ExcelProperty("已收金额")
+    @ExcelProperty(value = "已收金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal settledAmount;
 
-    @ExcelProperty("剩余金额")
+    @ExcelProperty(value = "剩余金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal balanceAmount;
+
+    @ExcelProperty(value = "待审批占用", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
+    private BigDecimal pendingTransferAmount;
+
+    @ExcelProperty(value = "剩余可转金额", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
+    private BigDecimal transferAvailableAmount;
+
+    @ExcelProperty("系统冲减")
+    private Boolean generatedOffset;
 
     @ExcelProperty("来源类型")
     private String sourceType;
@@ -67,5 +77,11 @@ public class ErpReceivableMiscExportRespVO {
 
     @ExcelProperty("审核时间")
     private LocalDateTime auditTime;
+
+    @ExcelProperty("修改人")
+    private String updaterName;
+
+    @ExcelProperty("修改时间")
+    private LocalDateTime updateTime;
 
 }

@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.service.product;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryListReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryImportExcelVO;
@@ -65,6 +66,9 @@ public interface ErpProductCategoryService {
      */
     ErpProductCategoryImportRespVO importProductCategoryList(List<ErpProductCategoryImportExcelVO> list);
 
+    ErpProductCategoryImportRespVO importProductCategoryList(List<ErpProductCategoryImportExcelVO> list,
+                                                             ErpSimpleArchiveImportProgressListener listener);
+
     /**
      * 获得下一个商品分类编码
      *
@@ -96,6 +100,8 @@ public interface ErpProductCategoryService {
      * @return 商品分类列表
      */
     List<ErpProductCategoryDO> getProductCategoryList(ErpProductCategoryListReqVO listReqVO);
+
+    PageResult<ErpProductCategoryDO> getProductCategoryPage(ErpProductCategoryListReqVO pageReqVO);
 
     /**
      * 获得商品分类列表

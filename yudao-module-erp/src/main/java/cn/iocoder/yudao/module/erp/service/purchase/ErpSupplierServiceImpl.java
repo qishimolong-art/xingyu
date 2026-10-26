@@ -567,10 +567,20 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ErpSupplierImportRespVO importSupplierList(List<ErpSupplierImportExcelVO> list) {
+        return importSupplierList(list, ErpSupplierImportProgressListener.NOOP);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpSupplierImportRespVO importSupplierList(List<ErpSupplierImportExcelVO> list,
+                                                      ErpSupplierImportProgressListener listener) {
         ErpSupplierImportRespVO respVO = new ErpSupplierImportRespVO();
         if (CollUtil.isEmpty(list)) {
             return respVO;
         }
+
+        ErpSupplierImportProgressListener progressListener = listener == null
+                ? ErpSupplierImportProgressListener.NOOP : listener;
 
         List<String> codes = listImportCodes(list);
         List<ErpSupplierDO> existedSuppliers = CollUtil.isEmpty(codes)
@@ -581,6 +591,7 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
         for (int i = 0; i < list.size(); i++) {
             ErpSupplierImportExcelVO importVO = list.get(i);
             if (importVO == null || !StringUtils.hasText(trimToNull(importVO.getName()))) {
+                progressListener.onRowProcessed(i + 1, list.size(), respVO);
                 continue;
             }
             Integer rowNo = i + 2;
@@ -602,9 +613,13 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
                 respVO.getFailureDetails().add(new ErpSupplierImportRespVO.FailureItem(
                         rowNo, code, getImportFailureReason(ex)));
             }
+            respVO.setSuccessCount(respVO.getCreateCount() + respVO.getUpdateCount());
+            respVO.setFailureCount(respVO.getFailureDetails().size());
+            progressListener.onRowProcessed(i + 1, list.size(), respVO);
         }
         respVO.setSuccessCount(respVO.getCreateCount() + respVO.getUpdateCount());
         respVO.setFailureCount(respVO.getFailureDetails().size());
+        progressListener.onFinalizing(list.size(), respVO);
         operateLogService.record(ERP_SUPPLIER_TYPE, ERP_IMPORT_SUB_TYPE, 0L,
                 "导入供应商信息，新增：" + respVO.getCreateCount()
                         + "，更新：" + respVO.getUpdateCount()

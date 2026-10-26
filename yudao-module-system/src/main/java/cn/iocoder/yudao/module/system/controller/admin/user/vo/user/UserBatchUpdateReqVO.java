@@ -100,6 +100,12 @@ public class UserBatchUpdateReqVO {
     @Schema(description = "仓库编号数组")
     private Set<Long> warehouseIds;
 
+    @Schema(description = "是否修改租户访问范围")
+    private Boolean updateTenantVisitScope;
+
+    @Schema(description = "租户访问范围；支持 ALL、CUSTOM 或 clear=true")
+    private TenantVisitScopeSaveReqVO tenantVisitScope;
+
     @AssertTrue(message = "请至少选择一个需要修改的字段")
     public boolean isAnyFieldUpdated() {
         return Boolean.TRUE.equals(updateNickname)
@@ -111,7 +117,8 @@ public class UserBatchUpdateReqVO {
                 || Boolean.TRUE.equals(updateStatus)
                 || Boolean.TRUE.equals(updateDataScope)
                 || Boolean.TRUE.equals(updateRemark)
-                || Boolean.TRUE.equals(updateWarehousePermissions);
+                || Boolean.TRUE.equals(updateWarehousePermissions)
+                || Boolean.TRUE.equals(updateTenantVisitScope);
     }
 
     @AssertTrue(message = "请输入名称")
@@ -177,6 +184,11 @@ public class UserBatchUpdateReqVO {
             return true;
         }
         return warehouseIds != null && !warehouseIds.isEmpty();
+    }
+
+    @AssertTrue(message = "请设置租户访问范围")
+    public boolean isTenantVisitScopeValid() {
+        return !Boolean.TRUE.equals(updateTenantVisitScope) || tenantVisitScope != null;
     }
 
 }

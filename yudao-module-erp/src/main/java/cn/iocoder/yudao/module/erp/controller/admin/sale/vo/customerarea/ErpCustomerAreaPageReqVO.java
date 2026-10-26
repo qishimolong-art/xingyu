@@ -10,6 +10,7 @@ import lombok.ToString;
 @ToString(callSuper = true)
 public class ErpCustomerAreaPageReqVO extends PageParam {
 
+    @javax.validation.constraints.NotNull
     private Long customerId;
     private String mapAddress;
 

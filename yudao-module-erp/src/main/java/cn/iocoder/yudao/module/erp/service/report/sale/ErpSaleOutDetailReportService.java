@@ -44,6 +44,7 @@ public class ErpSaleOutDetailReportService {
     private static final String RETURN_MODULE = "erp_sale_return";
     private static final String ADJUST_MODULE = "erp_sale_price_adjust";
     private static final String CUSTOMER_MODULE = "erp_customer";
+    private static final String STOCK_MODULE = "erp_stock";
     private static final int EXPORT_BATCH_SIZE = 1000;
     private static final long EXPORT_LIMIT = 1_000_000L;
 
@@ -71,11 +72,14 @@ public class ErpSaleOutDetailReportService {
     @Transactional(readOnly = true)
     public Summary getSummary(Filter filter) {
         validate(filter);
-        boolean visible = isPriceVisible();
+        boolean priceVisible = isPriceVisible();
+        boolean costVisible = isCostVisible();
         ErpSaleOutDetailReportRepository.Scope scope = resolveScope();
-        if (scope == null) return emptySummary(visible);
-        Summary summary = repository.summary(filter, scope).setPriceVisible(visible);
-        if (!visible) summary.setTotalAmount(null).setInvoiceAmount(null).setFreightAmount(null);
+        if (scope == null) return emptySummary(priceVisible, costVisible);
+        Summary summary = repository.summary(filter, scope)
+                .setPriceVisible(priceVisible).setCostVisible(costVisible);
+        if (!priceVisible) summary.setTotalAmount(null).setInvoiceAmount(null).setFreightAmount(null);
+        if (!costVisible) summary.setTotalSaleCostAmount(null).setMissingSaleCostCount(null);
         return summary;
     }
 
@@ -85,12 +89,13 @@ public class ErpSaleOutDetailReportService {
         ErpSaleOutDetailReportRepository.Scope scope = resolveScope();
         long total = scope == null ? 0L : repository.count(filter, scope);
         if (total > EXPORT_LIMIT) throw new ServiceException(400, "单次导出最多 100 万行，请缩小查询范围");
-        boolean visible = isPriceVisible();
+        boolean priceVisible = isPriceVisible();
+        boolean costVisible = isCostVisible();
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment;filename*=UTF-8''"
                 + URLEncoder.encode("配件出库明细查询报表.xlsx", "UTF-8").replace("+", "%20"));
         try (ExcelWriter writer = FastExcelFactory.write(response.getOutputStream(), Row.class)
-                .includeColumnFieldNames(exportFields(visible)).autoCloseStream(false).build()) {
+                .includeColumnFieldNames(exportFields(priceVisible, costVisible)).autoCloseStream(false).build()) {
             WriteSheet sheet = FastExcelFactory.writerSheet("出库明细").build();
             if (total == 0) writer.write(Collections.emptyList(), sheet);
             for (long offset = 0; offset < total; offset += EXPORT_BATCH_SIZE) {
@@ -162,14 +167,17 @@ public class ErpSaleOutDetailReportService {
     }
 
     private void applyPriceVisibility(List<Row> rows) {
-        boolean visible = isPriceVisible();
+        boolean priceVisible = isPriceVisible();
+        boolean costVisible = isCostVisible();
         for (Row row : rows) {
-            row.setPriceVisible(visible);
-            if (!visible) {
+            row.setPriceVisible(priceVisible).setCostVisible(costVisible);
+            if (!priceVisible) {
                 row.setProductPrice(null).setFreightIncludedPrice(null).setPreviousSalePrice(null)
-                        .setTotalAmount(null).setInvoiceAmount(null).setSaleCostPrice(null).setSaleCostAmount(null)
-                        .setGrossProfitAmount(null).setGrossProfitRate(null).setFreightAmount(null);
+                        .setTotalAmount(null).setInvoiceAmount(null).setGrossProfitAmount(null)
+                        .setGrossProfitRate(null).setFreightAmount(null);
             }
+            if (!costVisible) row.setSaleCostPrice(null).setSaleCostAmount(null)
+                    .setGrossProfitAmount(null).setGrossProfitRate(null);
         }
     }
 
@@ -181,18 +189,25 @@ public class ErpSaleOutDetailReportService {
                 && !hidden(ADJUST_MODULE, "item_adjustPrice");
     }
 
+    private boolean isCostVisible() {
+        return !hidden(STOCK_MODULE, "costPrice") && !hidden(STOCK_MODULE, "costAmount");
+    }
+
     private boolean hidden(String module, String field) {
         return fieldPermissionMasker.isFieldHidden(module, field);
     }
 
-    private Summary emptySummary(boolean visible) {
+    private Summary emptySummary(boolean priceVisible, boolean costVisible) {
         return new Summary().setRowCount(0L).setTotalCount(BigDecimal.ZERO)
-                .setTotalAmount(visible ? BigDecimal.ZERO : null)
-                .setInvoiceAmount(visible ? BigDecimal.ZERO : null)
-                .setFreightAmount(visible ? BigDecimal.ZERO : null).setPriceVisible(visible);
+                .setTotalAmount(priceVisible ? BigDecimal.ZERO : null)
+                .setInvoiceAmount(priceVisible ? BigDecimal.ZERO : null)
+                .setFreightAmount(priceVisible ? BigDecimal.ZERO : null)
+                .setTotalSaleCostAmount(costVisible ? BigDecimal.ZERO : null)
+                .setMissingSaleCostCount(costVisible ? 0L : null)
+                .setPriceVisible(priceVisible).setCostVisible(costVisible);
     }
 
-    private Set<String> exportFields(boolean visible) {
+    private Set<String> exportFields(boolean priceVisible, boolean costVisible) {
         Set<String> fields = new LinkedHashSet<>();
         Collections.addAll(fields, "approveDate", "documentNo", "documentType", "sourceNo", "thirdPartyNo",
                 "productCode", "productName", "vehicleModel", "featureCode", "count", "invoiceStatus",
@@ -200,9 +215,10 @@ public class ErpSaleOutDetailReportService {
                 "warehouseName", "warehousePosition", "saleUserName", "standard", "drawingNo", "unitName",
                 "giftFlagText", "creatorName", "itemRemark", "documentRemark", "factoryCode", "factoryName",
                 "factoryModel", "freightType");
-        if (visible) Collections.addAll(fields, "productPrice", "freightIncludedPrice", "previousSalePrice",
-                "totalAmount", "invoiceAmount", "saleCostPrice", "saleCostAmount", "grossProfitAmount",
-                "grossProfitRate", "freightAmount");
+        if (priceVisible) Collections.addAll(fields, "productPrice", "freightIncludedPrice", "previousSalePrice",
+                "totalAmount", "invoiceAmount", "freightAmount");
+        if (costVisible) Collections.addAll(fields, "saleCostPrice", "saleCostAmount");
+        if (priceVisible && costVisible) Collections.addAll(fields, "grossProfitAmount", "grossProfitRate");
         return fields;
     }
 

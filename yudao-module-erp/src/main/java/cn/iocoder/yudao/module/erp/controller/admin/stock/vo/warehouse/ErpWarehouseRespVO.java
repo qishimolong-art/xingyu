@@ -45,11 +45,11 @@ public class ErpWarehouseRespVO {
     private String mapName;
 
     @Schema(description = "仓库经度（GCJ-02）", example = "104.066801")
-    @ExcelProperty("经度")
+    @ExcelProperty(value = "经度", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal longitude;
 
     @Schema(description = "仓库纬度（GCJ-02）", example = "30.572269")
-    @ExcelProperty("纬度")
+    @ExcelProperty(value = "纬度", converter = cn.iocoder.yudao.module.erp.framework.excel.StockDecimalExcelConverter.class)
     private BigDecimal latitude;
 
     @Schema(description = "排序", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
@@ -65,11 +65,11 @@ public class ErpWarehouseRespVO {
     private String principal;
 
     @Schema(description = "仓储费，单位：元", example = "13973")
-    @ExcelProperty("仓储费，单位：元")
+    @ExcelProperty(value = "仓储费，单位：元", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal warehousePrice;
 
     @Schema(description = "搬运费，单位：元", example = "9903")
-    @ExcelProperty("搬运费，单位：元")
+    @ExcelProperty(value = "搬运费，单位：元", converter = cn.iocoder.yudao.module.erp.framework.excel.FinanceDecimalExcelConverter.class)
     private BigDecimal truckagePrice;
 
     @Schema(description = "开启状态", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
@@ -82,7 +82,7 @@ public class ErpWarehouseRespVO {
     private Boolean defaultStatus;
 
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
-    @ExcelProperty("创建时间")
+    @ExcelProperty(value = "创建时间")
     private LocalDateTime createTime;
 
     @Schema(description = "创建人名称")

@@ -72,7 +72,9 @@ class ErpSaleImportTemplateTest {
         assertTrue(headers.contains(PRODUCT_CODE_CHOICE_HEADER));
         assertTrue(headers.contains(PRODUCT_NAME_CHOICE_HEADER));
         assertTrue(headers.contains(FACTORY_CODE_CHOICE_HEADER));
+        assertTrue(headers.contains("所属仓库"));
         assertTrue(headers.contains("赠品"));
+        assertTrue(headers.contains("备注"));
         assertFalse(headers.contains("报价日期"));
         assertFalse(headers.contains("单据日期"));
         assertFalse(headers.contains("创建时间"));

@@ -191,6 +191,32 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testParseImportData_usesRequestedWarehouseAndRemark() {
+        ErpSaleQuoteImportExcelVO row = new ErpSaleQuoteImportExcelVO();
+        row.setProductCode("P0002");
+        row.setWarehouseName(" 销售仓 ");
+        row.setCount(BigDecimal.ONE);
+        row.setRemark(" 明细备注 ");
+        ErpProductDO product = new ErpProductDO()
+                .setId(11L)
+                .setCode("P0002")
+                .setUnitId(21L)
+                .setSalePrice(new BigDecimal("88.00"));
+        when(productMapper.selectListByCodes(anyCollection())).thenReturn(Collections.singletonList(product));
+        when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.emptyMap());
+        when(warehouseService.getCurrentUserVisibleSaleWarehouseList()).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(301L).setName("销售仓")));
+
+        ErpSaleQuoteImportRespVO respVO = saleQuoteService.parseImportData(Collections.singletonList(row));
+
+        assertEquals(1, respVO.getSuccessCount());
+        assertEquals(0, respVO.getFailureCount());
+        assertEquals(301L, respVO.getItems().get(0).getWarehouseId());
+        assertEquals("销售仓", respVO.getItems().get(0).getWarehouseName());
+        assertEquals("明细备注", respVO.getItems().get(0).getRemark());
+    }
+
+    @Test
     public void testApproveSaleQuote_onlyChangesToOrderedWithoutCreatingOutboundDocument() {
         Long quoteId = 10L;
         ErpSaleQuoteDO quote = new ErpSaleQuoteDO()

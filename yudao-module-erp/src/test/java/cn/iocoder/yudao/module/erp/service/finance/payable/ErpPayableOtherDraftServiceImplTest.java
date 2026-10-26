@@ -22,6 +22,7 @@ import org.mockito.Mock;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_APPROVE_FAIL;
@@ -322,6 +323,27 @@ class ErpPayableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
                 10L, ErpPayableOtherStatusEnum.APPROVE.getStatus()),
                 OTHER_PAYABLE_APPROVE_FAIL);
         verify(payableOtherMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void approveProcess_persistsApproveTime() {
+        ErpPayableOtherDO db = new ErpPayableOtherDO().setId(10L).setNo("QTFK10")
+                .setSupplierId(1L).setDeptId(2L)
+                .setStatus(ErpPayableOtherStatusEnum.PROCESS.getStatus());
+        when(payableOtherMapper.selectById(10L)).thenReturn(db);
+        ErpSupplierDO supplier = ErpSupplierDO.builder().id(1L).build();
+        when(supplierService.validateSupplier(1L)).thenReturn(supplier);
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 2L, "erp_payable_other"))
+                .thenReturn(true);
+        when(payableOtherMapper.updateByIdAndStatus(eq(10L),
+                eq(ErpPayableOtherStatusEnum.PROCESS.getStatus()), any())).thenReturn(1);
+
+        service.updatePayableOtherStatus(10L, ErpPayableOtherStatusEnum.APPROVE.getStatus());
+
+        ArgumentCaptor<ErpPayableOtherDO> captor = ArgumentCaptor.forClass(ErpPayableOtherDO.class);
+        verify(payableOtherMapper).updateByIdAndStatus(eq(10L),
+                eq(ErpPayableOtherStatusEnum.PROCESS.getStatus()), captor.capture());
+        assertThat(captor.getValue().getApproveTime()).isNotNull().isBeforeOrEqualTo(LocalDateTime.now());
     }
 
 }

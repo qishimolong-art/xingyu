@@ -1,10 +1,15 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.stock;
 
+import cn.iocoder.yudao.framework.mybatis.core.query.QueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -78,5 +83,51 @@ class ErpStockMapperSortTest {
     void summaryValueReadersReturnZeroForNullRow() {
         assertEquals(0L, ErpStockMapper.getLong(null, "total_rows"));
         assertEquals(BigDecimal.ZERO, ErpStockMapper.getBigDecimal(null, "total_stock_count"));
+    }
+
+    @Test
+    void productStockListDefaultSortPrioritizesExactProductIds() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setKeywordSearchMode(ErpStockPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_STOCK_LIST);
+        reqVO.setExactKeywordProductIds(Arrays.asList(138L, 145L, 138L));
+        QueryWrapperX<ErpStockDO> wrapper = new QueryWrapperX<>();
+
+        ErpStockMapper.orderByIfPresent(wrapper, reqVO);
+
+        String sql = wrapper.getCustomSqlSegment();
+        assertTrue(sql.contains("CASE WHEN erp_stock.product_id IN (138,145) THEN 0 ELSE 1 END ASC"), sql);
+        assertTrue(sql.contains("warehouse_id ASC"), sql);
+        assertTrue(sql.contains("id DESC"), sql);
+    }
+
+    @Test
+    void productStockListManualSortOverridesExactPriority() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setKeywordSearchMode(ErpStockPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_STOCK_LIST);
+        reqVO.setExactKeywordProductIds(Arrays.asList(138L, 145L));
+        reqVO.setOrderField("count");
+        reqVO.setOrderDirection("asc");
+        QueryWrapperX<ErpStockDO> wrapper = new QueryWrapperX<>();
+
+        ErpStockMapper.orderByIfPresent(wrapper, reqVO);
+
+        String sql = wrapper.getCustomSqlSegment();
+        assertFalse(sql.contains("CASE WHEN"), sql);
+        assertTrue(sql.contains("erp_stock.count ASC"), sql);
+        assertTrue(sql.contains("id DESC"), sql);
+    }
+
+    @Test
+    void legacyStockCallsKeepWarehouseDefaultSort() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setExactKeywordProductIds(Arrays.asList(138L, 145L));
+        QueryWrapperX<ErpStockDO> wrapper = new QueryWrapperX<>();
+
+        ErpStockMapper.orderByIfPresent(wrapper, reqVO);
+
+        String sql = wrapper.getCustomSqlSegment();
+        assertFalse(sql.contains("CASE WHEN"), sql);
+        assertTrue(sql.contains("warehouse_id ASC"), sql);
+        assertTrue(sql.contains("id DESC"), sql);
     }
 }
